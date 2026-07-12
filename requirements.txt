@@ -1,0 +1,6 @@
+flask
+flask-cors
+PyMuPDF
+reportlab
+pillow
+pytesseract

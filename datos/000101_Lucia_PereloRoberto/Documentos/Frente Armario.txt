@@ -1,0 +1,9 @@
+1;2320;1;1;81;0;0;Lateral Derecho_1;PINO 19
+1;2320;1;1;81;0;0;Lateral Derecho_2;MELA_BL
+1;2320;1;1;81;0;0;Lateral Izquierdo_1;PINO 19
+1;2320;1;1;81;0;0;Lateral Izquierdo_2;MELA_BL
+1;1093;1;0;519;0;0;Estante;MELA_BL
+1;1055;1;0;514;0;0;Balda;MELA_BL
+1;1470;1;0;541;0;0;Altillo;MELA_BL
+1;1800;1;0;511;0;0;Divisor;MELA_BL
+4;2305;1;1;343;1;1;Puerta_1, Puerta_2, Puerta_3, Puerta_4;MELA_BL

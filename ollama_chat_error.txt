@@ -1,0 +1,10 @@
+﻿Invoke-WebRequest : Se excedió el tiempo de espera de la operación
+En línea: 1 Carácter: 133
++ ... lse}'; $r = Invoke-WebRequest -Uri 'http://127.0.0.1:11434/api/chat'  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:Htt 
+   pWebRequest) [Invoke-WebRequest], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShe 
+   ll.Commands.InvokeWebRequestCommand
+ 
+

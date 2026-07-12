@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#5c3d0e">
+<title>Faenas</title>
+<style>
+:root {
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --wood: #c8a96e;
+  --wood-dark: #8b6914;
+  --wood-light: #f0deb4;
+  --ink: #1a1208;
+  --paper: #e8f7f9;
+  --paper-dark: #d0eef2;
+  --sawdust: #b8dde3;
+  --accent: #5c3d0e;
+  --green: #3a6b3a;
+  --red: #8b2020;
+  --blue: #1e3a5f;
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
+  --faena-card-w: 280px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font-mono);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 20px; /* Letras más grandes */
+  padding-bottom: calc(70px + var(--safe-bottom));
+}
+header {
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 14px 18px;
+  padding-top: max(14px, env(safe-area-inset-top, 14px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+header h1 { font-family: var(--font-serif); font-size: 1.4rem; flex: 1; }
+.sync-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--wood-light);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.offline-indicator {
+  font-size: 0.8rem;
+  background: rgba(255,255,255,0.15);
+  padding: 3px 8px;
+  border-radius: 10px;
+  display: none;
+}
+.offline-indicator.show { display: block; }
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: white;
+  border-top: 2px solid var(--sawdust);
+  display: flex;
+  padding-bottom: var(--safe-bottom);
+  z-index: 50;
+}
+.bottom-nav button {
+  flex: 1;
+  padding: 10px 4px;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.bottom-nav button .ni { font-size: 1.5rem; }
+.bottom-nav button.active { color: var(--accent); }
+main { padding: 16px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* LISTA DE FAENAS — scroll horizontal */
+.faenas-scroll-wrap {
+  overflow: hidden;
+  margin: 0 -16px;
+}
+#lista-faenas {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 14px;
+  padding: 8px 16px 16px 16px;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wood-dark) transparent;
+}
+#lista-faenas::-webkit-scrollbar { height: 5px; }
+#lista-faenas::-webkit-scrollbar-track { background: transparent; }
+#lista-faenas::-webkit-scrollbar-thumb {
+  background: var(--wood-dark);
+  border-radius: 4px;
+}
+#lista-faenas .card {
+  flex: 0 0 var(--faena-card-w);
+  min-width: var(--faena-card-w);
+  max-width: var(--faena-card-w);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  margin-bottom: 0;
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  padding: 18px 16px 20px;
+  box-shadow: 2px 2px 0 var(--sawdust);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+#lista-faenas .card-cliente {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+  margin: 6px 0 8px;
+}
+#lista-faenas .card-dir {
+  font-size: 0.88rem;
+  color: #888;
+  line-height: 1.45;
+  margin-bottom: auto;
+  padding-bottom: 12px;
+}
+#lista-faenas .card-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sawdust);
+}
+#lista-faenas .card-precio {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 0.02em;
+}
+#lista-faenas .card:active { background: var(--paper-dark); }
+#lista-faenas .empty {
+  flex: 0 0 100%;
+  min-width: 100%;
+}
+
+@media (max-width: 768px) {
+  :root { --faena-card-w: calc(100vw - 40px); }
+  #lista-faenas {
+    gap: 10px;
+    padding: 6px 16px 14px 16px;
+  }
+  #lista-faenas .card {
+    min-height: 220px;
+    padding: 18px 16px 22px;
+    border-radius: 12px;
+  }
+  #lista-faenas .card-cliente { font-size: 1.45rem; }
+  #lista-faenas .card-precio { font-size: 1.3rem; }
+  #lista-faenas .card-title { font-size: 1rem; line-height: 1.35; }
+  #lista-faenas .card-dir { font-size: 0.9rem; }
+  #lista-faenas .card-num { margin-bottom: 4px; }
+}
+
+/* CARDS (normales, para otras secciones) */
+.card {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: 2px 2px 0 var(--sawdust);
+  cursor: pointer;
+}
+.card:active { background: var(--paper-dark); }
+.card-num { font-size: 0.9rem; margin-bottom: 4px; }
+.card-title { font-family: var(--font-serif); font-size: 1.1rem; color: var(--accent); margin-bottom: 6px; }
+.card-info { font-size: 0.95rem; color: #666; line-height: 1.6; }
+.card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+.num-faena {
+  background: var(--ink);
+  color: var(--wood-light);
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+}
+.num-temp {
+  background: #8b5000;
+  color: #fdecd0;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.b-direct { background: var(--wood-light); color: var(--wood-dark); }
+.b-inter  { background: #dde8f0; color: var(--blue); }
+.b-green  { background: #d4edda; color: var(--green); }
+.b-gray   { background: #e8e8e8; color: #555; }
+.b-orange { background: #fdecd0; color: #8b5000; }
+
+.form-box {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.form-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.field { margin-bottom: 12px; }
+label { display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.07em; color: #888; margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  background: white;
+  color: var(--ink);
+  appearance: none;
+  -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
+textarea { resize: vertical; min-height: 80px; }
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 18px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.btn:active { opacity: 0.85; }
+.btn-p { background: var(--accent); color: var(--wood-light); }
+.btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
+.btn-g { background: #d4edda; color: var(--green); border: 1px solid #a8d5b5; }
+.btn-d { background: #fde8e8; color: var(--red); border: 1px solid #f0b0b0; }
+.btn-inline { width: auto; margin-bottom: 0; padding: 7px 14px; font-size: 0.85rem; }
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 16px;
+  padding: 4px 0;
+}
+.det-section { margin-bottom: 20px; }
+.det-section-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sawdust);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.det-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  font-size: 0.9rem;
+  gap: 8px;
+}
+.det-row:last-child { border-bottom: none; }
+.det-k { color: #999; font-size: 0.8rem; text-transform: uppercase; white-space: nowrap; }
+.det-v { color: var(--ink); font-weight: 500; text-align: right; }
+
+.anot-item {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.anot-meta { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+
+.foto-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.foto-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+}
+.foto-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.foto-thumb .foto-pending {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(139,80,0,0.85);
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.foto-thumb .foto-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(139,32,32,0.85);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.foto-viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.95);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  touch-action: pinch-zoom;
+}
+.foto-viewer img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  transition: transform 0.1s ease;
+  cursor: zoom-in;
+}
+.foto-viewer img.zoomed {
+  cursor: zoom-out;
+  transform: scale(1.5);
+}
+.foto-viewer .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid white;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  z-index: 10;
+}
+
+.mat-cat {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent);
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.mat-item {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+.mat-nombre { font-size: 0.95rem; font-weight: 500; margin-bottom: 4px; }
+.mat-precios { font-size: 0.85rem; color: #666; }
+.mat-precio-min { color: var(--green); font-weight: 500; }
+
+.sync-box {
+  background: white;
+  border: 2px solid var(--sawdust);
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+  margin: 20px 0;
+}
+.sync-estado { font-size: 0.9rem; color: #888; margin-top: 12px; line-height: 1.6; }
+.sync-ok { color: var(--green); }
+.sync-error { color: var(--red); }
+
+.pending-badge {
+  background: #fdecd0;
+  color: #8b5000;
+  border: 1px solid #f0c070;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.ip-box {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+
+.empty { text-align: center; padding: 40px 20px; color: #ccc; }
+.empty-icon { font-size: 2.5rem; margin-bottom: 8px; }
+
+.toast {
+  position: fixed;
+  bottom: calc(76px + var(--safe-bottom));
+  left: 16px; right: 16px;
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  z-index: 999;
+  text-align: center;
+  transform: translateY(20px);
+  opacity: 0;
+  transition: all 0.25s;
+  pointer-events: none;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.err { background: var(--red); }
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.book-grid-movil {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.book-card-movil {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 var(--sawdust);
+}
+.book-card-movil img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+}
+.book-card-movil-info {
+  padding: 8px 10px;
+}
+.book-card-movil-titulo {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.book-card-movil-meta {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(26,18,8,0.55);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.overlay.open { display: flex; }
+.modal-box {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  padding: 18px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 4px 4px 0 var(--sawdust);
+}
+.modal-box .form-title { margin-bottom: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.4rem">🪵</span>
+  <h1>Faenas</h1>
+  <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
+  <button class="sync-btn" onclick="navTo('sync')">⟳ Sync</button>
+</header>
+
+<main>
+
+  <!-- FAENAS -->
+  <div id="s-faenas" class="section active">
+    <div style="margin-bottom:14px;display:flex;gap:8px">
+      <input id="q-faena" placeholder="🔍 Buscar faena..." oninput="renderFaenas()" style="margin:0;flex:1;font-size:0.95rem">
+      <button class="btn btn-p btn-inline" onclick="navTo('nueva-faena')" style="white-space:nowrap">+ Nueva</button>
+    </div>
+    <div class="faenas-scroll-wrap">
+      <div id="lista-faenas"></div>
+    </div>
+  </div>
+
+  <!-- DETALLE FAENA -->
+  <div id="s-detalle" class="section">
+    <div class="back-btn" onclick="navTo('faenas')">← Volver</div>
+    <div id="detalle-contenido"></div>
+  </div>
+
+  <!-- NUEVA FAENA -->
+  <div id="s-nueva-faena" class="section">
+    <div class="back-btn" onclick="navTo('faenas')">← Volver</div>
+    <div class="form-box">
+      <div class="form-title">🔨 Nueva Faena</div>
+      <div class="field"><label>Cliente *</label><select id="nf-cliente-sel" onchange="toggleNuevoCliente()"><option value="">— Selecciona o crea nuevo —</option><option value="__nuevo__">+ Crear cliente nuevo</option></select></div>
+      <div id="nuevo-cliente-form" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:6px;padding:12px;margin-bottom:12px">
+        <div style="font-size:0.95rem;color:var(--accent);font-weight:500;margin-bottom:8px">Nuevo cliente</div>
+        <div class="field"><label>Nombre *</label><input id="nc-nombre" placeholder="Nombre completo"></div>
+        <div class="field"><label>Teléfono</label><input id="nc-tel" type="tel" placeholder="600 000 000"></div>
+        <div class="field" style="margin-bottom:0"><label>Email</label><input id="nc-email" type="email" placeholder="correo@email.com"></div>
+      </div>
+      <div class="field"><label>Dirección de la obra</label><input id="nf-dir" placeholder="Calle, número, ciudad..."></div>
+      <div class="field"><label>Tipo de trabajo</label><input id="nf-tipo" placeholder="Cocina, armario, estantería..."></div>
+      <div class="field"><label>Importe estimado (€)</label><input id="nf-importe" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="field"><label>Fecha</label><input id="nf-fecha" type="date"></div>
+      <button class="btn btn-p" onclick="crearFaena()">💾 Crear faena</button>
+      <button class="btn btn-s" onclick="navTo('faenas')">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- NUEVA / EDITAR ANOTACIÓN -->
+  <div id="s-anotacion" class="section">
+    <div class="back-btn" onclick="volverDetalle()">← Volver</div>
+    <div class="form-box">
+      <div class="form-title" id="anot-titulo">📝 Nueva Anotación</div>
+      <input type="hidden" id="anot-faena-id">
+      <input type="hidden" id="anot-edit-id">
+      <div class="field"><label>Tipo</label><select id="anot-tipo"><option value="texto">📝 Texto</option><option value="archivo">📎 Archivo</option></select></div>
+      <div class="field"><label>Contenido</label><textarea id="anot-contenido" rows="6" placeholder="Escribe aquí..." style="font-size:1rem"></textarea></div>
+      <button class="btn btn-p" onclick="guardarAnotacion()">💾 Guardar</button>
+      <button class="btn btn-s" onclick="volverDetalle()">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- MATERIALES -->
+  <div id="s-materiales" class="section">
+    <div style="margin-bottom:14px"><input id="q-mat" placeholder="🔍 Buscar material..." oninput="renderMateriales()" style="margin:0;font-size:0.95rem"></div>
+    <div id="lista-materiales"></div>
+  </div>
+
+  <!-- TICKETS -->
+  <div id="s-tickets" class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent)">🎫 Tickets</div><button class="btn btn-d btn-inline" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">× Cancelar</button></div>
+    <div class="form-box"><div class="form-title">Paso 1 — Foto del ticket</div><p style="font-size:0.9rem;color:#666;margin-bottom:12px;line-height:1.6">Selecciona la foto del ticket de la galería del móvil o haz una foto directamente.</p><input type="file" id="ticket-foto-movil" accept="image/*" onchange="ticketPreview(event)" style="display:none"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p" onclick="document.getElementById('ticket-foto-movil').click()">🖼️ Seleccionar foto</button><button class="btn btn-p" onclick="tomarFotoDirecta()">📷 Hacer foto</button></div><div id="ticket-preview-movil" style="display:none;margin-top:12px"><img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:300px;object-fit:contain"></div></div>
+    <div class="form-box" id="ticket-paso2" style="display:none"><div class="form-title">Paso 2 — Generar y copiar prompt</div><p style="font-size:0.9rem;color:#666;margin-bottom:12px;line-height:1.6">Pulsa generar, copia el prompt, abre Claude.ai, adjunta la foto y pega el prompt.</p><button class="btn btn-p" onclick="generarPromptTicketMovil()">Generar prompt</button><div id="ticket-prompt-box" style="display:none;margin-top:12px"><div style="background:#1a1208;color:#f0deb4;border-radius:6px;padding:14px;font-size:0.95rem;line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-bottom:10px" id="ticket-prompt-txt"></div><button class="btn btn-g" onclick="copiarTicketPrompt()">📋 Copiar prompt</button><div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px;font-size:0.95rem;color:#8b6914;margin-top:8px;line-height:1.6">💡 Abre Claude.ai, adjunta la foto del ticket y pega el prompt</div></div></div>
+    <div class="form-box" id="ticket-paso3" style="display:none"><div class="form-title">Paso 3 — Pegar JSON de respuesta</div><div class="field"><label>JSON de Claude</label><textarea id="ticket-json-movil" rows="6" placeholder='{"proveedor":"...","articulos":[...]}' style="font-size:0.95rem"></textarea></div><div class="field"><label>Asignar a faena (opcional)</label><select id="ticket-faena-movil"><option value="">— Sin asignar —</option></select></div><button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Cargar datos</button><button class="btn btn-d btn-inline" onclick="cancelarTicket()" style="margin-top:8px">× Cancelar ticket</button></div>
+    <div class="form-box" id="ticket-paso4" style="display:none"><div class="form-title">✍️ Texto manual</div><p style="font-size:0.9rem;color:#666;margin-bottom:12px;line-height:1.6">Pega aquí una lista de materiales copiada de un email, factura o WhatsApp. La IA los interpretará y extraerá los datos automáticamente (requiere PC conectado).</p><div class="field"><label>Texto con materiales</label><textarea id="ticket-texto-manual" rows="5" placeholder="Ejemplo:&#10;2x Bisagra cazoleta 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€&#10;1x Cola blanca 1L a 8.50€"></textarea></div><div class="field"><label>Asignar a faena (opcional)</label><select id="ticket-faena-texto"><option value="">— Sin asignar —</option></select></div><div class="btn-row"><button class="btn btn-p" onclick="procesarTextoManual()">🤖 Procesar con IA</button><button class="btn btn-s" onclick="document.getElementById('ticket-paso4').style.display='none'">Cancelar</button></div></div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn btn-s" onclick="mostrarTextoManual()">✍️ Pegar texto manual</button></div>
+  </div>
+
+  <!-- BOOK DE FOTOS -->
+  <div id="s-book" class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent)">📸 Book</div><div style="display:flex;gap:6px"><button class="btn btn-s btn-inline" onclick="configurarCarpetaBook()">📁 Carpeta</button><button class="btn btn-p btn-inline" onclick="añadirFotoBook()">+ Añadir foto</button><button class="btn btn-g btn-inline" onclick="compartirBook()">↗ Compartir</button></div></div>
+    <div id="book-carpeta-info" style="font-size:0.92rem;color:#aaa;margin-bottom:12px;padding:8px 12px;background:var(--paper-dark);border-radius:6px;display:none"></div>
+    <div id="book-movil-galeria"></div>
+  </div>
+
+  <!-- SINCRONIZACIÓN -->
+  <div id="s-sync" class="section">
+    <div class="sync-box"><div style="font-size:2.5rem;margin-bottom:10px">⟳</div><div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent);margin-bottom:8px">Sincronizar con el PC</div><div style="font-size:0.9rem;color:#888;margin-bottom:20px;line-height:1.6">El PC debe estar encendido y conectado al mismo WiFi.</div><div id="pendientes-info"></div><button class="btn btn-p" onclick="sincronizar()" id="btn-sync">⟳ &nbsp; Sincronizar ahora</button><div class="sync-estado" id="sync-estado"></div></div>
+    <div class="ip-box"><div class="form-title" style="margin-bottom:10px">⚙️ Dirección del PC</div><div class="field"><label>IP del servidor</label><input id="ip-config" placeholder="192.168.1.139" value="192.168.1.139" oninput="guardarIP()"></div><div style="font-size:0.92rem;color:#aaa;line-height:1.6">IP fija configurada. Cámbiala solo si el PC tiene una IP diferente.</div></div>
+    <div style="margin-top:16px;padding:14px 16px;background:var(--paper-dark);border-radius:8px;font-size:0.95rem;color:#888;line-height:1.7"><strong style="color:var(--accent)">Última sincronización:</strong><br><span id="ultima-sync">Nunca</span></div>
+    <div style="margin-top:12px"><button class="btn btn-d" onclick="limpiarCacheLocal()">🗑️ Borrar caché del móvil</button><div style="font-size:0.85rem;color:#aaa;margin-top:8px;line-height:1.5">Borra los datos guardados en este móvil (no afecta al PC). Después sincroniza para cargar los registros originales.</div></div>
+  </div>
+
+</main>
+
+<div class="bottom-nav">
+  <button class="active" id="nav-faenas" onclick="navTo('faenas')"><span class="ni">🔨</span>Faenas</button>
+  <button id="nav-materiales" onclick="navTo('materiales')"><span class="ni">📦</span>Materiales</button>
+  <button id="nav-tickets" onclick="navTo('tickets')"><span class="ni">🎫</span>Tickets</button>
+  <button id="nav-book" onclick="navTo('book')"><span class="ni">📸</span>Book</button>
+  <button id="nav-sync" onclick="navTo('sync')"><span class="ni">⟳</span>Sync</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="m-precio">
+  <div class="modal-box">
+    <div class="form-title">💶 Añadir precio</div>
+    <input type="hidden" id="precio-mat-id">
+    <div class="field"><label>Proveedor</label><input id="precio-prov" placeholder="Nombre del proveedor"></div>
+    <div class="field"><label>Precio unitario (€)</label><input id="precio-val" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarPrecio()">💾 Guardar</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-precio')">Cancelar</button>
+  </div>
+</div>
+
+<div class="overlay" id="m-editar-faena">
+  <div class="modal-box">
+    <div class="form-title">✏️ Editar faena</div>
+    <input type="hidden" id="ef-id">
+    <div class="field"><label>Cliente</label><div id="ef-cliente" style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent);padding:10px 0"></div></div>
+    <div class="field"><label>Dirección</label><input id="ef-dir" placeholder="Calle, número, ciudad..."></div>
+    <div class="field"><label>Tipo de trabajo *</label><input id="ef-tipo" placeholder="Cocina, armario..."></div>
+    <div class="field"><label>Importe (€)</label><input id="ef-importe" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarEditarFaena()">💾 Guardar</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-editar-faena')">Cancelar</button>
+  </div>
+</div>
+
+<script>
+// ========== FUNCIONES AUXILIARES Y ESTADO ==========
+function cargarCola() {
+  return {
+    clientes:    JSON.parse(localStorage.getItem("cola_clientes")    || "[]"),
+    faenas:      JSON.parse(localStorage.getItem("cola_faenas")      || "[]"),
+    anotaciones: JSON.parse(localStorage.getItem("cola_anotaciones") || "[]"),
+    fotos:       JSON.parse(localStorage.getItem("cola_fotos")       || "[]"),
+    tickets:     JSON.parse(localStorage.getItem("cola_tickets")     || "[]"),
+    anotacionesEditar: JSON.parse(localStorage.getItem("cola_anotacionesEditar") || "[]"),
+    anotacionesEliminar: JSON.parse(localStorage.getItem("cola_anotacionesEliminar") || "[]"),
+    bookEliminar: JSON.parse(localStorage.getItem("cola_bookEliminar") || "[]"),
+    definicionesPendientes: JSON.parse(localStorage.getItem("cola_definicionesPendientes") || "[]"),
+    faenasEditar: JSON.parse(localStorage.getItem("cola_faenasEditar") || "[]")
+  };
+}
+function guardarCola(cola) {
+  localStorage.setItem("cola_clientes",    JSON.stringify(cola.clientes));
+  localStorage.setItem("cola_faenas",      JSON.stringify(cola.faenas));
+  localStorage.setItem("cola_anotaciones", JSON.stringify(cola.anotaciones));
+  localStorage.setItem("cola_fotos",       JSON.stringify(cola.fotos));
+  localStorage.setItem("cola_tickets",     JSON.stringify(cola.tickets || []));
+  localStorage.setItem("cola_anotacionesEditar", JSON.stringify(cola.anotacionesEditar || []));
+  localStorage.setItem("cola_anotacionesEliminar", JSON.stringify(cola.anotacionesEliminar || []));
+  localStorage.setItem("cola_bookEliminar", JSON.stringify(cola.bookEliminar || []));
+  localStorage.setItem("cola_definicionesPendientes", JSON.stringify(cola.definicionesPendientes || []));
+  localStorage.setItem("cola_faenasEditar", JSON.stringify(cola.faenasEditar || []));
+}
+
+let state = {
+  faenas:      JSON.parse(localStorage.getItem("faenas_cache")    || "[]"),
+  clientes:    JSON.parse(localStorage.getItem("clientes_cache")  || "[]"),
+  materiales:  JSON.parse(localStorage.getItem("materiales_cache")|| "[]"),
+  seccionActual: "faenas",
+  faenaActualId: null
+};
+
+function getServerUrl() {
+  const IP_SERVIDOR = "192.168.1.139";
+  let ip = localStorage.getItem("server_ip") || IP_SERVIDOR;
+  ip = ip.replace(/:\d+$/, "").trim();
+  return `http://${ip}:5000/api`;
+}
+
+(function() {
+  let ip = localStorage.getItem("server_ip") || "192.168.1.139";
+  ip = ip.replace(/:\d+$/, "").trim();
+  localStorage.setItem("server_ip", ip);
+  const campo = document.getElementById("ip-config");
+  if (campo) campo.value = ip;
+})();
+
+function init() {
+  const ip = localStorage.getItem("server_ip");
+  if (ip) document.getElementById("ip-config").value = ip;
+  const ultima = localStorage.getItem("ultima_sync");
+  if (ultima) document.getElementById("ultima-sync").textContent = ultima;
+  document.getElementById("nf-fecha").value = new Date().toISOString().substring(0, 10);
+  poblarClientesSel();
+  actualizarPendientesInfo();
+  renderFaenas();
+  renderMateriales();
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+  }
+  window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
+  window.addEventListener("offline", () => document.getElementById("offline-ind").classList.add("show"));
+  if (!navigator.onLine) document.getElementById("offline-ind").classList.add("show");
+}
+
+function navTo(id) {
+  const principales = ["faenas", "materiales", "sync"];
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  const el = document.getElementById("s-" + id);
+  if (el) el.classList.add("active");
+  state.seccionActual = id;
+  document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.remove("active"));
+  if (principales.includes(id)) {
+    const btn = document.getElementById("nav-" + id);
+    if (btn) btn.classList.add("active");
+  }
+  if (id === "sync") actualizarPendientesInfo();
+  if (id === "book") renderBookMovil();
+  if (id === "tickets") restaurarTicket();
+  if (id === "nueva-faena") poblarClientesSel();
+  // Forzar renderizado de materiales si se navega a esa pestaña
+  if (id === "materiales") renderMateriales();
+}
+
+function volverDetalle() {
+  navTo("detalle");
+  if (state.faenaActualId) verDetalle(state.faenaActualId);
+}
+
+function toast(msg, error = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (error ? " err" : "");
+  setTimeout(() => t.className = "toast", 3000);
+}
+
+function poblarClientesSel() {
+  const sel = document.getElementById("nf-cliente-sel");
+  const cola = cargarCola();
+  const todos = [
+    ...state.clientes,
+    ...cola.clientes.map(c => ({ ...c, nombre: c.nombre + " ⏳", _offline: true }))
+  ];
+  sel.innerHTML = '<option value="">— Selecciona o crea nuevo —</option><option value="__nuevo__">+ Crear cliente nuevo</option>' +
+    todos.map(c => `<option value="${c.id || c._tempId}">${c.nombre}</option>`).join("");
+}
+
+function toggleNuevoCliente() {
+  const val = document.getElementById("nf-cliente-sel").value;
+  document.getElementById("nuevo-cliente-form").style.display = val === "__nuevo__" ? "block" : "none";
+}
+
+async function crearFaena() {
+  const clienteSel = document.getElementById("nf-cliente-sel").value;
+  const esNuevoCliente = clienteSel === "__nuevo__";
+  let clienteId = null, clienteNombre = "";
+  const cola = cargarCola();
+  if (esNuevoCliente) {
+    const nombre = document.getElementById("nc-nombre").value.trim();
+    if (!nombre) { toast("El nombre del cliente es obligatorio", true); return; }
+    const tempClienteId = "TEMP-CLI-" + Date.now();
+    const nuevoCliente = { _tempId: tempClienteId, nombre, telefono: document.getElementById("nc-tel").value, email: document.getElementById("nc-email").value };
+    cola.clientes.push(nuevoCliente);
+    clienteId = tempClienteId;
+    clienteNombre = nombre;
+    state.clientes.push({ id: tempClienteId, nombre, telefono: nuevoCliente.telefono, email: nuevoCliente.email });
+    localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+  } else {
+    if (!clienteSel) { toast("Selecciona un cliente", true); return; }
+    clienteId = clienteSel;
+    const cliente = state.clientes.find(c => String(c.id) === String(clienteSel));
+    clienteNombre = cliente ? cliente.nombre : "—";
+  }
+  const tipo = document.getElementById("nf-tipo").value.trim();
+  if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
+  const ahora = new Date();
+  const numTemp = `TMP${String(ahora.getDate()).padStart(2,"0")}${String(ahora.getHours()).padStart(2,"0")}${String(ahora.getMinutes()).padStart(2,"0")}`;
+  const faena = {
+    _tempId: numTemp, numero: numTemp, _clienteTempId: esNuevoCliente ? clienteId : null,
+    cliente_id: clienteId, cliente_nombre: clienteNombre, intermediario_id: 0,
+    intermediario_nombre: "Cliente directo", direccion: document.getElementById("nf-dir").value,
+    tipo_trabajo: tipo, importe: parseFloat(document.getElementById("nf-importe").value) || 0,
+    fecha_inicio: document.getElementById("nf-fecha").value, archivada: 0, anotaciones: [], fotos: [], _offline: true
+  };
+  cola.faenas.push(faena);
+  guardarCola(cola);
+  state.faenas.unshift(faena);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  toast("✓ Faena creada — se sincronizará al llegar a casa");
+  renderFaenas();
+  navTo("faenas");
+  document.getElementById("nf-dir").value = "";
+  document.getElementById("nf-tipo").value = "";
+  document.getElementById("nf-importe").value = "";
+  document.getElementById("nc-nombre").value = "";
+  document.getElementById("nc-tel").value = "";
+  document.getElementById("nc-email").value = "";
+  document.getElementById("nf-cliente-sel").value = "";
+  document.getElementById("nuevo-cliente-form").style.display = "none";
+}
+
+function renderFaenas() {
+  const q = (document.getElementById("q-faena")?.value || "").toLowerCase();
+  const cola = cargarCola();
+  const todas = [...state.faenas];
+  const lista = todas.filter(f => !q || (f.numero||"").toLowerCase().includes(q) || (f.cliente_nombre||"").toLowerCase().includes(q) || (f.tipo_trabajo||"").toLowerCase().includes(q));
+  const el = document.getElementById("lista-faenas");
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state.faenas.length === 0 ? 'Sin faenas.<br><small>Crea una nueva o sincroniza con el PC</small>' : 'Sin resultados'}</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(f => {
+    const esTemp = f._offline;
+    const pendientesAnot = cola.anotaciones.filter(a => a.faena_id === (f.id || f._tempId));
+    const pendientesFotos = cola.fotos.filter(x => x.faena_id === (f.id || f._tempId));
+    const totalPendientes = pendientesAnot.length + pendientesFotos.length;
+    return `<div class="card" onclick="verDetalle('${f.id || f._tempId}')"><div class="card-num">${esTemp ? `<span class="num-temp">⏳ ${f.numero}</span>` : `<span class="num-faena">${f.numero}</span>`}</div><div class="card-cliente">${f.cliente_nombre || "—"}</div><div class="card-title">${f.tipo_trabajo || "Sin descripción"}</div>${f.direccion ? `<div class="card-dir">${f.direccion}</div>` : ""}<div class="card-footer">${f.importe > 0 ? `<span class="card-precio">${parseFloat(f.importe).toFixed(2)} €</span>` : ""}${(f.anotaciones?.length||0) + (f.fotos?.length||0) > 0 ? `<span class="badge b-gray">📝 ${(f.anotaciones?.length||0)+(f.fotos?.length||0)}</span>` : ""}${totalPendientes > 0 ? `<span class="badge b-orange">⏳ ${totalPendientes} pendiente${totalPendientes>1?"s":""}</span>` : ""}</div></div>`;
+  }).join("");
+}
+
+function escHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function buscarAnotacion(faenaId, anotId) {
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  const enCache = faena?.anotaciones?.find(a => String(a.id || a._tempId) === String(anotId));
+  if (enCache) return { anot: enCache, faena, pendiente: String(anotId).startsWith("temp_") };
+  const cola = cargarCola();
+  const enCola = cola.anotaciones.find(a => String(a._tempId || a.id) === String(anotId) && String(a.faena_id) === String(faenaId));
+  if (enCola) return { anot: enCola, faena, pendiente: true };
+  return null;
+}
+
+function renderAnotacionItem(a, faenaId, esPendiente) {
+  const anotId = a.id || a._tempId;
+  const btns = `<div style="display:flex;gap:4px"><button type="button" class="btn btn-s btn-inline" style="padding:3px 8px;font-size:0.85rem" onclick="editarAnotacionMovil('${anotId}','${faenaId}')">✏️</button><button type="button" class="btn btn-d btn-inline" style="padding:3px 8px;font-size:0.85rem" onclick="eliminarAnotacionMovil('${anotId}','${faenaId}')">×</button></div>`;
+  if (esPendiente) {
+    return `<div class="anot-item" style="border-color:#ffe082"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><span class="badge b-gray">${escHtml(a.tipo)}</span>${btns}</div><div style="margin-top:6px;font-size:0.95rem;line-height:1.5">${escHtml(a.contenido)}</div><div class="anot-meta">⏳ Pendiente</div></div>`;
+  }
+  return `<div class="anot-item"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><span class="badge b-gray">${escHtml(a.tipo)}</span>${btns}</div><div style="margin-top:6px;font-size:0.95rem;line-height:1.5">${escHtml(a.contenido)}</div><div class="anot-meta">${escHtml(a.fecha || "")}</div></div>`;
+}
+
+function verDetalle(id) {
+  state.faenaActualId = id;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (!f) return;
+  const cola = cargarCola();
+  const anotaciones = f.anotaciones || [];
+  const fotos = f.fotos || [];
+  const gastos = f.gastos || [];
+  const pendientesAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(id));
+  const pendientesFotos = cola.fotos.filter(x => String(x.faena_id) === String(id));
+  const esDirecto = f.intermediario_id === 0;
+  const esTemp = f._offline;
+  const anotSync = anotaciones.filter(a => a.id && !String(a.id).startsWith("temp_"));
+  const pendMap = new Map();
+  pendientesAnot.forEach(a => pendMap.set(a._tempId || a.contenido + a.tipo, { ...a, _tempId: a._tempId || a.id }));
+  anotaciones.filter(a => String(a.id || "").startsWith("temp_")).forEach(a => {
+    if (!pendMap.has(a.id)) pendMap.set(a.id, { ...a, _tempId: a.id });
+  });
+  const anotPend = [...pendMap.values()];
+  const htmlAnotPend = anotPend.length
+    ? `<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.95rem;color:#8b6914">⏳ ${anotPend.length} anotación${anotPend.length>1?"es":""} pendiente${anotPend.length>1?"s":""} de sync</div>${anotPend.map(a => renderAnotacionItem(a, id, true)).join("")}`
+    : "";
+  const htmlAnotSync = anotSync.length
+    ? anotSync.map(a => renderAnotacionItem(a, id, false)).join("")
+    : (anotPend.length === 0 ? '<div style="font-size:0.9rem;color:#aaa;padding:8px 0">Sin anotaciones</div>' : "");
+  document.getElementById("detalle-contenido").innerHTML = `<div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><div>${esTemp ? `<span class="num-temp">⏳ ${f.numero}</span> <span style="font-size:0.92rem;color:#8b5000">Pendiente de sync</span>` : `<span class="num-faena">${f.numero}</span>`}&nbsp;<span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre||"—"}</span></div><button class="btn btn-s btn-inline" onclick="abrirEditarFaena('${id}')">✏️ Editar</button></div><div class="det-section"><div class="det-section-title">Datos</div><div class="det-row"><span class="det-k">Trabajo</span><span class="det-v">${f.tipo_trabajo||"—"}</span></div><div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre||"—"}</span></div><div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion||"—"}</span></div><div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green)">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : "—"}</span></div><div class="det-row"><span class="det-k">Fecha</span><span class="det-v">${f.fecha_inicio||"—"}</span></div>${gastos.length ? `<div class="det-row"><span class="det-k">Total gastos</span><span class="det-v" style="color:var(--red)">${gastos.reduce((s,g) => s + (g.total||0), 0).toFixed(2)} €</span></div>` : ""}</div>${gastos.length ? `<div class="det-section"><div class="det-section-title">💶 Gastos (${gastos.length})</div>${gastos.map(g => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--sawdust);font-size:0.88rem"><span>${g.descripcion} <span class="badge b-gray" style="font-size:0.6rem">${g.tipo}</span></span><span style="font-weight:500">${parseFloat(g.total||0).toFixed(2)} €</span></div>`).join("")}</div>` : ""}<div class="det-section"><div class="det-section-title">📷 Fotos <button class="btn btn-s btn-inline" onclick="añadirFoto('${id}')">+ Foto</button> <button class="btn btn-s btn-inline" onclick="añadirFotoBook('${id}')">📚 Añadir al Book</button></div><div id="foto-contenedor-${id}">${renderFotos(fotos, pendientesFotos, id)}</div></div><div class="det-section"><div class="det-section-title">📝 Anotaciones <button class="btn btn-s btn-inline" onclick="nuevaAnotacion('${id}')">+ Añadir</button></div>${htmlAnotPend}${htmlAnotSync}</div>`;
+  navTo("detalle");
+}
+
+function renderFotos(fotos, pendientes, faenaId) {
+  const todas = [...fotos.map(f => ({ ...f, _sync: true })), ...pendientes.map(f => ({ ...f, _sync: false }))];
+  if (!todas.length) return `<div class="sin-fotos" style="font-size:0.9rem;color:#aaa;padding:8px 0">Sin fotos</div>`;
+  return `<div class="foto-grid" id="foto-grid-${faenaId}">${todas.map((f, i) => `<div class="foto-thumb"><img src="${f.data || f.url || ""}" alt="Foto ${i+1}" loading="lazy" onclick="verFotoGrande('${f.data || f.url || ""}')">${!f._sync ? '<span class="foto-pending">⏳</span>' : ""}${!f._sync ? `<button class="foto-del" onclick="eliminarFotoPendiente('${faenaId}',${i})">×</button>` : ""}</div>`).join("")}</div>`;
+}
+
+function verFotoGrande(src) {
+  const existing = document.querySelector(".foto-viewer");
+  if (existing) existing.remove();
+  const viewer = document.createElement("div");
+  viewer.className = "foto-viewer";
+  const img = document.createElement("img");
+  img.src = src;
+  let zoomed = false;
+  img.onclick = (e) => { e.stopPropagation(); zoomed = !zoomed; img.classList.toggle("zoomed", zoomed); };
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕ Cerrar";
+  closeBtn.className = "close-btn";
+  closeBtn.onclick = () => viewer.remove();
+  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
+  viewer.onclick = (e) => { if (e.target === viewer) viewer.remove(); };
+  document.body.appendChild(viewer);
+  let initialDistance = 0;
+  viewer.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) { initialDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+  });
+  viewer.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 2 && initialDistance > 0) {
+      const newDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const scale = Math.min(2.5, Math.max(1, newDistance / initialDistance));
+      img.style.transform = `scale(${scale})`;
+      e.preventDefault();
+    }
+  });
+  viewer.addEventListener("touchend", () => { initialDistance = 0; });
+}
+
+let fotoFaenaId = null;
+
+function añadirFoto(faenaId) {
+  fotoFaenaId = String(faenaId);
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.id = "foto-input-temp";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.addEventListener("change", procesarFotos);
+  input.click();
+}
+
+async function procesarFotos(event) {
+  const files = Array.from(event.target.files || []);
+  const inputEl = document.getElementById("foto-input-temp");
+  if (inputEl) inputEl.remove();
+  if (!files.length) return;
+  toast(`Guardando ${files.length} foto${files.length > 1 ? "s" : ""}...`);
+  let guardadas = 0;
+  for (const file of files) {
+    await new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = async () => {
+        const MAX = 800;
+        const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        const base64 = canvas.toDataURL("image/jpeg", 0.65);
+        try {
+          const cola = cargarCola();
+          const nombre = `foto_${Date.now()}_${guardadas}.jpg`;
+          const foto = { faena_id: fotoFaenaId, data: base64, nombre, fecha: new Date().toISOString() };
+          cola.fotos.push(foto);
+          guardarCola(cola);
+          guardadas++;
+          let grid = document.getElementById(`foto-grid-${fotoFaenaId}`);
+          if (!grid) {
+            grid = document.createElement("div");
+            grid.className = "foto-grid";
+            grid.id = `foto-grid-${fotoFaenaId}`;
+            const contenedor = document.getElementById(`foto-contenedor-${fotoFaenaId}`);
+            if (contenedor) { const sinFotos = contenedor.querySelector(".sin-fotos"); if (sinFotos) sinFotos.remove(); contenedor.appendChild(grid); }
+          }
+          if (grid) {
+            const idx = cola.fotos.filter(f => f.faena_id === fotoFaenaId).length - 1;
+            const div = document.createElement("div");
+            div.className = "foto-thumb";
+            div.innerHTML = `<img src="${base64}" alt="Foto" loading="lazy" onclick="verFotoGrande('${base64}')"><span class="foto-pending">⏳</span><button class="foto-del" onclick="eliminarFotoPendiente('${fotoFaenaId}',${idx})">×</button>`;
+            grid.appendChild(div);
+          }
+        } catch(e) { toast("Sin espacio — sincroniza para liberar", true); }
+        resolve();
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      img.src = url;
+    });
+  }
+  toast(`✓ ${guardadas} foto${guardadas > 1 ? "s" : ""} guardada${guardadas > 1 ? "s" : ""} — se subirán al sincronizar`);
+}
+
+function eliminarFotoPendiente(faenaId, idx) {
+  const cola = cargarCola();
+  let contador = 0;
+  cola.fotos = cola.fotos.filter(f => { if (String(f.faena_id) !== String(faenaId)) return true; return contador++ !== idx; });
+  guardarCola(cola);
+  toast("Foto eliminada");
+  verDetalle(faenaId);
+}
+
+function nuevaAnotacion(faenaId) {
+  document.getElementById("anot-faena-id").value = faenaId;
+  document.getElementById("anot-edit-id").value = "";
+  document.getElementById("anot-contenido").value = "";
+  document.getElementById("anot-tipo").value = "texto";
+  document.getElementById("anot-titulo").textContent = "📝 Nueva Anotación";
+  navTo("anotacion");
+}
+
+async function eliminarAnotacionMovil(id, faenaId) {
+  if (!confirm("¿Eliminar esta anotación?")) return;
+  const esPendiente = String(id).startsWith("temp_");
+
+  if (esPendiente) {
+    const cola = cargarCola();
+    cola.anotaciones = cola.anotaciones.filter(a => String(a._tempId || a.id) !== String(id));
+    guardarCola(cola);
+    const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+    if (faena?.anotaciones) {
+      faena.anotaciones = faena.anotaciones.filter(a => String(a.id || a._tempId) !== String(id));
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    }
+    toast("✓ Anotación eliminada");
+    verDetalle(faenaId);
+    return;
+  }
+
+  const API = getServerUrl();
+  try {
+    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: AbortSignal.timeout(4000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.ok) {
+      const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+      if (faena?.anotaciones) {
+        faena.anotaciones = faena.anotaciones.filter(a => String(a.id) !== String(id));
+        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+      }
+      toast("✓ Anotación eliminada");
+      verDetalle(faenaId);
+      return;
+    }
+  } catch(e) { console.error("Error eliminando anotación:", e); }
+  const cola = cargarCola();
+  if (!cola.anotacionesEliminar) cola.anotacionesEliminar = [];
+  if (!cola.anotacionesEliminar.includes(Number(id)) && !cola.anotacionesEliminar.includes(id)) {
+    cola.anotacionesEliminar.push(Number(id) || id);
+  }
+  guardarCola(cola);
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  if (faena?.anotaciones) {
+    faena.anotaciones = faena.anotaciones.filter(a => String(a.id) !== String(id));
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  }
+  toast("⏳ Se eliminará al sincronizar");
+  verDetalle(faenaId);
+}
+
+function editarAnotacionMovil(id, faenaId) {
+  const found = buscarAnotacion(faenaId, id);
+  if (!found) { toast("Anotación no encontrada", true); return; }
+  const { anot } = found;
+  document.getElementById("anot-faena-id").value = faenaId;
+  document.getElementById("anot-edit-id").value = anot.id || anot._tempId || id;
+  document.getElementById("anot-contenido").value = anot.contenido || "";
+  document.getElementById("anot-tipo").value = anot.tipo || "texto";
+  document.getElementById("anot-titulo").textContent = "✏️ Editar Anotación";
+  navTo("anotacion");
+}
+
+async function guardarAnotacion() {
+  const faenaId = document.getElementById("anot-faena-id").value;
+  const editId = document.getElementById("anot-edit-id").value;
+  const tipo = document.getElementById("anot-tipo").value;
+  const contenido = document.getElementById("anot-contenido").value.trim();
+  if (!contenido) { toast("Escribe algo antes de guardar", true); return; }
+  const API = getServerUrl();
+  if (editId) {
+    const esPendiente = String(editId).startsWith("temp_");
+    if (esPendiente) {
+      const cola = cargarCola();
+      const enCola = cola.anotaciones.find(a => String(a._tempId || a.id) === String(editId));
+      if (enCola) { enCola.tipo = tipo; enCola.contenido = contenido; }
+      guardarCola(cola);
+      const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+      if (faena?.anotaciones) {
+        const idx = faena.anotaciones.findIndex(a => String(a.id || a._tempId) === String(editId));
+        if (idx !== -1) { faena.anotaciones[idx].contenido = contenido; faena.anotaciones[idx].tipo = tipo; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+      }
+      toast("✓ Anotación actualizada");
+      volverDetalle();
+      return;
+    }
+    try {
+      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo, contenido }), signal: AbortSignal.timeout(4000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (data.ok) {
+        const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+        if (faena?.anotaciones) {
+          const idx = faena.anotaciones.findIndex(a => String(a.id) === String(editId));
+          if (idx !== -1) { faena.anotaciones[idx].contenido = contenido; faena.anotaciones[idx].tipo = tipo; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+        }
+        toast("✓ Anotación actualizada");
+        volverDetalle();
+        return;
+      }
+    } catch(e) { console.error("Error editando anotación:", e); }
+    const cola = cargarCola();
+    if (!cola.anotacionesEditar) cola.anotacionesEditar = [];
+    const idxEd = cola.anotacionesEditar.findIndex(e => String(e.id) === String(editId));
+    const entrada = { id: Number(editId) || editId, tipo, contenido };
+    if (idxEd >= 0) cola.anotacionesEditar[idxEd] = entrada;
+    else cola.anotacionesEditar.push(entrada);
+    guardarCola(cola);
+    const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+    if (faena?.anotaciones) {
+      const idx = faena.anotaciones.findIndex(a => String(a.id) === String(editId));
+      if (idx !== -1) { faena.anotaciones[idx].contenido = contenido; faena.anotaciones[idx].tipo = tipo; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+    }
+    toast("⏳ Guardado offline — se aplicará al sincronizar");
+    volverDetalle();
+    return;
+  }
+  const tempId = "temp_" + Date.now();
+  const anotacion = { faena_id: faenaId, tipo, contenido, fecha: new Date().toISOString(), _tempId: tempId };
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  const esTemp = faena && faena._offline;
+  if (!esTemp) {
+    try {
+      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(anotacion), signal: AbortSignal.timeout(4000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (data.ok) {
+        if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: data.data.id }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+        toast("✓ Anotación guardada");
+        volverDetalle();
+        return;
+      }
+    } catch(e) { console.error("Error creando anotación:", e); }
+  }
+  const cola = cargarCola();
+  cola.anotaciones.push(anotacion);
+  guardarCola(cola);
+  if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: tempId }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+  toast("⏳ Guardado offline");
+  volverDetalle();
+}
+
+function renderMateriales() {
+  const q = (document.getElementById("q-mat")?.value || "").toLowerCase();
+  const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
+  const el = document.getElementById("lista-materiales");
+  if (!lista.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${state.materiales.length === 0 ? "Sincroniza para ver materiales" : "Sin resultados"}</div>`; return; }
+  const cats = {};
+  lista.forEach(m => { const cat = m.categoria || "Otros"; if (!cats[cat]) cats[cat] = []; cats[cat].push(m); });
+  el.innerHTML = Object.entries(cats).map(([cat, mats]) => `<div class="mat-cat">${cat}</div>${mats.map(m => { const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario); const preciosTxt = precios.map((p, i) => `<span class="${i===0?"mat-precio-min":""}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`).join("  ·  "); return `<div class="mat-item"><div class="mat-nombre">${m.nombre} <span style="color:#aaa;font-size:0.92rem">(${m.unidad})</span></div>${m.definicion ? `<div style="font-size:0.7rem;color:#666;margin-top:2px;font-style:italic">📝 ${m.definicion}</div>` : ''}<div class="mat-precios">${preciosTxt || '<em style="color:#ccc">Sin precios</em>'}</div><div class="btn-row" style="margin-top:6px"><button class="btn btn-s btn-sm" onclick="editarDefinicionMaterial(${m.id}, '${m.nombre.replace(/'/g, "\\'")}', '${(m.definicion || '').replace(/'/g, "\\'")}')">📝 Definición</button><button class="btn btn-s btn-sm" onclick="abrirPrecio(${m.id})">+ Precio</button></div></div>`; }).join("")}`).join("");
+}
+
+function editarDefinicionMaterial(id, nombre, definicionActual) {
+  const nuevaDef = prompt(`Definición para "${nombre}":\nDescribe qué es este material para identificarlo fácilmente.`, definicionActual || "");
+  if (nuevaDef !== null) { actualizarDefinicionMaterial(id, nuevaDef); }
+}
+
+async function actualizarDefinicionMaterial(id, definicion) {
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales/${id}/definicion`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ definicion }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.ok) {
+      const material = state.materiales.find(m => m.id === id);
+      if (material) material.definicion = definicion;
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+      renderMateriales();
+      toast("✓ Definición actualizada");
+      return;
+    }
+    toast(data.error || "Error al guardar", true);
+  } catch(e) {
+    console.error("Error actualizando definición:", e);
+  }
+  const cola = cargarCola();
+  if (!cola.definicionesPendientes) cola.definicionesPendientes = [];
+  cola.definicionesPendientes.push({ id, definicion });
+  guardarCola(cola);
+  const material = state.materiales.find(m => m.id === id);
+  if (material) material.definicion = definicion;
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales();
+  toast("⏳ Definición guardada offline, se sincronizará más tarde");
+}
+
+function opcionesFaenasHtml() {
+  return state.faenas.map(f => `<option value="${f.id || f._tempId}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+}
+
+function abrirPrecio(matId) {
+  document.getElementById("precio-mat-id").value = matId;
+  document.getElementById("precio-prov").value = "";
+  document.getElementById("precio-val").value = "";
+  abrirModal("m-precio");
+}
+
+async function guardarPrecio() {
+  try {
+    const id = document.getElementById("precio-mat-id").value;
+    const proveedor = document.getElementById("precio-prov").value?.trim();
+    const precioVal = parseFloat(document.getElementById("precio-val").value);
+    if (!proveedor || !precioVal || isNaN(precioVal)) { toast("Completa proveedor y precio", true); return; }
+    const r = await fetch(`${getServerUrl()}/materiales/${id}/precio`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proveedor, precio_unitario: precioVal }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.ok) { toast("✓ Precio actualizado"); cerrarModal("m-precio"); await cargarMateriales(); renderMateriales(); } else { toast(data.error, true); }
+  } catch(e) { console.error("Error guardando precio:", e); toast("Error al guardar precio", true); }
+}
+
+async function cargarMateriales() {
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.ok) { state.materiales = data.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); }
+  } catch(e) { console.error("Error cargando materiales:", e); }
+}
+
+function actualizarPendientesInfo() {
+  const cola = cargarCola();
+  const tickets = (cola.tickets || []).reduce((s, t) => s + (t.articulos || []).length, 0);
+  const total = cola.clientes.length + cola.faenas.length + cola.anotaciones.length + cola.fotos.length + tickets + (cola.definicionesPendientes || []).length + (cola.faenasEditar || []).length;
+  const el = document.getElementById("pendientes-info");
+  if (total === 0) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>${cola.clientes.length ? `· ${cola.clientes.length} cliente${cola.clientes.length>1?"s":""}<br>` : ""}${cola.faenas.length ? `· ${cola.faenas.length} faena${cola.faenas.length>1?"s":""} nueva${cola.faenas.length>1?"s":""}<br>` : ""}${(cola.faenasEditar||[]).length ? `· ${cola.faenasEditar.length} faena${cola.faenasEditar.length>1?"s":""} editada${cola.faenasEditar.length>1?"s":""}<br>` : ""}${cola.anotaciones.length ? `· ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}<br>` : ""}${cola.fotos.length ? `· ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}<br>` : ""}${(cola.definicionesPendientes||[]).length ? `· ${cola.definicionesPendientes.length} definición${cola.definicionesPendientes.length>1?"es":""} de material<br>` : ""}${tickets ? `· ${tickets} artículo${tickets>1?"s":""} de ticket${tickets>1?"s":""}` : ""}</div>`;
+}
+
+function guardarIP() { localStorage.setItem("server_ip", document.getElementById("ip-config").value.trim()); }
+
+function limpiarCacheLocal() {
+  if (!confirm("¿Borrar todos los datos guardados en este móvil?\n\nLos registros del PC no se eliminan.\nDespués pulsa Sincronizar para cargar los datos originales.")) return;
+  const ip = localStorage.getItem("server_ip");
+  localStorage.clear();
+  if (ip) localStorage.setItem("server_ip", ip);
+  location.reload();
+}
+
+async function sincronizar() {
+  const btn = document.getElementById("btn-sync");
+  const estado = document.getElementById("sync-estado");
+  const API = getServerUrl();
+  btn.innerHTML = '<span class="spinner"></span> &nbsp; Sincronizando...';
+  btn.disabled = true;
+  estado.textContent = "";
+  const cola = cargarCola();
+  try {
+    const checkResp = await fetch(`${API}/sync/estado`, { signal: AbortSignal.timeout(5000) });
+    if (!checkResp.ok) throw new Error(`Sin respuesta del servidor`);
+    estado.textContent = "✓ Conectado al PC...";
+    const mapaClientes = {};
+    for (const c of cola.clientes) {
+      try { 
+        const r = await fetch(`${API}/clientes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: c.nombre, telefono: c.telefono, email: c.email, intermediario_id: 0 }), signal: AbortSignal.timeout(8000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json(); 
+        if (data.ok) mapaClientes[c._tempId] = data.data.id; 
+      } catch(e) { console.error("Error creando cliente:", e); }
+    }
+    if (cola.clientes.length) estado.textContent = `✓ ${cola.clientes.length} cliente${cola.clientes.length>1?"s":""} subido${cola.clientes.length>1?"s":""}...`;
+    const mapaFaenas = {};
+    for (const f of cola.faenas) {
+      try { 
+        const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id; 
+        const r = await fetch(`${API}/faenas`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cliente_id: clienteId, intermediario_id: f.intermediario_id || 0, direccion: f.direccion, tipo_trabajo: f.tipo_trabajo, importe: f.importe, fecha_inicio: f.fecha_inicio }), signal: AbortSignal.timeout(8000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json(); 
+        if (data.ok) mapaFaenas[f._tempId] = { id: data.data.id, numero: data.data.numero }; 
+      } catch(e) { console.error("Error creando faena:", e); }
+    }
+    if (cola.faenas.length) estado.textContent = `✓ ${cola.faenas.length} faena${cola.faenas.length>1?"s":""} subida${cola.faenas.length>1?"s":""}...`;
+     if ((cola.faenasEditar || []).length > 0) {
+       let editadas = 0;
+       for (const ed of cola.faenasEditar) {
+         try {
+           const r = await fetch(`${API}/faenas/${ed.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direccion: ed.direccion, tipo_trabajo: ed.tipo_trabajo, importe: ed.importe, fecha_inicio: ed.fecha_inicio || "" }), signal: AbortSignal.timeout(8000) });
+           if (!r.ok) throw new Error(`HTTP ${r.status}`);
+           const data = await r.json();
+           if (data.ok) editadas++;
+         } catch(e) { console.error("Error editando faena:", e); }
+       }
+       if (editadas) estado.textContent = `✓ ${editadas} faena${editadas>1?"s":""} actualizada${editadas>1?"s":""}...`;
+     }
+    if (cola.anotaciones.length > 0) {
+      try { 
+        const anotacionesReales = cola.anotaciones.map(a => ({ ...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id })); 
+        const r = await fetch(`${API}/sync/anotaciones`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ anotaciones: anotacionesReales }), signal: AbortSignal.timeout(10000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`; 
+      } catch(e) { console.error("Error sync anotaciones:", e); }
+    }
+    if ((cola.anotacionesEditar || []).length > 0) { 
+      try { 
+        const r = await fetch(`${API}/sync/anotaciones-editar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ediciones: cola.anotacionesEditar }), signal: AbortSignal.timeout(8000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch(e) { console.error("Error sync anotaciones editar:", e); } 
+    }
+    if ((cola.anotacionesEliminar || []).length > 0) { 
+      try { 
+        const r = await fetch(`${API}/sync/anotaciones-eliminar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: cola.anotacionesEliminar }), signal: AbortSignal.timeout(8000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch(e) { console.error("Error sync anotaciones eliminar:", e); } 
+    }
+    const ticketsPendientes = cola.tickets || [];
+    if (ticketsPendientes.length > 0) {
+      estado.textContent = `✓ Subiendo ${ticketsPendientes.length} ticket${ticketsPendientes.length>1?"s":""}...`;
+      try { 
+        const r = await fetch(`${API}/sync/tickets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets: ticketsPendientes }), signal: AbortSignal.timeout(30000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json(); 
+        if (data.ok) { estado.textContent = `✓ ${data.data.procesados} artículo${data.data.procesados!==1?"s":""} de ticket subido${data.data.procesados!==1?"s":""}...`; } 
+      } catch(e) { console.error("Error tickets:", e); }
+    }
+    let fotosEnviadas = 0;
+    if (cola.fotos.length > 0) {
+      estado.textContent = `✓ Subiendo ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}...`;
+      for (const foto of cola.fotos) { 
+        try { 
+          const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id; 
+          const r = await fetch(`${API}/sync/fotos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ faena_id: faenaId, nombre: foto.nombre, data: foto.data }), signal: AbortSignal.timeout(30000) }); 
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json(); 
+          if (data.ok) fotosEnviadas++; 
+        } catch(e) { console.error("Error subiendo foto:", e); } 
+      }
+      estado.textContent = `✓ ${fotosEnviadas} foto${fotosEnviadas>1?"s":""} subida${fotosEnviadas>1?"s":""}...`;
+    }
+    for (const def of (cola.definicionesPendientes || [])) { 
+      try { 
+        const r = await fetch(`${API}/materiales/${def.id}/definicion`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ definicion: def.definicion }), signal: AbortSignal.timeout(8000) }); 
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch(e) { console.error("Error definición material:", e); } 
+    }
+    const rFaenas = await fetch(`${API}/sync/datos`, { signal: AbortSignal.timeout(15000) });
+    if (!rFaenas.ok) throw new Error(`HTTP ${rFaenas.status} obteniendo faenas`);
+    const datosFaenas = await rFaenas.json();
+    if (datosFaenas.ok) { state.faenas = datosFaenas.data; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+    
+    const rMat = await fetch(`${API}/materiales`, { signal: AbortSignal.timeout(10000) });
+    if (!rMat.ok) throw new Error(`HTTP ${rMat.status} obteniendo materiales`);
+    const datosMat = await rMat.json();
+    if (datosMat.ok) { state.materiales = datosMat.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); }
+    
+    const rCli = await fetch(`${API}/clientes`, { signal: AbortSignal.timeout(10000) });
+    if (!rCli.ok) throw new Error(`HTTP ${rCli.status} obteniendo clientes`);
+    const datosCli = await rCli.json();
+    if (datosCli.ok) { state.clientes = datosCli.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); }
+    
+    estado.textContent = "✓ Descargando fotos...";
+    for (const faena of state.faenas) {
+      try {
+        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, { signal: AbortSignal.timeout(15000) });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.ok && data.data) { faena.fotos = data.data; }
+        }
+      } catch(e) { console.error(`Error descargando fotos de faena ${faena.id}:`, e); }
+    }
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    
+    await sincronizarBook(API);
+    guardarCola({ clientes: [], faenas: [], anotaciones: [], fotos: [], bookEliminar: [], tickets: [], anotacionesEditar: [], anotacionesEliminar: [], definicionesPendientes: [], faenasEditar: [] });
+    const ahora = new Date().toLocaleString("es-ES");
+    localStorage.setItem("ultima_sync", ahora);
+    document.getElementById("ultima-sync").textContent = ahora;
+    renderFaenas();
+    renderMateriales();
+    actualizarPendientesInfo();
+    if (state.faenaActualId && document.getElementById("s-detalle")?.classList.contains("active")) { verDetalle(state.faenaActualId); }
+    const partes = [];
+    if (cola.faenas.length) partes.push(`${cola.faenas.length} faena${cola.faenas.length>1?"s":""}`);
+    if (cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
+    if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
+    if (ticketsPendientes.length) partes.push(`${ticketsPendientes.length} ticket${ticketsPendientes.length>1?"s":""}`);
+    estado.textContent = partes.length ? `✓ Sincronizado · ${partes.join(" · ")}` : "✓ Sincronizado";
+    estado.className = "sync-estado sync-ok";
+    toast("✓ Sincronización completada");
+  } catch (e) {
+    estado.textContent = `✗ Error: ${e.message}`;
+    estado.className = "sync-estado sync-error";
+    toast("Error: " + e.message, true);
+  }
+  btn.innerHTML = "⟳ &nbsp; Sincronizar ahora";
+  btn.disabled = false;
+}
+
+let ticketFotoBase64 = localStorage.getItem("ticket_foto_temp") || null;
+
+function tomarFotoDirecta() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.capture = "environment";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
+      document.getElementById("ticket-img-movil").src = url;
+      document.getElementById("ticket-preview-movil").style.display = "block";
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        ticketFotoBase64 = e.target.result;
+        localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+        document.getElementById("ticket-paso2").style.display = "block";
+        document.getElementById("ticket-paso3").style.display = "block";
+        document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+        const sel = document.getElementById("ticket-faena-movil");
+        sel.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+      };
+      reader.readAsDataURL(file);
+    }
+    input.remove();
+  };
+  input.click();
+}
+
+function cancelarTicket() {
+  localStorage.removeItem("ticket_foto_temp");
+  localStorage.removeItem("ticket_prompt_temp");
+  document.getElementById("ticket-json-movil").value = "";
+  document.getElementById("ticket-foto-movil").value = "";
+  document.getElementById("ticket-preview-movil").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("ticket-paso4").style.display = "none";
+  document.getElementById("ticket-prompt-box").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  ticketFotoBase64 = null;
+  toast("Ticket cancelado");
+}
+
+function restaurarTicket() {
+  const foto = localStorage.getItem("ticket_foto_temp");
+  const prompt = localStorage.getItem("ticket_prompt_temp");
+  if (foto) {
+    document.getElementById("ticket-img-movil").src = foto;
+    document.getElementById("ticket-preview-movil").style.display = "block";
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    ticketFotoBase64 = foto;
+    const sel = document.getElementById("ticket-faena-movil");
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+  } else { document.getElementById("btn-cancelar-ticket").style.display = "none"; }
+  if (prompt) { document.getElementById("ticket-prompt-txt").textContent = prompt; document.getElementById("ticket-prompt-box").style.display = "block"; }
+}
+
+function ticketPreview(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  document.getElementById("ticket-img-movil").src = url;
+  document.getElementById("ticket-preview-movil").style.display = "block";
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    ticketFotoBase64 = e.target.result;
+    localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+    URL.revokeObjectURL(url);
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    const sel = document.getElementById("ticket-faena-movil");
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+  };
+  reader.onerror = () => { URL.revokeObjectURL(url); toast("Error al leer imagen", true); };
+  reader.readAsDataURL(file);
+}
+
+async function generarPromptTicketMovil() {
+  const API = getServerUrl();
+  let prompt = "";
+  try { 
+    const r = await fetch(`${API}/prompts/ticket`, { signal: AbortSignal.timeout(8000) }); 
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json(); 
+    if (data.ok) prompt = data.data.prompt; 
+  } catch(e) { 
+    console.error("Error obteniendo prompt:", e);
+    prompt = `Analiza la imagen del ticket...`; 
+  }
+  localStorage.setItem("ticket_prompt_temp", prompt);
+  document.getElementById("ticket-prompt-txt").textContent = prompt;
+  document.getElementById("ticket-prompt-box").style.display = "block";
+}
+
+function copiarTicketPrompt() {
+  const txt = document.getElementById("ticket-prompt-txt").textContent;
+  navigator.clipboard.writeText(txt).then(() => toast("✓ Prompt copiado")).catch(() => { const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); toast("✓ Prompt copiado"); });
+}
+
+async function cargarJsonTicketMovil() {
+  const raw = document.getElementById("ticket-json-movil").value.trim();
+  if (!raw) { toast("Pega el JSON primero", true); return; }
+  let datos;
+  try { const limpio = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim(); datos = JSON.parse(limpio); } catch(e) { toast("JSON no válido", true); return; }
+  const faenaId = document.getElementById("ticket-faena-movil").value;
+  const articulos = datos.articulos || [];
+  const proveedor = datos.proveedor || "";
+  if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+  const cola = cargarCola();
+  if (!cola.tickets) cola.tickets = [];
+  cola.tickets.push({ proveedor, fecha: datos.fecha || new Date().toISOString().substring(0,10), articulos, faena_id: faenaId || null });
+  guardarCola(cola);
+  for (const art of articulos) {
+    if (!art.nombre) continue;
+    const existe = state.materiales.find(m => m.nombre.toLowerCase() === art.nombre.toLowerCase());
+    if (!existe) { state.materiales.push({ id: `temp_${Date.now()}_${Math.random()}`, nombre: art.nombre, unidad: art.unidad || "ud", categoria: "Otro", precios: proveedor && art.precio_unitario ? [{ proveedor, precio_unitario: art.precio_unitario }] : [] }); }
+  }
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales();
+  toast(`✓ ${articulos.length} artículo${articulos.length !==1?"s":""} guardado — se subirán al sincronizar`);
+  actualizarPendientesInfo();
+  cancelarTicket();
+}
+
+function mostrarTextoManual() {
+  document.getElementById("ticket-paso4").style.display = "block";
+  const sel = document.getElementById("ticket-faena-texto");
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+}
+
+async function procesarTextoManual() {
+  const texto = document.getElementById("ticket-texto-manual").value.trim();
+  if (!texto) { toast("Escribe o pega el texto primero", true); return; }
+  const faenaId = document.getElementById("ticket-faena-texto").value;
+  toast("Enviando a IA...");
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/procesar-texto`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto, faena_id: faenaId || null }) });
+    const data = await r.json();
+    if (data.ok) {
+      toast(`✓ ${data.data.articulos.length} artículos procesados`);
+      await cargarMateriales();
+      renderMateriales();
+      if (faenaId) verDetalle(faenaId);
+      document.getElementById("ticket-texto-manual").value = "";
+      document.getElementById("ticket-paso4").style.display = "none";
+    } else { toast(data.error || "Error al procesar", true); }
+  } catch(e) { toast("Error de conexión con el PC. Asegúrate de que esté encendido y con la IP correcta.", true); }
+}
+
+let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
+let bookDirHandle = null;
+
+async function añadirFotoBook(faenaId = null) {
+  let categoria = "Otros", titulo = "";
+  if (faenaId) {
+    const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+    categoria = faena?.categoria || "Otros";
+    titulo = faena?.tipo_trabajo || "";
+  } else {
+    const catOpt = prompt("Categoría:\n1. Cocina\n2. Puertas\n3. Decoración\n4. Armarios\n5. Otros", "1");
+    const catMap = {"1":"Cocina","2":"Puertas","3":"Decoración","4":"Armarios","5":"Otros"};
+    categoria = catMap[catOpt] || "Otros";
+    titulo = prompt("Título para la foto:", "") || "Sin título";
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    input.remove();
+    toast("Procesando imagen...");
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = async () => {
+      const MAX = 800;
+      const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const base64 = canvas.toDataURL("image/jpeg", 0.65);
+      const fotoBook = { id: `book_${Date.now()}_${Math.random()}`, data: base64, titulo: titulo || "Sin título", categoria: categoria, fecha: new Date().toISOString() };
+      const cola = cargarCola();
+      if (!cola.bookPendiente) cola.bookPendiente = [];
+      cola.bookPendiente.push(fotoBook);
+      guardarCola(cola);
+      bookCache.push(fotoBook);
+      localStorage.setItem("book_cache", JSON.stringify(bookCache));
+      renderBookMovil();
+      toast("✓ Foto añadida al book");
+    };
+    img.src = url;
+  };
+  input.click();
+}
+
+async function configurarCarpetaBook() {
+  if (!window.showDirectoryPicker) { toast("Actualiza Brave para usar esta función", true); return; }
+  try {
+    bookDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    localStorage.setItem("book_dir_name", bookDirHandle.name);
+    mostrarInfoCarpeta(bookDirHandle.name);
+    toast("✓ Carpeta configurada: " + bookDirHandle.name);
+    await cargarFotosDeCarpeta();
+  } catch(e) { if (e.name !== "AbortError") toast("Error al seleccionar carpeta", true); }
+}
+
+function mostrarInfoCarpeta(nombre) { const el = document.getElementById("book-carpeta-info"); if (el) { el.textContent = `📁 Carpeta: ${nombre}`; el.style.display = "block"; } }
+
+async function cargarFotosDeCarpeta() {
+  if (!bookDirHandle) return;
+  try {
+    const fotos = [];
+    for await (const entry of bookDirHandle.values()) {
+      if (entry.kind === "file" && /\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
+        const file = await entry.getFile();
+        const base64 = await fileToBase64(file);
+        fotos.push({ nombre: entry.name, titulo: entry.name.replace(/\.[^.]+$/, "").replace(/_/g, " "), data: base64, _local: true });
+      }
+    }
+    bookCache = fotos;
+    renderBookMovil();
+  } catch(e) { console.error("Error cargando carpeta:", e); }
+}
+
+function fileToBase64(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file); }); }
+
+async function guardarFotoEnCarpeta(base64, nombre) { if (!bookDirHandle) return false; try { const fh = await bookDirHandle.getFileHandle(nombre, { create: true }); const w = await fh.createWritable(); const d = base64.split(",")[1]; await w.write(Uint8Array.from(atob(d), c => c.charCodeAt(0))); await w.close(); return true; } catch(e) { return false; } }
+
+async function eliminarFotoDeCarpeta(nombre) { if (!bookDirHandle || !nombre) return false; try { await bookDirHandle.removeEntry(nombre); return true; } catch(e) { return false; } }
+
+function renderBookMovil() {
+  const el = document.getElementById("book-movil-galeria");
+  const dirNombre = localStorage.getItem("book_dir_name");
+  if (dirNombre) mostrarInfoCarpeta(dirNombre);
+  if (!bookDirHandle && !dirNombre) { el.innerHTML = `<div class="empty"><div class="empty-icon">📁</div>Configura la carpeta del book<br><small style="line-height:1.8">Pulsa 📁 Carpeta para elegir<br>dónde guardar las fotos</small></div>`; return; }
+  if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos en el book.<br><small>Pulsa + Añadir foto para añadir trabajos terminados</small></div>`; return; }
+  el.innerHTML = `<div class="book-grid-movil">${bookCache.map((f,i) => `<div class="book-card-movil"><img src="${f.data}" alt="${f.titulo||""}" loading="lazy" onclick="verFotoGrande('${f.data}')" style="cursor:pointer"><div class="book-card-movil-info"><div class="book-card-movil-titulo">${f.titulo||"Sin título"} <span style="font-size:0.65rem;color:var(--green)">${f.categoria||""}</span></div><div style="margin-top:6px;display:flex;gap:6px"><button class="btn btn-s btn-inline" onclick="compartirFotoBook(${i})" style="flex:1">↗</button><button class="btn btn-d btn-inline" onclick="quitarDelBook(${i})" style="flex:1">× Quitar</button></div></div></div>`).join("")}</div>`;
+}
+
+async function compartirFotoBook(idx) {
+  const f = bookCache[idx]; if (!f) return;
+  try {
+    let blob, file;
+    if (f.data.startsWith("data:")) {
+      blob = await (await fetch(f.data)).blob();
+    } else {
+      blob = await (await fetch(f.data)).blob();
+    }
+    file = new File([blob], `${f.titulo||"foto"}.jpg`, { type: "image/jpeg" });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { 
+      await navigator.share({ files: [file], title: f.titulo||"Trabajo de carpintería" }); 
+      return; 
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); 
+    a.href = url; 
+    a.download = `${f.titulo||"foto"}.jpg`; 
+    a.click();
+    URL.revokeObjectURL(url); 
+    toast("✓ Foto descargada");
+  } catch(e) { 
+    console.error("Error compartiendo foto:", e);
+    if (e.name !== "AbortError") toast("Error al compartir", true); 
+  }
+}
+
+async function quitarDelBook(idx) {
+  if (!confirm("¿Quitar esta foto del book?")) return;
+  const f = bookCache[idx];
+  if (bookDirHandle && f.nombre) await eliminarFotoDeCarpeta(f.nombre);
+  bookCache.splice(idx, 1);
+  localStorage.setItem("book_cache", JSON.stringify(bookCache));
+  renderBookMovil();
+  toast("Foto quitada del book");
+}
+
+async function compartirBook() {
+  if (!bookCache.length) { toast("El book está vacío", true); return; }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.3rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 6px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:10px 12px}.titulo{font-size:.9rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${bookCache.map(f=>`<div class="card"><img src="${f.data}" alt="${f.titulo||""}"><div class="info"><div class="titulo">${f.titulo||""} ${f.categoria?`(${f.categoria})`:""}</div></div></div>`).join("")}</div></body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const file = new File([blob], "book_trabajos.html", { type: "text/html" });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { 
+    try { 
+      await navigator.share({ title: "Book de trabajos", files: [file] }); 
+      return; 
+    } catch(e){ console.error("Error compartiendo book:", e); }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); 
+  a.href = url; 
+  a.download = "book_trabajos.html"; 
+  a.click();
+  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(url); toast("✓ Book descargado");
+}
+
+async function sincronizarBook(API) {
+  try {
+    const cola = cargarCola();
+    for (const foto of (cola.bookPendiente || [])) {
+      try {
+        const r = await fetch(`${API}/book`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ faena_id: null, titulo: foto.titulo, descripcion: foto.categoria, data: foto.data }), signal: AbortSignal.timeout(10000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch(e) { console.error("Error subiendo foto al book:", e); }
+    }
+    cola.bookPendiente = [];
+    guardarCola(cola);
+    const r = await fetch(`${API}/sync/book`, { signal: AbortSignal.timeout(60000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.ok && d.data.length > 0) {
+      bookCache = d.data;
+      if (bookDirHandle) {
+        for (const foto of bookCache) {
+          if (foto.data) {
+            const nombre = `${(foto.faena_numero||"foto").replace(/[^a-zA-Z0-9]/g,"_")}_${foto.id}.jpg`;
+            foto.nombre = nombre;
+            await guardarFotoEnCarpeta(foto.data, nombre);
+          }
+        }
+        toast("✓ Book guardado en carpeta");
+      }
+      localStorage.setItem("book_cache", JSON.stringify(bookCache));
+    }
+  } catch(e) { console.error("Error sync book:", e); }
+}
+
+function abrirEditarFaena(id) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (!f) return;
+  document.getElementById("ef-id").value = f.id || f._tempId;
+  document.getElementById("ef-cliente").textContent = f.cliente_nombre || "—";
+  document.getElementById("ef-dir").value = f.direccion || "";
+  document.getElementById("ef-tipo").value = f.tipo_trabajo || "";
+  document.getElementById("ef-importe").value = f.importe || "";
+  abrirModal("m-editar-faena");
+}
+
+function aplicarCambiosFaena(f, datos) {
+  f.direccion = datos.direccion;
+  f.tipo_trabajo = datos.tipo_trabajo;
+  f.importe = datos.importe;
+}
+
+async function guardarEditarFaena() {
+  const id = document.getElementById("ef-id").value;
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(id));
+  if (!faena) return;
+  const datos = {
+    direccion: document.getElementById("ef-dir").value.trim(),
+    tipo_trabajo: document.getElementById("ef-tipo").value.trim(),
+    importe: parseFloat(document.getElementById("ef-importe").value) || 0,
+    fecha_inicio: faena.fecha_inicio || ""
+  };
+  if (!datos.tipo_trabajo) { toast("El tipo de trabajo es obligatorio", true); return; }
+
+  const finalizar = (msg) => {
+    toast(msg);
+    cerrarModal("m-editar-faena");
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    renderFaenas();
+    actualizarPendientesInfo();
+    if (String(state.faenaActualId) === String(id)) verDetalle(id);
+  };
+
+  if (faena._offline) {
+    aplicarCambiosFaena(faena, datos);
+    const cola = cargarCola();
+    const enCola = cola.faenas.find(x => x._tempId === faena._tempId);
+    if (enCola) aplicarCambiosFaena(enCola, datos);
+    guardarCola(cola);
+    finalizar("✓ Faena actualizada");
+    return;
+  }
+
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faena.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos), signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.ok) {
+      aplicarCambiosFaena(faena, datos);
+      const cola = cargarCola();
+      cola.faenasEditar = (cola.faenasEditar || []).filter(x => String(x.id) !== String(faena.id));
+      guardarCola(cola);
+      finalizar("✓ Faena actualizada");
+      return;
+    }
+    toast(data.error || "Error al guardar", true);
+    return;
+  } catch(e) {
+    console.error("Error actualizando faena:", e);
+  }
+
+  aplicarCambiosFaena(faena, datos);
+  const cola = cargarCola();
+  if (!cola.faenasEditar) cola.faenasEditar = [];
+  const idx = cola.faenasEditar.findIndex(x => String(x.id) === String(faena.id));
+  const entrada = { id: faena.id, ...datos };
+  if (idx >= 0) cola.faenasEditar[idx] = entrada;
+  else cola.faenasEditar.push(entrada);
+  guardarCola(cola);
+  finalizar("⏳ Guardado offline — se sincronizará al conectar");
+}
+
+function cerrarModal(id) { const modal = document.getElementById(id); if (modal) modal.classList.remove("open"); }
+function abrirModal(id) { const modal = document.getElementById(id); if (modal) modal.classList.add("open"); }
+document.querySelectorAll(".overlay").forEach(o => { o.addEventListener("click", e => { if (e.target === o) o.classList.remove("open"); }); });
+
+(function() { const manifest = { name: "Gestión de Faenas", short_name: "Faenas", description: "App de carpintería para gestión de faenas", start_url: ".", display: "standalone", background_color: "#faf6ee", theme_color: "#5c3d0e", orientation: "portrait", icons: [{ src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="32" fill="#5c3d0e"/><text x="96" y="130" font-size="100" text-anchor="middle">🪵</text></svg>`), sizes: "192x192", type: "image/svg+xml" }] }; const blob = new Blob([JSON.stringify(manifest)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("link"); link.rel = "manifest"; link.href = url; document.head.appendChild(link); })();
+
+if (location.protocol !== "file:") { const swCode = `const CACHE = 'faenas-standalone-v1'; self.addEventListener('install', e => { self.skipWaiting(); }); self.addEventListener('activate', e => { self.clients.claim(); }); self.addEventListener('fetch', e => { if (e.request.url.includes('/api/')) return; e.respondWith(caches.open(CACHE).then(cache => cache.match(e.request).then(cached => { const fresh = fetch(e.request).then(res => { if (e.request.method === 'GET') cache.put(e.request, res.clone()); return res; }).catch(() => cached); return cached || fresh; }))); });`; const blob = new Blob([swCode], { type: "application/javascript" }); const url = URL.createObjectURL(blob); if ("serviceWorker" in navigator) { navigator.serviceWorker.register(url, { scope: "/" }).catch(() => { navigator.serviceWorker.register(url).catch(() => {}); }); } }
+
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; if (!window.matchMedia("(display-mode: standalone)").matches) { mostrarBannerInstalacion(); } });
+
+function mostrarBannerInstalacion() { const banner = document.createElement("div"); banner.id = "install-banner"; banner.style.cssText = `position: fixed; top: 0; left: 0; right: 0; background: #3a6b3a; color: white; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; font-family: var(--font-mono); font-size: 0.88rem; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2);`; banner.innerHTML = `<span>📲 Instalar app en el móvil</span><div style="display:flex;gap:8px"><button onclick="instalarApp()" style="background:white;color:#3a6b3a;border:none;padding:6px 12px;border-radius:4px;font-family:var(--font-mono);font-size:0.95rem;cursor:pointer;font-weight:500">Instalar</button><button onclick="document.getElementById('install-banner').remove()" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.5);padding:6px 10px;border-radius:4px;font-family:var(--font-mono);font-size:0.95rem;cursor:pointer">×</button></div>`; document.body.prepend(banner); }
+
+async function instalarApp() { if (!deferredPrompt) { toast("Usa el menú del navegador → 'Añadir a pantalla de inicio'"); return; } deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === "accepted") toast("✓ App instalada"); deferredPrompt = null; const banner = document.getElementById("install-banner"); if (banner) banner.remove(); }
+
+init();
+</script>
+</body>
+</html>

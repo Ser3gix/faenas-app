@@ -1,0 +1,2858 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#5c3d0e">
+<link rel="manifest" href="/static/manifest.json">
+<title>Faenas</title>
+<style>
+:root {
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --wood: #c8a96e;
+  --wood-dark: #8b6914;
+  --wood-light: #f0deb4;
+  --ink: #1a1208;
+  --paper: #e8f7f9;
+  --paper-dark: #d0eef2;
+  --sawdust: #b8dde3;
+  --accent: #5c3d0e;
+  --green: #3a6b3a;
+  --red: #8b2020;
+  --blue: #1e3a5f;
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
+  --header-h: 56px;
+  --bottom-h: calc(64px + var(--safe-bottom));
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-mono);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+/* ──────── HEADER ──────── */
+header {
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top, 0);
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 60;
+}
+header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
+.sync-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--wood-light);
+  padding: 5px 11px;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.offline-indicator {
+  font-size: 0.75rem;
+  background: rgba(255,255,255,0.15);
+  padding: 3px 8px;
+  border-radius: 10px;
+  display: none;
+}
+.offline-indicator.show { display: block; }
+
+/* ──────── MAIN CAROUSEL ──────── */
+#main-carousel {
+  position: fixed;
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  bottom: var(--bottom-h);
+  left: 0;
+  right: 0;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+#main-carousel::-webkit-scrollbar { display: none; }
+.slide {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  padding: 14px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ──────── BOTTOM NAV ──────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: white;
+  border-top: 2px solid var(--sawdust);
+  display: flex;
+  padding-bottom: var(--safe-bottom);
+  z-index: 60;
+  height: var(--bottom-h);
+}
+.bottom-nav button {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.bottom-nav button .ni { font-size: 1.4rem; }
+.bottom-nav button.active { color: var(--accent); }
+
+/* ──────── FAENA CARDS (lista) ──────── */
+#lista-faenas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 2px 12px;
+  scroll-snap-type: y proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#lista-faenas::-webkit-scrollbar { display: none; }
+.faena-card {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 12px;
+  padding: 18px 18px 20px;
+  margin-bottom: 0;
+  box-shadow: 2px 2px 0 var(--sawdust);
+  cursor: pointer;
+  width: 100%;
+  min-height: 220px;
+  scroll-snap-align: start;
+}
+.faena-card:active { background: var(--paper-dark); }
+.fc-num { font-size: 0.82rem; margin-bottom: 4px; }
+.fc-cliente {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+.fc-tipo { font-size: 0.9rem; color: var(--accent); margin-bottom: 4px; }
+.fc-dir { font-size: 0.82rem; color: #888; margin-bottom: 8px; }
+.fc-footer { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--sawdust); }
+.fc-precio { font-size: 1rem; font-weight: 600; color: var(--green); }
+
+/* ──────── FAENA OVERLAY (detalle) ──────── */
+.faena-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--paper);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.faena-overlay.open { transform: translateX(0); }
+
+.overlay-header {
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 0 14px;
+  padding-top: env(safe-area-inset-top, 0);
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.overlay-back {
+  background: none;
+  border: none;
+  color: var(--wood-light);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.overlay-title {
+  flex: 1;
+  min-width: 0;
+}
+.overlay-num {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.overlay-cliente {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.overlay-edit-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--wood-light);
+  padding: 5px 10px;
+  border-radius: 16px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ──────── PANEL TABS ──────── */
+.panel-tabs-wrap {
+  background: white;
+  border-bottom: 2px solid var(--sawdust);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.panel-tabs-wrap::-webkit-scrollbar { display: none; }
+.panel-tabs {
+  display: flex;
+  padding: 0 8px;
+  gap: 0;
+  min-width: max-content;
+}
+.panel-tab {
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaa;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+  transition: all 0.15s;
+  user-select: none;
+}
+.panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ──────── PANEL CAROUSEL ──────── */
+#panel-carousel {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+#panel-carousel::-webkit-scrollbar { display: none; }
+.panel {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ──────── DETALLE DATOS ──────── */
+.datos-campo {
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.datos-campo:last-child { border-bottom: none; }
+.datos-k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: #999; margin-top: 2px; white-space: nowrap; }
+.datos-v { font-size: 0.95rem; font-weight: 500; text-align: right; line-height: 1.4; }
+.call-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #d4edda;
+  color: var(--green);
+  border: 1px solid #a8d5b5;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  text-decoration: none;
+  font-family: var(--font-mono);
+}
+.datos-section-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--sawdust);
+}
+
+/* ──────── PRESUPUESTO ──────── */
+.presup-total {
+  background: var(--ink);
+  color: var(--wood-light);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.presup-total-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
+.presup-total-val { font-size: 1.6rem; font-weight: 600; font-family: var(--font-serif); }
+.presup-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  gap: 10px;
+}
+.presup-line:last-child { border-bottom: none; }
+.presup-concepto { font-size: 0.9rem; flex: 1; }
+.presup-precio { font-size: 0.95rem; font-weight: 600; color: var(--green); white-space: nowrap; }
+.presup-empty { font-size: 0.9rem; color: #aaa; text-align: center; padding: 20px 0; }
+.presup-actions { display: flex; gap: 6px; margin-top: 6px; }
+.presup-actions .btn { padding: 6px 10px; font-size: 0.72rem; }
+
+/* ──────── DOCUMENTOS ──────── */
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.doc-icon { font-size: 1.4rem; flex-shrink: 0; }
+.doc-info { flex: 1; min-width: 0; }
+.doc-nombre { font-size: 0.88rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-meta { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+
+/* ──────── ANOTACIONES LIBRETA ──────── */
+.notebook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.notebook-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent);
+}
+.notebook {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  overflow: hidden;
+  background-image: repeating-linear-gradient(
+    white 0px, white 35px,
+    #c5e0e6 36px
+  );
+  min-height: 200px;
+}
+.anot-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 36px;
+  border-bottom: none;
+  line-height: 36px;
+}
+.anot-nota-txt {
+  flex: 1;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  line-height: 36px;
+  word-break: break-word;
+  padding: 0;
+  min-height: 36px;
+}
+.anot-nota-multi {
+  line-height: 1.4;
+  padding: 8px 0;
+  min-height: auto;
+  align-items: center;
+}
+.anot-nota-multi .anot-nota-txt {
+  line-height: 1.4;
+  padding: 0;
+}
+.anot-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-self: center;
+}
+.anot-btn {
+  background: none;
+  border: 1px solid var(--sawdust);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 0.75rem;
+  color: #888;
+  cursor: pointer;
+}
+.anot-btn:active { background: var(--paper-dark); }
+.anot-pend { font-size: 0.65rem; color: #8b5000; background: #fdecd0; padding: 1px 4px; border-radius: 3px; }
+
+/* ──────── FOTOS ──────── */
+.fotos-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.foto-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.foto-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+}
+.foto-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.foto-pending {
+  position: absolute;
+  bottom: 3px; right: 3px;
+  background: rgba(139,80,0,0.85);
+  color: white;
+  font-size: 0.6rem;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+.foto-del {
+  position: absolute;
+  top: 3px; right: 3px;
+  background: rgba(139,32,32,0.85);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px; height: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.dir-info {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dir-info span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ──────── GASTOS/TICKETS ──────── */
+.ticket-item {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.ticket-thumb { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.ticket-info { flex: 1; min-width: 0; }
+.ticket-nombre { font-size: 0.82rem; font-weight: 500; }
+.ticket-meta { font-size: 0.72rem; color: #aaa; margin-top: 2px; }
+.gasto-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  gap: 8px;
+}
+.gasto-item:last-child { border-bottom: none; }
+.gasto-desc { font-size: 0.88rem; flex: 1; }
+.gasto-precio { font-size: 0.95rem; font-weight: 600; color: var(--red); white-space: nowrap; }
+
+/* ──────── COMPONENTES COMPARTIDOS ──────── */
+.badge {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.b-direct { background: var(--wood-light); color: var(--wood-dark); }
+.b-inter  { background: #dde8f0; color: var(--blue); }
+.b-green  { background: #d4edda; color: var(--green); }
+.b-gray   { background: #e8e8e8; color: #555; }
+.b-orange { background: #fdecd0; color: #8b5000; }
+
+.num-faena {
+  background: var(--ink); color: var(--wood-light);
+  padding: 2px 6px; border-radius: 3px; font-size: 0.82rem; letter-spacing: 0.06em;
+}
+.num-temp {
+  background: #8b5000; color: #fdecd0;
+  padding: 2px 6px; border-radius: 3px; font-size: 0.82rem;
+}
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px 16px;
+  border: none; border-radius: 6px;
+  font-family: var(--font-mono); font-size: 0.88rem;
+  cursor: pointer; letter-spacing: 0.04em; text-transform: uppercase;
+  width: 100%; margin-bottom: 8px;
+}
+.btn:active { opacity: 0.82; }
+.btn-p { background: var(--accent); color: var(--wood-light); }
+.btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
+.btn-g { background: #d4edda; color: var(--green); border: 1px solid #a8d5b5; }
+.btn-d { background: #fde8e8; color: var(--red); border: 1px solid #f0b0b0; }
+.btn-inline { width: auto; margin-bottom: 0; padding: 6px 12px; font-size: 0.8rem; }
+.btn-row { display: flex; gap: 8px; margin-bottom: 8px; }
+
+.form-box {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.form-title {
+  font-family: var(--font-serif); font-size: 0.95rem; color: var(--accent);
+  margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--sawdust);
+}
+.field { margin-bottom: 12px; }
+label { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: #888; margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%; padding: 11px 13px;
+  border: 1px solid #ccc; border-radius: 6px;
+  font-family: var(--font-mono); font-size: 0.92rem;
+  background: white; color: var(--ink);
+  appearance: none; -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
+textarea { resize: vertical; min-height: 80px; }
+
+.overlay-modal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(26,18,8,0.55); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+.overlay-modal.open { display: flex; }
+.modal-box {
+  background: white; border: 1px solid var(--sawdust);
+  border-radius: 10px; padding: 18px; width: 100%; max-width: 420px;
+  box-shadow: 4px 4px 0 var(--sawdust);
+}
+
+.toast {
+  position: fixed;
+  bottom: calc(72px + var(--safe-bottom));
+  left: 14px; right: 14px;
+  background: var(--accent); color: var(--wood-light);
+  padding: 11px 14px; border-radius: 8px;
+  font-size: 0.88rem; z-index: 9999; text-align: center;
+  transform: translateY(20px); opacity: 0;
+  transition: all 0.25s; pointer-events: none;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.err { background: var(--red); }
+
+.empty { text-align: center; padding: 40px 16px; color: #ccc; }
+.empty-icon { font-size: 2.2rem; margin-bottom: 8px; }
+
+.pending-badge {
+  background: #fdecd0; color: #8b5000;
+  border: 1px solid #f0c070; border-radius: 6px;
+  padding: 8px 12px; font-size: 0.85rem; margin-bottom: 10px; line-height: 1.6;
+}
+.sync-box {
+  background: white; border: 2px solid var(--sawdust);
+  border-radius: 12px; padding: 22px 18px;
+  text-align: center; margin: 10px 0;
+}
+.sync-estado { font-size: 0.88rem; color: #888; margin-top: 10px; line-height: 1.6; }
+.sync-ok { color: var(--green); }
+.sync-error { color: var(--red); }
+.ip-box { background: var(--paper-dark); border: 1px solid var(--sawdust); border-radius: 8px; padding: 14px; margin-top: 14px; }
+
+.mat-cat { font-family: var(--font-serif); font-size: 0.95rem; color: var(--accent); margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--sawdust); }
+.mat-item { background: white; border: 1px solid var(--sawdust); border-radius: 6px; padding: 9px 12px; margin-bottom: 5px; }
+.mat-nombre { font-size: 0.9rem; font-weight: 500; margin-bottom: 3px; }
+.mat-precios { font-size: 0.8rem; color: #666; }
+.mat-precio-min { color: var(--green); font-weight: 500; }
+
+.book-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.book-card { background: white; border: 1px solid var(--sawdust); border-radius: 8px; overflow: hidden; box-shadow: 2px 2px 0 var(--sawdust); }
+.book-card img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+.book-card-info { padding: 8px 10px; }
+.book-card-titulo { font-family: var(--font-serif); font-size: 0.88rem; color: var(--accent); }
+
+.foto-viewer {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.96);
+  z-index: 9999; display: flex; align-items: center; justify-content: center;
+  overflow: auto; touch-action: pinch-zoom;
+}
+.foto-viewer img { max-width: 90%; max-height: 90%; object-fit: contain; transition: transform 0.1s; cursor: zoom-in; }
+.foto-viewer img.zoomed { cursor: zoom-out; transform: scale(1.5); }
+.foto-viewer .close-btn {
+  position: absolute; top: 18px; right: 18px;
+  background: rgba(255,255,255,0.2); border: 1px solid white;
+  color: white; padding: 7px 14px; border-radius: 30px;
+  cursor: pointer; font-size: 0.88rem; z-index: 10;
+}
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+  border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.section-sep {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--accent);
+  padding: 10px 0 6px;
+  border-bottom: 1px solid var(--sawdust);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header>
+  <span style="font-size:1.3rem">🪵</span>
+  <h1>Faenas</h1>
+  <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
+  <button class="sync-btn" onclick="irASync()">⟳ Sync</button>
+</header>
+
+<!-- ═══════════ MAIN CAROUSEL ═══════════ -->
+<div id="main-carousel">
+
+  <!-- Slide 0: LISTA DE FAENAS -->
+  <div class="slide" id="sl-faenas">
+    <div style="display:flex;justify-content:flex-start;margin-bottom:12px">
+      <button class="btn btn-p btn-inline" onclick="abrirNuevaFaena()" style="white-space:nowrap;padding:11px 14px">+ Nueva</button>
+    </div>
+    <div id="lista-faenas"></div>
+  </div>
+
+  <!-- Slide 1: MATERIALES -->
+  <div class="slide" id="sl-materiales">
+    <div style="margin-bottom:12px"><input id="q-mat" placeholder="🔍 Buscar material..." oninput="renderMateriales()" style="margin:0;font-size:0.9rem"></div>
+    <div id="lista-materiales"></div>
+  </div>
+
+  <!-- Slide 2: TICKETS -->
+  <div class="slide" id="sl-tickets">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">🎫 Tickets</div>
+      <button class="btn btn-d btn-inline" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">× Cancelar</button>
+    </div>
+    <div class="form-box">
+      <div class="form-title">Paso 1 — Foto del ticket</div>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Selecciona o haz una foto del ticket de compra.</p>
+      <input type="file" id="ticket-foto-movil" accept="image/*" onchange="ticketPreview(event)" style="display:none">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-p btn-inline" onclick="document.getElementById('ticket-foto-movil').click()">🖼️ Galería</button>
+        <button class="btn btn-p btn-inline" onclick="tomarFotoDirecta()">📷 Cámara</button>
+      </div>
+      <div id="ticket-preview-movil" style="display:none;margin-top:10px">
+        <img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:260px;object-fit:contain">
+      </div>
+    </div>
+    <div class="form-box" id="ticket-paso2" style="display:none">
+      <div class="form-title">Paso 2 — Prompt para Claude.ai</div>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Genera el prompt, cópialo, abre Claude.ai, adjunta la foto y pégalo.</p>
+      <button class="btn btn-p" onclick="generarPromptTicketMovil()">Generar prompt</button>
+      <div id="ticket-prompt-box" style="display:none;margin-top:10px">
+        <div style="background:#1a1208;color:#f0deb4;border-radius:6px;padding:12px;font-size:0.88rem;line-height:1.5;max-height:180px;overflow-y:auto;white-space:pre-wrap;margin-bottom:8px" id="ticket-prompt-txt"></div>
+        <button class="btn btn-g" onclick="copiarTicketPrompt()">📋 Copiar prompt</button>
+      </div>
+    </div>
+    <div class="form-box" id="ticket-paso3" style="display:none">
+      <div class="form-title">Paso 3 — Pegar JSON de respuesta</div>
+      <div class="field"><label>JSON de Claude</label><textarea id="ticket-json-movil" rows="5" placeholder='{"proveedor":"...","articulos":[...]}' style="font-size:0.88rem"></textarea></div>
+      <div class="field"><label>Faena (opcional)</label><select id="ticket-faena-movil"><option value="">— Sin asignar —</option></select></div>
+      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Cargar datos</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-s" onclick="mostrarTextoManual()">✍️ Texto manual</button>
+    </div>
+    <div class="form-box" id="ticket-paso4" style="display:none">
+      <div class="form-title">✍️ Texto manual</div>
+      <div class="field"><label>Lista de materiales</label><textarea id="ticket-texto-manual" rows="5" placeholder="Ej: 2x Bisagra 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€" style="font-size:0.88rem"></textarea></div>
+      <div class="field"><label>Faena (opcional)</label><select id="ticket-faena-texto"><option value="">— Sin asignar —</option></select></div>
+      <div class="btn-row">
+        <button class="btn btn-p" onclick="procesarTextoManual()">🤖 Procesar con IA</button>
+        <button class="btn btn-s btn-inline" onclick="document.getElementById('ticket-paso4').style.display='none'">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: BOOK -->
+  <div class="slide" id="sl-book">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">📸 Book</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s btn-inline" onclick="configurarCarpetaBook()">📁</button>
+        <button class="btn btn-p btn-inline" onclick="añadirFotoBook()">+ Foto</button>
+        <button class="btn btn-g btn-inline" onclick="compartirBook()">↗</button>
+      </div>
+    </div>
+    <div id="book-carpeta-info" style="font-size:0.82rem;color:#aaa;margin-bottom:10px;padding:6px 10px;background:var(--paper-dark);border-radius:6px;display:none"></div>
+    <div id="book-movil-galeria"></div>
+  </div>
+
+  <!-- Slide 4: SYNC -->
+  <div class="slide" id="sl-sync">
+    <div class="sync-box">
+      <div style="font-size:2.2rem;margin-bottom:8px">⟳</div>
+      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:6px">Sincronizar con el PC</div>
+      <div style="font-size:0.85rem;color:#888;margin-bottom:16px;line-height:1.6">El PC debe estar encendido y en la misma red WiFi.</div>
+      <div id="pendientes-info"></div>
+      <button class="btn btn-p" onclick="sincronizar()" id="btn-sync">⟳ &nbsp; Sincronizar ahora</button>
+      <div class="sync-estado" id="sync-estado"></div>
+    </div>
+    <div class="ip-box">
+      <div class="form-title" style="margin-bottom:10px">⚙️ IP del PC</div>
+      <div class="field"><label>Dirección IP</label><input id="ip-config" placeholder="IP del PC" oninput="guardarIP()"></div>
+    </div>
+    <div style="margin-top:12px;padding:12px;background:var(--paper-dark);border-radius:8px;font-size:0.88rem;color:#888;line-height:1.6">
+      <strong style="color:var(--accent)">Última sincronización:</strong><br>
+      <span id="ultima-sync">Nunca</span>
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn btn-d" onclick="limpiarCacheLocal()">🗑️ Borrar caché del móvil</button>
+    </div>
+  </div>
+
+</div><!-- fin main-carousel -->
+
+<!-- ═══════════ BOTTOM NAV ═══════════ -->
+<nav class="bottom-nav">
+  <button class="active" id="nav-faenas"    onclick="navTo(0)"><span class="ni">🔨</span>Faenas</button>
+  <button id="nav-materiales"               onclick="navTo(1)"><span class="ni">📦</span>Materiales</button>
+  <button id="nav-tickets"                  onclick="navTo(2)"><span class="ni">🎫</span>Tickets</button>
+  <button id="nav-book"                     onclick="navTo(3)"><span class="ni">📸</span>Book</button>
+  <button id="nav-sync"                     onclick="navTo(4)"><span class="ni">⟳</span>Sync</button>
+</nav>
+
+<!-- ═══════════ FAENA OVERLAY ═══════════ -->
+<div id="faena-overlay" class="faena-overlay">
+
+  <div class="overlay-header">
+    <button class="overlay-back" onclick="cerrarFaena()">← Volver</button>
+    <div class="overlay-title">
+      <div class="overlay-num" id="ov-num"></div>
+      <div class="overlay-cliente" id="ov-cliente"></div>
+    </div>
+    <button class="overlay-edit-btn" onclick="abrirEditarFaena(state.faenaActualId)">✏️ Editar</button>
+  </div>
+
+  <div class="panel-tabs-wrap">
+    <div class="panel-tabs" id="panel-tabs">
+      <div class="panel-tab active" data-idx="0" onclick="irAPanel(0)">📋 Datos</div>
+      <div class="panel-tab" data-idx="1" onclick="irAPanel(1)">€ Presupuesto</div>
+      <div class="panel-tab" data-idx="2" onclick="irAPanel(2)">📄 Documentos</div>
+      <div class="panel-tab" data-idx="3" onclick="irAPanel(3)">📸 Fotos</div>
+      <div class="panel-tab" data-idx="4" onclick="irAPanel(4)">🧾 Gastos</div>
+    </div>
+  </div>
+
+  <div id="panel-carousel">
+
+    <!-- Panel 0: DATOS -->
+    <div class="panel" id="p-datos">
+      <div id="p-datos-content"></div>
+    </div>
+
+    <!-- Panel 1: PRESUPUESTO -->
+    <div class="panel" id="p-presupuesto">
+      <div id="p-presupuesto-content"></div>
+    </div>
+
+    <!-- Panel 2: DOCUMENTOS + ANOTACIONES -->
+    <div class="panel" id="p-documentos">
+      <div id="p-documentos-content"></div>
+    </div>
+
+    <!-- Panel 3: FOTOS -->
+    <div class="panel" id="p-fotos">
+      <div id="p-fotos-content"></div>
+    </div>
+
+    <!-- Panel 4: GASTOS DE FABRICACIÓN + TICKETS -->
+    <div class="panel" id="p-gastos">
+      <div id="p-gastos-content"></div>
+    </div>
+
+  </div><!-- fin panel-carousel -->
+
+</div><!-- fin faena-overlay -->
+
+<!-- ═══════════ MODALES ═══════════ -->
+
+<!-- Modal: Nueva faena -->
+<div class="overlay-modal" id="m-nueva-faena">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">🔨 Nueva Faena</div>
+    <div class="field">
+      <label>Cliente *</label>
+      <select id="nf-cliente-sel" onchange="toggleNuevoCliente()">
+        <option value="">— Selecciona o crea nuevo —</option>
+        <option value="__nuevo__">+ Crear cliente nuevo</option>
+      </select>
+    </div>
+    <div id="nuevo-cliente-form" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:6px;padding:12px;margin-bottom:12px">
+      <div style="font-size:0.88rem;color:var(--accent);font-weight:500;margin-bottom:8px">Nuevo cliente</div>
+      <div class="field"><label>Nombre *</label><input id="nc-nombre" placeholder="Nombre completo"></div>
+      <div class="field"><label>Teléfono</label><input id="nc-tel" type="tel" placeholder="600 000 000"></div>
+      <div class="field"><label>Dirección</label><input id="nc-dir" placeholder="Calle, número, ciudad..."></div>
+      <div class="field" style="margin-bottom:0"><label>Email</label><input id="nc-email" type="email" placeholder="correo@email.com"></div>
+    </div>
+    <div class="field"><label>Teléfono</label><input id="nf-tel" type="tel" placeholder="600 000 000"></div>
+    <div class="field"><label>Dirección de la obra</label><input id="nf-dir" placeholder="Calle, número, ciudad..."></div>
+    <div class="field"><label>Tipo de trabajo</label><input id="nf-tipo" placeholder="Cocina, armario, estantería..."></div>
+    <div class="field"><label>Importe estimado (€)</label><input id="nf-importe" type="number" placeholder="0.00" step="0.01"></div>
+    <button class="btn btn-p" onclick="crearFaena()">💾 Crear faena</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-nueva-faena')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Editar faena -->
+<div class="overlay-modal" id="m-editar-faena">
+  <div class="modal-box">
+    <div class="form-title">✏️ Editar faena</div>
+    <input type="hidden" id="ef-id">
+    <div class="field"><label>Cliente</label><div id="ef-cliente" style="font-family:var(--font-serif);font-size:1rem;color:var(--accent);padding:8px 0"></div></div>
+    <div class="field"><label>Teléfono</label><input id="ef-tel" type="tel" placeholder="600 000 000"></div>
+    <div class="field"><label>Dirección</label><input id="ef-dir"></div>
+    <div class="field"><label>Tipo de trabajo *</label><input id="ef-tipo"></div>
+    <div class="field"><label>Importe (€)</label><input id="ef-importe" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarEditarFaena()">💾 Guardar</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-editar-faena')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Nueva / editar anotación -->
+<div class="overlay-modal" id="m-anotacion">
+  <div class="modal-box">
+    <div class="form-title" id="anot-titulo">📝 Nueva Anotación</div>
+    <input type="hidden" id="anot-faena-id">
+    <input type="hidden" id="anot-edit-id">
+    <div class="field">
+      <label>Tipo</label>
+      <select id="anot-tipo">
+        <option value="texto">📝 Texto</option>
+        <option value="medida">📐 Medida</option>
+        <option value="aviso">⚠️ Aviso</option>
+      </select>
+    </div>
+    <div class="field"><label>Contenido</label><textarea id="anot-contenido" rows="5" placeholder="Escribe aquí..."></textarea></div>
+    <button class="btn btn-p" onclick="guardarAnotacion()">💾 Guardar</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-anotacion')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Precio material -->
+<div class="overlay-modal" id="m-precio">
+  <div class="modal-box">
+    <div class="form-title">💶 Añadir precio</div>
+    <input type="hidden" id="precio-mat-id">
+    <div class="field"><label>Proveedor</label><input id="precio-prov" placeholder="Nombre del proveedor"></div>
+    <div class="field"><label>Precio unitario (€)</label><input id="precio-val" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarPrecio()">💾 Guardar</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-precio')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Presupuesto -->
+<div class="overlay-modal" id="m-gasto-presupuesto">
+  <div class="modal-box">
+    <div class="form-title" id="gasto-title">💶 Nuevo presupuesto</div>
+    <input type="hidden" id="gasto-faena-id">
+    <input type="hidden" id="gasto-id">
+    <div class="field"><label>Concepto</label><input id="gasto-desc" placeholder="4 puertas, rodapié..."></div>
+    <div class="field"><label>Tipo</label><input id="gasto-tipo" placeholder="mano de obra, material..." value="presupuesto"></div>
+    <div class="field"><label>Cantidad</label><input id="gasto-cant" type="number" step="0.01" value="1"></div>
+    <div class="field"><label>Importe estimado a cobrar (€)</label><input id="gasto-precio" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarGastoPresupuesto()">💾 Guardar importe estimado</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-gasto-presupuesto')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Gasto fabricación -->
+<div class="overlay-modal" id="m-gasto-fabricacion">
+  <div class="modal-box">
+    <div class="form-title" id="gasto-fab-title">🧾 Nuevo gasto</div>
+    <input type="hidden" id="gasto-fab-faena-id">
+    <input type="hidden" id="gasto-fab-id">
+    <div class="field"><label>Concepto</label><input id="gasto-fab-desc" placeholder="jambas, cortes, herraje..."></div>
+    <div class="field"><label>Tipo</label><input id="gasto-fab-tipo" placeholder="material, mano de obra..." value="gasto"></div>
+    <div class="field"><label>Cantidad</label><input id="gasto-fab-cant" type="number" step="0.01" value="1"></div>
+    <div class="field"><label>Precio unitario (€)</label><input id="gasto-fab-precio" type="number" step="0.01" placeholder="0.00"></div>
+    <button class="btn btn-p" onclick="guardarGastoFabricacion()">💾 Guardar gasto</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-gasto-fabricacion')">Cancelar</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// ESTADO Y UTILIDADES
+// ═══════════════════════════════════════════════════════════
+
+function cargarCola() {
+  return {
+    clientes:               JSON.parse(localStorage.getItem("cola_clientes")    || "[]"),
+    faenas:                 JSON.parse(localStorage.getItem("cola_faenas")      || "[]"),
+    anotaciones:            JSON.parse(localStorage.getItem("cola_anotaciones") || "[]"),
+    anotacionesEditar:      JSON.parse(localStorage.getItem("cola_anotacionesEditar") || "[]"),
+    anotacionesEliminar:    JSON.parse(localStorage.getItem("cola_anotacionesEliminar") || "[]"),
+    gastos:                 JSON.parse(localStorage.getItem("cola_gastos")      || "[]"),
+    fotos:                  JSON.parse(localStorage.getItem("cola_fotos")       || "[]"),
+    ticketFotos:            JSON.parse(localStorage.getItem("cola_ticket_fotos")|| "[]"),
+    tickets:                JSON.parse(localStorage.getItem("cola_tickets")     || "[]"),
+    faenasEditar:           JSON.parse(localStorage.getItem("cola_faenasEditar")|| "[]"),
+    definicionesPendientes: JSON.parse(localStorage.getItem("cola_definicionesPendientes") || "[]"),
+    bookEliminar:           JSON.parse(localStorage.getItem("cola_bookEliminar")|| "[]"),
+    bookPendiente:          JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]")
+  };
+}
+
+function guardarCola(c) {
+  localStorage.setItem("cola_clientes",                JSON.stringify(c.clientes || []));
+  localStorage.setItem("cola_faenas",                  JSON.stringify(c.faenas || []));
+  localStorage.setItem("cola_anotaciones",             JSON.stringify(c.anotaciones || []));
+  localStorage.setItem("cola_anotacionesEditar",       JSON.stringify(c.anotacionesEditar || []));
+  localStorage.setItem("cola_anotacionesEliminar",     JSON.stringify(c.anotacionesEliminar || []));
+  localStorage.setItem("cola_gastos",                  JSON.stringify(c.gastos || []));
+  localStorage.setItem("cola_fotos",                   JSON.stringify(c.fotos || []));
+  localStorage.setItem("cola_ticket_fotos",            JSON.stringify(c.ticketFotos || []));
+  localStorage.setItem("cola_tickets",                 JSON.stringify(c.tickets || []));
+  localStorage.setItem("cola_faenasEditar",            JSON.stringify(c.faenasEditar || []));
+  localStorage.setItem("cola_definicionesPendientes",  JSON.stringify(c.definicionesPendientes || []));
+  localStorage.setItem("cola_bookEliminar",            JSON.stringify(c.bookEliminar || []));
+  localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
+}
+
+const state = {
+  faenas:        JSON.parse(localStorage.getItem("faenas_cache")    || "[]"),
+  clientes:      JSON.parse(localStorage.getItem("clientes_cache")  || "[]"),
+  materiales:    JSON.parse(localStorage.getItem("materiales_cache")|| "[]"),
+  faenaActualId: null,
+  panelActual:   0
+};
+
+function getServerUrl() {
+  const hostPagina = location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1" ? location.hostname : "";
+  let ip = (localStorage.getItem("server_ip") || "").replace(/:\d+$/, "").trim();
+  ip = hostPagina || ip || "127.0.0.1";
+  return `http://${ip}:5000/api`;
+}
+
+function escHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function codigoFaenaSeguro(faena) {
+  return String(faena?.numero || faena?.id || "faena")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "") || "faena";
+}
+
+function toast(msg, err = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (err ? " err" : "");
+  setTimeout(() => t.className = "toast", 3200);
+}
+
+function abrirModal(id)  { document.getElementById(id).classList.add("open"); }
+function cerrarModal(id) { document.getElementById(id).classList.remove("open"); }
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAVEGACIÓN PRINCIPAL (carousel)
+// ═══════════════════════════════════════════════════════════
+
+const NAV_IDS = ["nav-faenas","nav-materiales","nav-tickets","nav-book","nav-sync"];
+
+function navTo(idx) {
+  const c = document.getElementById("main-carousel");
+  c.scrollTo({ left: idx * window.innerWidth, behavior: "smooth" });
+  NAV_IDS.forEach((id, i) => {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle("active", i === idx);
+  });
+  if (idx === 4) actualizarPendientesInfo();
+  if (idx === 2) restaurarTicket();
+  if (idx === 1) renderMateriales();
+  if (idx === 3) renderBookMovil();
+}
+
+function irASync() { navTo(4); }
+
+// Actualizar nav al hacer swipe manual
+document.getElementById("main-carousel").addEventListener("scroll", function() {
+  const idx = Math.round(this.scrollLeft / window.innerWidth);
+  NAV_IDS.forEach((id, i) => {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle("active", i === idx);
+  });
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════════════
+// FAENA OVERLAY
+// ═══════════════════════════════════════════════════════════
+
+function abrirFaena(id) {
+  state.faenaActualId = id;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (!f) return;
+  document.getElementById("ov-num").textContent = f.numero || "";
+  document.getElementById("ov-cliente").textContent = f.cliente_nombre || "—";
+  document.getElementById("faena-overlay").classList.add("open");
+  // Renderizar todos los paneles
+  renderPanelDatos(f);
+  renderPanelPresupuesto(f);
+  renderPanelDocumentos(f);
+  renderPanelFotos(f);
+  renderPanelGastos(f);
+  // Ir al panel guardado
+  const pc = document.getElementById("panel-carousel");
+  pc.scrollTo({ left: state.panelActual * window.innerWidth, behavior: "instant" });
+  actualizarTabPanel(state.panelActual);
+}
+
+function cerrarFaena() {
+  document.getElementById("faena-overlay").classList.remove("open");
+}
+
+// Actualizar tabs al swipe en panels
+const panelCarousel = document.getElementById("panel-carousel");
+panelCarousel.addEventListener("scroll", function() {
+  const idx = Math.round(this.scrollLeft / window.innerWidth);
+  if (idx !== state.panelActual) {
+    state.panelActual = idx;
+    actualizarTabPanel(idx);
+  }
+}, { passive: true });
+
+function irAPanel(idx) {
+  state.panelActual = idx;
+  const pc = document.getElementById("panel-carousel");
+  pc.scrollTo({ left: idx * window.innerWidth, behavior: "smooth" });
+  actualizarTabPanel(idx);
+}
+
+function actualizarTabPanel(idx) {
+  document.querySelectorAll(".panel-tab").forEach((t, i) => {
+    t.classList.toggle("active", i === idx);
+  });
+  // Scroll el tab activo a la vista
+  const tab = document.querySelector(`.panel-tab[data-idx="${idx}"]`);
+  if (tab) tab.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL 0 — DATOS
+// ═══════════════════════════════════════════════════════════
+
+function renderPanelDatos(f) {
+  const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
+  const esTemp = f._offline;
+  // Buscar teléfono del cliente
+  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
+  const telefono = f.cliente_telefono || cliente?.telefono || "";
+  const direccionCliente = cliente?.direccion || "";
+
+  document.getElementById("p-datos-content").innerHTML = `
+    <div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      ${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}
+      <span class="badge ${esDirecto ? "b-direct":"b-inter"}">${esDirecto ? "Directo" : escHtml(f.intermediario_nombre||"—")}</span>
+      ${esTemp ? `<span class="badge b-orange">Pendiente de sync</span>` : ""}
+    </div>
+    <div class="datos-section-title">👤 Cliente</div>
+    <div class="datos-campo">
+      <div class="datos-k">Nombre</div>
+      <div class="datos-v" style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent)">${escHtml(f.cliente_nombre || "—")}</div>
+    </div>
+    ${direccionCliente ? `
+    <div class="datos-campo">
+      <div class="datos-k">Dirección</div>
+      <div class="datos-v">${escHtml(direccionCliente)}</div>
+    </div>` : ""}
+    ${telefono ? `
+    <div class="datos-campo">
+      <div class="datos-k">Teléfono</div>
+      <div class="datos-v">
+        <a class="call-btn" href="tel:${escHtml(telefono)}">📞 Llamar</a>
+        <div style="margin-top:6px;font-size:1rem;color:var(--ink)">${escHtml(telefono)}</div>
+      </div>
+    </div>` : ""}
+    <div style="height:10px"></div>
+    <div class="datos-section-title">🔨 Trabajo</div>
+    <div class="datos-campo">
+      <div class="datos-k">Tipo</div>
+      <div class="datos-v">${escHtml(f.tipo_trabajo || "—")}</div>
+    </div>
+    <div class="datos-campo">
+      <div class="datos-k">Dirección</div>
+      <div class="datos-v">${escHtml(f.direccion || "—")}</div>
+    </div>
+    <div class="datos-campo">
+      <div class="datos-k">Importe</div>
+      <div class="datos-v" style="color:var(--green);font-size:1.1rem">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : "—"}</div>
+    </div>
+    <div class="datos-campo">
+      <div class="datos-k">Fecha</div>
+      <div class="datos-v">${escHtml(f.fecha_inicio || "—")}</div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL 1 — PRESUPUESTO
+// ═══════════════════════════════════════════════════════════
+
+function renderPanelPresupuesto(f) {
+  const presupuesto = (f.presupuesto && f.presupuesto.length)
+    ? f.presupuesto
+    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+  const gastosReales = (f.gastos_reales && f.gastos_reales.length)
+    ? f.gastos_reales
+    : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
+  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+  const totalGastos = gastosReales.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+
+  let lineas = "";
+  if (presupuesto.length) {
+    lineas = presupuesto.map(g => `
+      <div class="presup-line">
+        <div class="presup-concepto">
+          ${escHtml(g.descripcion || "—")}
+          <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${escHtml(g.tipo||"")}</span>
+          <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad||1)} x ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
+        </div>
+        <div style="text-align:right">
+          <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
+          <div class="presup-actions" style="justify-content:flex-end">
+            <button class="btn btn-s" onclick="abrirGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Editar</button>
+            <button class="btn btn-d" onclick="eliminarGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Borrar</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+  } else {
+    lineas = `<div class="presup-empty">Sin conceptos de presupuesto.<br><small>Añade aquí lo que vas a cobrar al cliente.</small></div>`;
+  }
+
+  const totalEstimado = totalPresupuesto;
+
+  document.getElementById("p-presupuesto-content").innerHTML = `
+    <div class="presup-total">
+      <div>
+        <div class="presup-total-val">${totalEstimado > 0 ? totalEstimado.toFixed(2) + " €" : "—"}</div>
+      </div>
+      ${presupuesto.length ? `<div style="text-align:right">
+        <div class="presup-total-label">Gastos</div>
+        <div style="font-size:1.2rem;font-family:var(--font-serif);color:#f0b080">${totalGastos.toFixed(2)} €</div>
+      </div>` : ""}
+    </div>
+    <div class="datos-section-title" style="margin-bottom:10px">
+      💶 Presupuesto
+      <span style="font-size:0.75rem;color:#aaa">${presupuesto.length} concepto${presupuesto.length!==1?"s":""}</span>
+    </div>
+    ${lineas}
+    <div class="presup-actions">
+      <button class="btn btn-p" onclick="abrirGastoPresupuesto('${f.id || f._tempId}')">+ Añadir presupuesto</button>
+    </div>
+    <div style="height:14px"></div>
+    <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
+      📄 Cargar presupuesto del PC
+    </button>
+    <div id="presup-txt-${f.id||f._tempId}" style="display:none;margin-top:10px;background:var(--ink);color:var(--wood-light);border-radius:6px;padding:14px;font-size:0.78rem;line-height:1.6;white-space:pre-wrap;overflow-x:auto"></div>
+  `;
+}
+
+function abrirGastoPresupuesto(faenaId, gastoId = "") {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  const presupuesto = (f.presupuesto && f.presupuesto.length)
+    ? f.presupuesto
+    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+  const gasto = presupuesto.find(g => String(g.id) === String(gastoId));
+  document.getElementById("gasto-faena-id").value = faenaId;
+  document.getElementById("gasto-id").value = gasto?.id || "";
+  document.getElementById("gasto-title").textContent = gasto ? "💶 Editar importe estimado" : "💶 Nuevo importe estimado";
+  document.getElementById("gasto-desc").value = gasto?.descripcion || "";
+  document.getElementById("gasto-tipo").value = gasto?.tipo || "material";
+  document.getElementById("gasto-cant").value = gasto?.cantidad ?? 1;
+  document.getElementById("gasto-precio").value = gasto?.precio_unitario ?? "";
+  abrirModal("m-gasto-presupuesto");
+}
+
+async function guardarGastoPresupuesto() {
+  const faenaId = document.getElementById("gasto-faena-id").value;
+  const gastoId = document.getElementById("gasto-id").value;
+  const descripcion = document.getElementById("gasto-desc").value.trim();
+  const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
+  const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
+  const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
+  if (!descripcion) { toast("El concepto es obligatorio", true); return; }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  try {
+    const base = getServerUrl();
+    const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
+    const method = gastoId ? "PUT" : "POST";
+    const body = { descripcion, tipo: document.getElementById("gasto-tipo").value.trim() || "material", cantidad, precio_unitario };
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+    cerrarModal("m-gasto-presupuesto");
+    toast(gastoId ? "✓ Concepto actualizado" : "✓ Concepto añadido");
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo guardar el concepto", true);
+  }
+}
+
+async function eliminarGastoPresupuesto(faenaId, gastoId) {
+  if (!confirm("¿Borrar este concepto?")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+    toast("✓ Concepto borrado");
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo borrar el concepto", true);
+  }
+}
+
+async function recargarPresupuestoFaena(faenaId) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    if (d.ok) {
+      f.presupuesto = d.data?.presupuesto || [];
+      f.gastos_reales = d.data?.gastos || [];
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+      renderPanelPresupuesto(f);
+      renderFaenas();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function cargarPresupuestoPC(faenaId) {
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    if (d.ok && d.data.contenido) {
+      const el = document.getElementById(`presup-txt-${faenaId}`);
+      if (el) { el.textContent = d.data.contenido; el.style.display = "block"; }
+      toast("✓ Presupuesto cargado");
+    } else {
+      toast("No hay presupuesto guardado en el PC", true);
+    }
+  } catch(e) {
+    toast("Error al conectar con el PC", true);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL 2 — DOCUMENTOS + ANOTACIONES
+// ═══════════════════════════════════════════════════════════
+
+function renderPanelDocumentos(f) {
+  const anotaciones = f.anotaciones || [];
+  const cola = cargarCola();
+  const pendientesAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(f.id || f._tempId));
+
+  // Anotaciones: merge sync + pendientes
+  const pendMap = new Map();
+  pendientesAnot.forEach(a => pendMap.set(a._tempId || ("p_"+a.contenido), { ...a, _pend: true }));
+  anotaciones.filter(a => String(a.id||"").startsWith("temp_")).forEach(a => {
+    if (!pendMap.has(a.id)) pendMap.set(a.id, { ...a, _pend: true });
+  });
+  const anotPend = [...pendMap.values()];
+  const anotSync = anotaciones.filter(a => a.id && !String(a.id).startsWith("temp_"));
+  const todasAnot = [...anotPend, ...anotSync];
+
+  const htmlAnot = todasAnot.length
+    ? todasAnot.map(a => renderNotaLibreta(a, f.id || f._tempId)).join("")
+    : `<div style="padding:20px 12px;font-size:0.85rem;color:#bbb;text-align:center">Sin anotaciones.<br>Pulsa + para añadir una nota.</div>`;
+
+  document.getElementById("p-documentos-content").innerHTML = `
+    <div class="section-sep">
+      📄 Documentos del PC
+      <button class="btn btn-s btn-inline" onclick="cargarDocumentosPC('${f.id || f._tempId}')">↻ Cargar</button>
+    </div>
+    <div id="docs-list-${f.id||f._tempId}">
+      <div style="font-size:0.82rem;color:#aaa;padding:8px 0">Pulsa ↻ Cargar para ver los archivos del PC.</div>
+    </div>
+
+    <div style="height:16px"></div>
+
+    <div class="section-sep">
+      📝 Anotaciones
+      <button class="btn btn-p btn-inline" onclick="nuevaAnotacion('${f.id || f._tempId}')">+ Nota</button>
+    </div>
+    <div class="notebook" id="notebook-${f.id||f._tempId}">
+      ${htmlAnot}
+    </div>
+  `;
+}
+
+function renderNotaLibreta(a, faenaId) {
+  const anotId = a.id || a._tempId;
+  const esPend = a._pend || String(anotId||"").startsWith("temp_");
+  const iconTipo = a.tipo === "medida" ? "📐" : a.tipo === "aviso" ? "⚠️" : "📝";
+  const contenido = escHtml(a.contenido || "");
+  const multilinea = (a.contenido || "").includes("\n") || (a.contenido || "").length > 60;
+  return `<div class="anot-nota ${multilinea?"anot-nota-multi":""}">
+    <span style="font-size:0.9rem;flex-shrink:0">${iconTipo}</span>
+    <div class="anot-nota-txt">${contenido}${esPend ? ` <span class="anot-pend">⏳</span>` : ""}</div>
+    <div class="anot-btns">
+      <button class="anot-btn" onclick="editarAnotacionMovil('${anotId}','${faenaId}')">✏️</button>
+      <button class="anot-btn" style="color:var(--red)" onclick="eliminarAnotacionMovil('${anotId}','${faenaId}')">×</button>
+    </div>
+  </div>`;
+}
+
+async function cargarDocumentosPC(faenaId) {
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    const el = document.getElementById(`docs-list-${faenaId}`);
+    if (!el) return;
+    if (!d.data.length) {
+      el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Sin documentos en esta faena.</div>`;
+      return;
+    }
+    el.innerHTML = d.data.map(doc => {
+      const ext = doc.nombre.split(".").pop().toUpperCase();
+      const iconos = { PDF:"📕", TXT:"📝", DXF:"📐", OCP:"🔩", PNG:"🖼️", JPG:"🖼️", JPEG:"🖼️" };
+      const icono = iconos[ext] || "📎";
+      const kb = doc.tamaño ? Math.round(doc.tamaño / 1024) : 0;
+      return `<div class="doc-item">
+        <div class="doc-icon">${icono}</div>
+        <div class="doc-info">
+          <div class="doc-nombre">${escHtml(doc.nombre)}</div>
+          <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""}</div>
+        </div>
+      </div>`;
+    }).join("");
+    toast(`✓ ${d.data.length} documento${d.data.length!==1?"s":""} cargado${d.data.length!==1?"s":""}`);
+  } catch(e) {
+    toast("Error al cargar documentos del PC", true);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL 3 — FOTOS
+// ═══════════════════════════════════════════════════════════
+
+let fotosDirHandle = null;
+
+async function leerImagenesDesdeCarpeta(handle) {
+  const fotos = [];
+  if (!handle) return fotos;
+  for await (const entry of handle.values()) {
+    if (entry.kind === "file" && /\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
+      const file = await entry.getFile();
+      fotos.push({
+        nombre: entry.name,
+        data: await fileToBase64(file),
+        _local: true
+      });
+    }
+  }
+  return fotos;
+}
+
+async function cargarFotosDeCarpetaMovil(faenaId, numeroFaena) {
+  if (!fotosDirHandle) return [];
+  try {
+    const subcarpeta = await fotosDirHandle.getDirectoryHandle(`faena_${numeroFaena}`, { create: true });
+    return await leerImagenesDesdeCarpeta(subcarpeta);
+  } catch(e) {
+    console.error("Error leyendo fotos de carpeta:", e);
+    return [];
+  }
+}
+
+function renderPanelFotos(f) {
+  const faenaId = f.id || f._tempId;
+  const cola = cargarCola();
+  const pending = cola.fotos.filter(x => String(x.faena_id) === String(faenaId));
+  const localFotos = f.fotosLocalMovil || [];
+  const syncFotos = f.fotos || [];
+  const dirNombre = localStorage.getItem("fotos_dir_name") || "";
+
+  const gridLocal = localFotos.map(p => `
+    <div class="foto-thumb">
+      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+    </div>`).join("");
+
+  const gridPend = pending.map((p, i) => `
+    <div class="foto-thumb">
+      <img src="${p.data}" alt="Foto" loading="lazy" onclick="verFotoGrande('${p.data}')">
+      <span class="foto-pending">⏳</span>
+      <button class="foto-del" onclick="eliminarFotoPendiente('${faenaId}',${i})">×</button>
+    </div>`).join("");
+
+  const gridSync = syncFotos.map(p => `
+    <div class="foto-thumb">
+      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+    </div>`).join("");
+
+  const totalFotos = syncFotos.length + pending.length;
+
+  document.getElementById("p-fotos-content").innerHTML = `
+    <div class="fotos-header">
+      <div style="font-family:var(--font-serif);font-size:0.95rem;color:var(--accent)">
+        ${totalFotos} foto${totalFotos!==1?"s":""}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s btn-inline" onclick="setupCarpetaFotos('${faenaId}')" title="Carpeta en el móvil">📁</button>
+        <button class="btn btn-p btn-inline" onclick="añadirFoto('${faenaId}')">+ Foto</button>
+      </div>
+    </div>
+    ${dirNombre ? `<div class="dir-info">📁 <span>${escHtml(dirNombre)}</span></div>` : ""}
+    ${!totalFotos && !localFotos.length ? `<div class="empty"><div class="empty-icon">📷</div>Sin fotos aún.<br><small>Añade fotos o sincroniza con el PC.</small></div>` :
+      `<div class="foto-grid" id="foto-grid-${faenaId}">${gridLocal}${gridPend}${gridSync}</div>`}
+  `;
+}
+
+async function setupCarpetaFotos(faenaId) {
+  if (!window.showDirectoryPicker) {
+    toast("Tu versión de Chrome no soporta carpetas. Actualiza el navegador.", true);
+    return;
+  }
+  try {
+    fotosDirHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "pictures" });
+    localStorage.setItem("fotos_dir_name", fotosDirHandle.name);
+    toast("✓ Carpeta configurada: " + fotosDirHandle.name);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) {
+      f.fotosLocalMovil = await cargarFotosDeCarpetaMovil(faenaId, f.numero || faenaId);
+      renderPanelFotos(f);
+    }
+  } catch(e) {
+    if (e.name !== "AbortError") toast("Error al seleccionar carpeta", true);
+  }
+}
+
+async function guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena) {
+  if (!fotosDirHandle) return false;
+  try {
+    const faenaDir = await fotosDirHandle.getDirectoryHandle(`faena_${numeroFaena}`, { create: true });
+    const fh = await faenaDir.getFileHandle(nombre, { create: true });
+    const w = await fh.createWritable();
+    const data = base64.includes(",") ? base64.split(",")[1] : base64;
+    await w.write(Uint8Array.from(atob(data), c => c.charCodeAt(0)));
+    await w.close();
+    return true;
+  } catch(e) {
+    console.error("Error guardando foto en carpeta:", e);
+    return false;
+  }
+}
+
+let fotoFaenaId = null;
+
+function añadirFoto(faenaId) {
+  fotoFaenaId = String(faenaId);
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.multiple = true;
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.addEventListener("change", procesarFotos);
+  input.click();
+}
+
+async function procesarFotos(event) {
+  const files = Array.from(event.target.files || []);
+  const inputEl = event.target;
+  inputEl.remove();
+  if (!files.length) return;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(fotoFaenaId));
+  const numeroFaena = codigoFaenaSeguro(f || { numero: fotoFaenaId });
+  toast(`Guardando ${files.length} foto${files.length>1?"s":""}...`);
+  let guardadas = 0;
+  for (const file of files) {
+    await new Promise(resolve => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = async () => {
+        const MAX = 900;
+        const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        const base64 = canvas.toDataURL("image/jpeg", 0.70);
+        const nombre = `${numeroFaena}_foto_${Date.now()}_${guardadas}.jpg`;
+        try {
+          // Guardar en carpeta real del móvil si está configurada
+          await guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena);
+          // Encolar para sync con PC
+          const cola = cargarCola();
+          cola.fotos.push({ faena_id: fotoFaenaId, data: base64, nombre, fecha: new Date().toISOString() });
+          guardarCola(cola);
+          if (f) {
+            f.fotosLocalMovil = f.fotosLocalMovil || [];
+            f.fotosLocalMovil.push({ nombre, data: base64, _local: true });
+          }
+          guardadas++;
+        } catch(e) { toast("Sin espacio — sincroniza para liberar", true); }
+        resolve();
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      img.src = url;
+    });
+  }
+  toast(`✓ ${guardadas} foto${guardadas>1?"s":""} guardada${guardadas>1?"s":""} — se subirán al sincronizar`);
+  if (f) renderPanelFotos(f);
+}
+
+function eliminarFotoPendiente(faenaId, idx) {
+  const cola = cargarCola();
+  let cont = 0;
+  cola.fotos = cola.fotos.filter(f => {
+    if (String(f.faena_id) !== String(faenaId)) return true;
+    return cont++ !== idx;
+  });
+  guardarCola(cola);
+  toast("Foto eliminada");
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (f) renderPanelFotos(f);
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL 4 — GASTOS / TICKETS
+// ═══════════════════════════════════════════════════════════
+
+function renderPanelGastos(f) {
+  const faenaId = f.id || f._tempId;
+  const cola = cargarCola();
+  const pendientesGastos = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
+  const pendTickets = cola.ticketFotos.filter(t => String(t.faena_id) === String(faenaId));
+  const gastos = (f.gastos_reales && f.gastos_reales.length)
+    ? f.gastos_reales
+    : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
+  const total = gastos.reduce((s, g) => s + (parseFloat(g.total)||0), 0);
+
+  const htmlTicketsPend = pendTickets.length
+    ? `<div class="pending-badge">⏳ ${pendTickets.length} foto${pendTickets.length>1?"s":""} de ticket pendiente${pendTickets.length>1?"s":""} de procesar en el PC</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+         ${pendTickets.map((t,i) => `<div style="position:relative;width:70px;height:70px">
+           <img src="${t.data}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--sawdust)" onclick="verFotoGrande('${t.data}')">
+           <button style="position:absolute;top:2px;right:2px;background:rgba(139,32,32,0.85);color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:0.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="eliminarTicketPendiente('${faenaId}',${i})">×</button>
+         </div>`).join("")}
+       </div>`
+    : "";
+  const htmlGastos = gastos.length
+    ? `<div style="margin-bottom:6px;display:flex;justify-content:space-between;font-size:0.78rem;color:#888"><span>${gastos.length} gasto${gastos.length!==1?"s":""}</span><span style="color:var(--red);font-weight:600">Total: ${total.toFixed(2)} €</span></div>
+       ${gastos.map(g => `<div class="gasto-item">
+         <div class="gasto-desc">${escHtml(g.descripcion||"—")} <span class="badge b-gray" style="font-size:0.58rem">${escHtml(g.tipo||"gasto")}</span></div>
+         <div style="text-align:right">
+           <div class="gasto-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
+           <div class="presup-actions" style="justify-content:flex-end">
+             <button class="btn btn-s" onclick="abrirGastoFabricacion('${faenaId}','${g.id}')">Editar</button>
+             <button class="btn btn-d" onclick="eliminarGastoFabricacion('${faenaId}','${g.id}')">Borrar</button>
+           </div>
+         </div>
+       </div>`).join("")}`
+    : `<div class="presup-empty">Sin gastos de fabricación.<br><small>Añade aquí jambas, herrajes, cortes, montaje y demás costes.</small></div>`;
+
+  document.getElementById("p-gastos-content").innerHTML = `
+    <div class="section-sep">
+      🧾 Gastos de fabricación
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-p btn-inline" onclick="abrirGastoFabricacion('${faenaId}')">+ Gasto</button>
+        <button class="btn btn-s btn-inline" onclick="sincronizarGastosFaena('${faenaId}')">⟳ Sync</button>
+      </div>
+    </div>
+    <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
+      Aquí metes tus costes de fabricación. No son presupuesto: son lo que te cuesta producir la faena.
+    </div>
+    ${pendientesGastos.length ? `<div class="pending-badge">⏳ ${pendientesGastos.length} gasto${pendientesGastos.length!==1?"s":""} pendiente${pendientesGastos.length!==1?"s":""} de sincronizar</div>` : ""}
+    <div class="section-sep" style="margin-top:6px">
+      💶 Costes de fabricación
+    </div>
+    ${htmlGastos}
+
+    <div class="section-sep" style="margin-top:16px">
+      🧾 Tickets para procesar en el PC
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s btn-inline" onclick="capturarFotoTicket('${faenaId}')">📷 Foto</button>
+        <button class="btn btn-s btn-inline" onclick="seleccionarFotoTicket('${faenaId}')">🖼️ Galería</button>
+      </div>
+    </div>
+    <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
+      Las fotos de ticket se envían al PC al sincronizar. El PC las procesa y en la siguiente sincronización aparecen como costes de fabricación si lo necesitas.
+    </div>
+    ${htmlTicketsPend}
+  `;
+}
+
+function abrirGastoFabricacion(faenaId, gastoId = "") {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  const gasto = (f.gastos || []).find(g => String(g.id) === String(gastoId) && (g.tipo || "gasto") === "gasto");
+  document.getElementById("gasto-fab-faena-id").value = faenaId;
+  document.getElementById("gasto-fab-id").value = gasto?.id || "";
+  document.getElementById("gasto-fab-title").textContent = gasto ? "🧾 Editar gasto" : "🧾 Nuevo gasto";
+  document.getElementById("gasto-fab-desc").value = gasto?.descripcion || "";
+  document.getElementById("gasto-fab-tipo").value = gasto?.tipo || "gasto";
+  document.getElementById("gasto-fab-cant").value = gasto?.cantidad ?? 1;
+  document.getElementById("gasto-fab-precio").value = gasto?.precio_unitario ?? "";
+  abrirModal("m-gasto-fabricacion");
+}
+
+async function guardarGastoFabricacion() {
+  const faenaId = document.getElementById("gasto-fab-faena-id").value;
+  const gastoId = document.getElementById("gasto-fab-id").value;
+  const descripcion = document.getElementById("gasto-fab-desc").value.trim();
+  const tipo = document.getElementById("gasto-fab-tipo").value.trim() || "gasto";
+  const cantidad = parseFloat(document.getElementById("gasto-fab-cant").value) || 1;
+  const precio_unitario = parseFloat(document.getElementById("gasto-fab-precio").value) || 0;
+  if (!descripcion) { toast("El gasto es obligatorio", true); return; }
+  const body = { descripcion, tipo: "gasto", cantidad, precio_unitario };
+  const cola = cargarCola();
+  cola.gastos.push({
+    op: gastoId ? "update" : "create",
+    id: gastoId || `temp_${Date.now()}`,
+    faena_id: faenaId,
+    descripcion,
+    tipo: "gasto",
+    cantidad,
+    precio_unitario
+  });
+  guardarCola(cola);
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (f) {
+    f.gastos = f.gastos || [];
+    if (gastoId) {
+      const idx = f.gastos.findIndex(g => String(g.id) === String(gastoId));
+      if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo: "gasto", cantidad, precio_unitario, total: cantidad * precio_unitario };
+    } else {
+      f.gastos.push({ id: `temp_${Date.now()}`, faena_id: faenaId, tipo: "gasto", descripcion, cantidad, precio_unitario, total: cantidad * precio_unitario });
+    }
+    renderPanelGastos(f);
+  }
+  renderFaenas();
+  cerrarModal("m-gasto-fabricacion");
+  toast("✓ Gasto guardado en el móvil, pulsa Sync para enviarlo al PC");
+}
+
+async function eliminarGastoFabricacion(faenaId, gastoId) {
+  if (!confirm("¿Borrar este gasto?")) return;
+  const cola = cargarCola();
+  cola.gastos.push({ op: "delete", id: gastoId, faena_id: faenaId });
+  guardarCola(cola);
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (f) {
+    f.gastos = (f.gastos || []).filter(g => String(g.id) !== String(gastoId));
+    renderPanelGastos(f);
+  }
+  renderFaenas();
+  toast("✓ Borrado guardado en el móvil, pulsa Sync para enviarlo al PC");
+}
+
+async function sincronizarGastosFaena(faenaId) {
+  const cola = cargarCola();
+  const ops = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
+  if (!ops.length) { toast("No hay gastos pendientes", true); return; }
+  try {
+    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    cola.gastos = cola.gastos.filter(g => String(g.faena_id) !== String(faenaId));
+    guardarCola(cola);
+    await recargarPresupuestoFaena(faenaId);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) renderPanelGastos(f);
+    renderFaenas();
+    toast("✓ Gastos sincronizados con el PC");
+  } catch (e) {
+    console.error(e);
+    toast("No se pudieron sincronizar los gastos", true);
+  }
+}
+
+async function _procesarFotoTicket(faenaId, file) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  const numeroFaena = codigoFaenaSeguro(f || { numero: faenaId });
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  return new Promise(resolve => {
+    img.onload = async () => {
+      const MAX = 1200;
+      const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const base64 = canvas.toDataURL("image/jpeg", 0.80);
+      const nombre = `${numeroFaena}_ticket_${Date.now()}.jpg`;
+      // Guardar en carpeta real del móvil si está disponible
+      await guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena);
+      // Encolar para sync con PC
+      const cola = cargarCola();
+      cola.ticketFotos.push({ faena_id: faenaId, data: base64, nombre, fecha: new Date().toISOString() });
+      guardarCola(cola);
+      toast("✓ Foto de ticket guardada — se procesará en el PC al sincronizar");
+      if (f) renderPanelGastos(f);
+      resolve();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+    img.src = url;
+  });
+}
+
+function capturarFotoTicket(faenaId) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    input.remove();
+    if (file) await _procesarFotoTicket(faenaId, file);
+  };
+  input.click();
+}
+
+function seleccionarFotoTicket(faenaId) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    input.remove();
+    if (file) await _procesarFotoTicket(faenaId, file);
+  };
+  input.click();
+}
+
+function eliminarTicketPendiente(faenaId, idx) {
+  const cola = cargarCola();
+  let cont = 0;
+  cola.ticketFotos = cola.ticketFotos.filter(t => {
+    if (String(t.faena_id) !== String(faenaId)) return true;
+    return cont++ !== idx;
+  });
+  guardarCola(cola);
+  toast("Foto de ticket eliminada");
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (f) renderPanelGastos(f);
+}
+
+// ═══════════════════════════════════════════════════════════
+// VISOR DE FOTOS
+// ═══════════════════════════════════════════════════════════
+
+function verFotoGrande(src) {
+  if (!src) return;
+  const existing = document.querySelector(".foto-viewer");
+  if (existing) existing.remove();
+  const viewer = document.createElement("div");
+  viewer.className = "foto-viewer";
+  const img = document.createElement("img");
+  img.src = src;
+  let zoomed = false;
+  img.onclick = e => { e.stopPropagation(); zoomed = !zoomed; img.classList.toggle("zoomed", zoomed); };
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕ Cerrar"; closeBtn.className = "close-btn";
+  closeBtn.onclick = () => viewer.remove();
+  viewer.appendChild(img); viewer.appendChild(closeBtn);
+  viewer.onclick = e => { if (e.target === viewer) viewer.remove(); };
+  document.body.appendChild(viewer);
+  let d0 = 0;
+  viewer.addEventListener("touchstart", e => { if (e.touches.length === 2) d0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }, { passive: true });
+  viewer.addEventListener("touchmove", e => {
+    if (e.touches.length === 2 && d0 > 0) {
+      const d1 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      img.style.transform = `scale(${Math.min(3, Math.max(1, d1/d0))})`;
+    }
+  }, { passive: true });
+}
+
+// ═══════════════════════════════════════════════════════════
+// FAENAS — lista, crear, editar
+// ═══════════════════════════════════════════════════════════
+
+function renderFaenas() {
+  const cola = cargarCola();
+  const todas = [...state.faenas];
+  const lista = todas;
+  const el = document.getElementById("lista-faenas");
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state.faenas.length === 0 ? "Sin faenas.<br><small>Crea una nueva o sincroniza con el PC</small>" : "Sin resultados"}</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(f => {
+    const esTemp = f._offline;
+    const presupuesto = (f.presupuesto && f.presupuesto.length)
+      ? f.presupuesto
+      : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+    const gastosReales = (f.gastos_reales && f.gastos_reales.length)
+      ? f.gastos_reales
+      : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
+    const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+    const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(f.id || f._tempId)).length;
+    const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(f.id || f._tempId)).length;
+    const pend = pendAnot + pendFotos;
+    return `<div class="faena-card" onclick="abrirFaena('${f.id || f._tempId}')">
+      <div class="fc-num">${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}</div>
+      <div class="fc-cliente">${escHtml(f.cliente_nombre||"—")}</div>
+      <div class="fc-tipo">${escHtml(f.tipo_trabajo||"Sin descripción")}</div>
+      ${f.direccion ? `<div class="fc-dir">📍 ${escHtml(f.direccion)}</div>` : ""}
+      <div class="fc-footer">
+        ${totalPresupuesto > 0 ? `<span class="fc-precio">${totalPresupuesto.toFixed(2)} €</span>` : ""}
+        ${(f.anotaciones?.length||0) > 0 ? `<span class="badge b-gray">📝 ${f.anotaciones.length}</span>` : ""}
+        ${gastosReales.length > 0 ? `<span class="badge b-green">💶 ${gastosReales.length}</span>` : ""}
+        ${pend > 0 ? `<span class="badge b-orange">⏳ ${pend}</span>` : ""}
+        <button class="btn btn-d btn-inline" style="margin-left:auto;padding:4px 8px;font-size:0.7rem" onclick="eliminarFaenaDesdeTarjeta(event,'${f.id || f._tempId}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function eliminarFaenaDesdeTarjeta(event, id) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (!id) return;
+  eliminarFaenaLocal(id);
+}
+
+function eliminarFaenaLocal(id) {
+  if (!confirm("¿Eliminar esta faena del móvil? También se borrarán sus datos locales.")) return;
+  state.faenas = state.faenas.filter(f => String(f.id) !== String(id) && String(f._tempId || "") !== String(id));
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  if (String(state.faenaActualId) === String(id)) cerrarFaena();
+  renderFaenas();
+  toast("✓ Faena eliminada del móvil");
+}
+
+function abrirNuevaFaena() {
+  poblarClientesSel();
+  abrirModal("m-nueva-faena");
+}
+
+function poblarClientesSel() {
+  const cola = cargarCola();
+  const todos = [
+    ...state.clientes,
+    ...cola.clientes.map(c => ({ ...c, nombre: c.nombre + " ⏳" }))
+  ];
+  document.getElementById("nf-cliente-sel").innerHTML =
+    '<option value="">— Selecciona o crea nuevo —</option>' +
+    '<option value="__nuevo__">+ Crear cliente nuevo</option>' +
+    todos.map(c => `<option value="${c.id || c._tempId}">${escHtml(c.nombre)}</option>`).join("");
+}
+
+function toggleNuevoCliente() {
+  const v = document.getElementById("nf-cliente-sel").value;
+  document.getElementById("nuevo-cliente-form").style.display = v === "__nuevo__" ? "block" : "none";
+  if (v !== "__nuevo__") actualizarDatosClienteSeleccionado();
+}
+
+function actualizarDatosClienteSeleccionado() {
+  const sel = document.getElementById("nf-cliente-sel").value;
+  if (!sel || sel === "__nuevo__") return;
+  const cola = cargarCola();
+  const cliente = [...state.clientes, ...cola.clientes].find(c => String(c.id || c._tempId) === String(sel));
+  if (!cliente) return;
+  const tel = cliente.telefono || "";
+  const telInput = document.getElementById("nf-tel");
+  const dirInput = document.getElementById("nf-dir");
+  if (telInput) telInput.value = tel;
+  if (dirInput) dirInput.value = cliente.direccion || "";
+}
+
+async function crearFaena() {
+  const clienteSel = document.getElementById("nf-cliente-sel").value;
+  const esNuevo = clienteSel === "__nuevo__";
+  let clienteId = null, clienteNombre = "";
+  const cola = cargarCola();
+  if (esNuevo) {
+    const nombre = document.getElementById("nc-nombre").value.trim();
+    if (!nombre) { toast("El nombre del cliente es obligatorio", true); return; }
+    const tempId = "TEMP-CLI-" + Date.now();
+    const telefono = document.getElementById("nc-tel").value;
+    const direccion = document.getElementById("nc-dir").value;
+    const email = document.getElementById("nc-email").value;
+    cola.clientes.push({ _tempId: tempId, nombre, telefono, direccion, email });
+    state.clientes.push({ id: tempId, nombre, telefono, direccion });
+    localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+    clienteId = tempId; clienteNombre = nombre;
+  } else {
+    if (!clienteSel) { toast("Selecciona un cliente", true); return; }
+    clienteId = clienteSel;
+    const c = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(clienteSel));
+    clienteNombre = c?.nombre || "—";
+    if (c) {
+      const telInput = document.getElementById("nf-tel");
+      const dirInput = document.getElementById("nf-dir");
+      if (telInput) telInput.value = c.telefono || "";
+      if (dirInput) dirInput.value = c.direccion || "";
+    }
+  }
+  const tipo = document.getElementById("nf-tipo").value.trim();
+  if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
+  const ahora = new Date();
+  const numTemp = `TMP${String(ahora.getDate()).padStart(2,"0")}${String(ahora.getHours()).padStart(2,"0")}${String(ahora.getMinutes()).padStart(2,"0")}`;
+  const faena = {
+    _tempId: numTemp, numero: numTemp, _clienteTempId: esNuevo ? clienteId : null,
+    cliente_id: clienteId, cliente_nombre: clienteNombre, intermediario_id: 0,
+    intermediario_nombre: "Cliente directo",
+    telefono: document.getElementById("nf-tel").value,
+    direccion: document.getElementById("nf-dir").value,
+    tipo_trabajo: tipo,
+    importe: parseFloat(document.getElementById("nf-importe").value) || 0,
+    archivada: 0, anotaciones: [], fotos: [], gastos: [], _offline: true
+  };
+  cola.faenas.push(faena);
+  guardarCola(cola);
+  state.faenas.unshift(faena);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  toast("✓ Faena creada — se sincronizará al llegar a casa");
+  renderFaenas();
+  cerrarModal("m-nueva-faena");
+  // Limpiar
+  ["nf-tel","nf-dir","nf-tipo","nf-importe","nc-nombre","nc-tel","nc-dir","nc-email"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  document.getElementById("nf-cliente-sel").value = "";
+  document.getElementById("nuevo-cliente-form").style.display = "none";
+}
+
+function abrirEditarFaena(id) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (!f) return;
+  document.getElementById("ef-id").value = f.id || f._tempId;
+  document.getElementById("ef-cliente").textContent = f.cliente_nombre || "—";
+  document.getElementById("ef-tel").value = f.cliente_telefono || f.telefono || "";
+  document.getElementById("ef-dir").value = f.direccion || "";
+  document.getElementById("ef-tipo").value = f.tipo_trabajo || "";
+  document.getElementById("ef-importe").value = f.importe || "";
+  abrirModal("m-editar-faena");
+}
+
+async function guardarEditarFaena() {
+  const id = document.getElementById("ef-id").value;
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(id));
+  if (!faena) return;
+  const datos = {
+    telefono:     document.getElementById("ef-tel").value.trim(),
+    direccion:    document.getElementById("ef-dir").value.trim(),
+    tipo_trabajo: document.getElementById("ef-tipo").value.trim(),
+    importe:      parseFloat(document.getElementById("ef-importe").value) || 0,
+    fecha_inicio: faena.fecha_inicio || ""
+  };
+  if (!datos.tipo_trabajo) { toast("El tipo de trabajo es obligatorio", true); return; }
+
+  const aplicar = () => {
+    faena.telefono = datos.telefono;
+    faena.direccion = datos.direccion;
+    faena.tipo_trabajo = datos.tipo_trabajo;
+    faena.importe = datos.importe;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+
+    const cliente = state.clientes.find(c => String(c.id) === String(faena.cliente_id));
+    if (cliente) {
+      cliente.telefono = datos.telefono;
+      localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+    }
+    renderFaenas();
+    if (String(state.faenaActualId) === String(id)) {
+      document.getElementById("ov-num").textContent = faena.numero || "";
+      renderPanelDatos(faena);
+      renderPanelPresupuesto(faena);
+    }
+    cerrarModal("m-editar-faena");
+    toast("✓ Faena actualizada");
+  };
+
+  if (faena._offline) {
+    const cola = cargarCola();
+    const en = cola.faenas.find(x => x._tempId === faena._tempId);
+    if (en) { en.telefono = datos.telefono; en.direccion = datos.direccion; en.tipo_trabajo = datos.tipo_trabajo; en.importe = datos.importe; }
+    guardarCola(cola);
+    aplicar();
+    return;
+  }
+
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(datos), signal: AbortSignal.timeout(6000)
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.ok) {
+      const clienteId = faena.cliente_id;
+      if (clienteId) {
+        await fetch(`${getServerUrl()}/clientes/${clienteId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: faena.cliente_nombre || "",
+            telefono: datos.telefono,
+            direccion: state.clientes.find(c => String(c.id) === String(clienteId))?.direccion || "",
+            email: state.clientes.find(c => String(c.id) === String(clienteId))?.email || "",
+            intermediario_id: 0,
+            notas: state.clientes.find(c => String(c.id) === String(clienteId))?.notas || ""
+          }),
+          signal: AbortSignal.timeout(6000)
+        });
+      }
+      aplicar();
+      return;
+    }
+  } catch(e) { console.error("Error editando faena:", e); }
+
+  const cola = cargarCola();
+  if (!cola.faenasEditar) cola.faenasEditar = [];
+  const idx = cola.faenasEditar.findIndex(x => String(x.id) === String(id));
+  const entry = { id: Number(id) || id, ...datos };
+  if (idx >= 0) cola.faenasEditar[idx] = entry; else cola.faenasEditar.push(entry);
+  guardarCola(cola);
+  aplicar();
+  toast("⏳ Guardado offline — se aplicará al sincronizar");
+}
+
+function opcionesFaenasHtml() {
+  return state.faenas.map(f => `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")}</option>`).join("");
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANOTACIONES
+// ═══════════════════════════════════════════════════════════
+
+function nuevaAnotacion(faenaId) {
+  document.getElementById("anot-faena-id").value = faenaId;
+  document.getElementById("anot-edit-id").value = "";
+  document.getElementById("anot-contenido").value = "";
+  document.getElementById("anot-tipo").value = "texto";
+  document.getElementById("anot-titulo").textContent = "📝 Nueva Anotación";
+  abrirModal("m-anotacion");
+}
+
+function buscarAnotacion(faenaId, anotId) {
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  const enCache = faena?.anotaciones?.find(a => String(a.id || a._tempId) === String(anotId));
+  if (enCache) return { anot: enCache, faena };
+  const cola = cargarCola();
+  const enCola = cola.anotaciones.find(a => String(a._tempId || a.id) === String(anotId) && String(a.faena_id) === String(faenaId));
+  if (enCola) return { anot: enCola, faena };
+  return null;
+}
+
+function editarAnotacionMovil(id, faenaId) {
+  const found = buscarAnotacion(faenaId, id);
+  if (!found) { toast("Anotación no encontrada", true); return; }
+  document.getElementById("anot-faena-id").value = faenaId;
+  document.getElementById("anot-edit-id").value = found.anot.id || found.anot._tempId || id;
+  document.getElementById("anot-contenido").value = found.anot.contenido || "";
+  document.getElementById("anot-tipo").value = found.anot.tipo || "texto";
+  document.getElementById("anot-titulo").textContent = "✏️ Editar Anotación";
+  abrirModal("m-anotacion");
+}
+
+async function eliminarAnotacionMovil(id, faenaId) {
+  if (!confirm("¿Eliminar esta anotación?")) return;
+  const esPend = String(id).startsWith("temp_");
+  if (esPend) {
+    const cola = cargarCola();
+    cola.anotaciones = cola.anotaciones.filter(a => String(a._tempId || a.id) !== String(id));
+    guardarCola(cola);
+    const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+    if (faena?.anotaciones) { faena.anotaciones = faena.anotaciones.filter(a => String(a.id || a._tempId) !== String(id)); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+    toast("✓ Anotación eliminada");
+    _refrescarDocumentos(faenaId);
+    return;
+  }
+  const API = getServerUrl();
+  try {
+    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: AbortSignal.timeout(4000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok) {
+        const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+        if (faena?.anotaciones) { faena.anotaciones = faena.anotaciones.filter(a => String(a.id) !== String(id)); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+        toast("✓ Anotación eliminada"); _refrescarDocumentos(faenaId); return;
+      }
+    }
+  } catch(e) { console.error("Error eliminando anotación:", e); }
+  const cola = cargarCola();
+  if (!cola.anotacionesEliminar.includes(Number(id))) cola.anotacionesEliminar.push(Number(id) || id);
+  guardarCola(cola);
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  if (faena?.anotaciones) { faena.anotaciones = faena.anotaciones.filter(a => String(a.id) !== String(id)); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+  toast("⏳ Se eliminará al sincronizar");
+  _refrescarDocumentos(faenaId);
+}
+
+async function guardarAnotacion() {
+  const faenaId = document.getElementById("anot-faena-id").value;
+  const editId  = document.getElementById("anot-edit-id").value;
+  const tipo    = document.getElementById("anot-tipo").value;
+  const contenido = document.getElementById("anot-contenido").value.trim();
+  if (!contenido) { toast("Escribe algo antes de guardar", true); return; }
+  const API = getServerUrl();
+
+  if (editId) {
+    const esPend = String(editId).startsWith("temp_");
+    if (esPend) {
+      const cola = cargarCola();
+      const en = cola.anotaciones.find(a => String(a._tempId || a.id) === String(editId));
+      if (en) { en.tipo = tipo; en.contenido = contenido; }
+      guardarCola(cola);
+      const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+      if (faena?.anotaciones) { const a = faena.anotaciones.find(a => String(a.id || a._tempId) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+      toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+    }
+    try {
+      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.ok) {
+          const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+          if (faena?.anotaciones) { const a = faena.anotaciones.find(x => String(x.id) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+          toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+        }
+      }
+    } catch(e) { console.error("Error editando anotación:", e); }
+    const cola = cargarCola();
+    if (!cola.anotacionesEditar) cola.anotacionesEditar = [];
+    const idxEd = cola.anotacionesEditar.findIndex(e => String(e.id) === String(editId));
+    const entrada = { id: Number(editId)||editId, tipo, contenido };
+    if (idxEd >= 0) cola.anotacionesEditar[idxEd] = entrada; else cola.anotacionesEditar.push(entrada);
+    guardarCola(cola);
+    const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+    if (faena?.anotaciones) { const a = faena.anotaciones.find(x => String(x.id) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+    toast("⏳ Guardado offline"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+  }
+
+  // Nueva anotación
+  const tempId = "temp_" + Date.now();
+  const anotacion = { faena_id: faenaId, tipo, contenido, fecha: new Date().toISOString(), _tempId: tempId };
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  const esFaenaTemp = faena?._offline;
+  if (!esFaenaTemp) {
+    try {
+      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.ok) {
+          if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: d.data.id }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+          toast("✓ Anotación guardada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+        }
+      }
+    } catch(e) { console.error("Error creando anotación:", e); }
+  }
+  const cola = cargarCola();
+  cola.anotaciones.push(anotacion);
+  guardarCola(cola);
+  if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: tempId }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
+  toast("⏳ Guardado offline");
+  cerrarModal("m-anotacion");
+  _refrescarDocumentos(faenaId);
+}
+
+function _refrescarDocumentos(faenaId) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (f) renderPanelDocumentos(f);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MATERIALES
+// ═══════════════════════════════════════════════════════════
+
+function renderMateriales() {
+  const q = (document.getElementById("q-mat")?.value || "").toLowerCase();
+  const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
+  const el = document.getElementById("lista-materiales");
+  if (!lista.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${state.materiales.length === 0 ? "Sincroniza para ver materiales" : "Sin resultados"}</div>`; return; }
+  const cats = {};
+  lista.forEach(m => { const cat = m.categoria || "Otros"; if (!cats[cat]) cats[cat] = []; cats[cat].push(m); });
+  el.innerHTML = Object.entries(cats).map(([cat, mats]) =>
+    `<div class="mat-cat">${cat}</div>` +
+    mats.map(m => {
+      const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
+      const preciosTxt = precios.map((p,i) => `<span class="${i===0?"mat-precio-min":""}">${escHtml(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`).join("  ·  ");
+      return `<div class="mat-item">
+        <div class="mat-nombre">${escHtml(m.nombre)} <span style="color:#aaa;font-size:0.85rem">(${escHtml(m.unidad)})</span></div>
+        ${m.definicion ? `<div style="font-size:0.7rem;color:#666;font-style:italic;margin-top:2px">📝 ${escHtml(m.definicion)}</div>` : ""}
+        <div class="mat-precios">${preciosTxt || '<em style="color:#ccc">Sin precios</em>'}</div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn btn-s btn-inline" style="font-size:0.75rem" onclick="editarDefinicionMaterial(${m.id},'${escHtml(m.nombre).replace(/'/g,"\\'")}','${(m.definicion||"").replace(/'/g,"\\'")}')">📝 Def.</button>
+          <button class="btn btn-s btn-inline" style="font-size:0.75rem" onclick="abrirPrecio(${m.id})">+ Precio</button>
+        </div>
+      </div>`;
+    }).join("")
+  ).join("");
+}
+
+function editarDefinicionMaterial(id, nombre, def) {
+  const nueva = prompt(`Definición para "${nombre}":`, def || "");
+  if (nueva !== null) actualizarDefinicionMaterial(id, nueva);
+}
+
+async function actualizarDefinicionMaterial(id, definicion) {
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales/${id}/definicion`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({definicion}) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok) {
+        const m = state.materiales.find(x => x.id === id);
+        if (m) m.definicion = definicion;
+        localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+        renderMateriales(); toast("✓ Definición actualizada"); return;
+      }
+    }
+  } catch(e) { console.error("Error definición:", e); }
+  const cola = cargarCola();
+  cola.definicionesPendientes.push({id, definicion});
+  guardarCola(cola);
+  const m = state.materiales.find(x => x.id === id);
+  if (m) m.definicion = definicion;
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales(); toast("⏳ Definición guardada offline");
+}
+
+function abrirPrecio(matId) {
+  document.getElementById("precio-mat-id").value = matId;
+  document.getElementById("precio-prov").value = "";
+  document.getElementById("precio-val").value = "";
+  abrirModal("m-precio");
+}
+
+async function guardarPrecio() {
+  const id = document.getElementById("precio-mat-id").value;
+  const proveedor = document.getElementById("precio-prov").value.trim();
+  const precio = parseFloat(document.getElementById("precio-val").value);
+  if (!proveedor || !precio || isNaN(precio)) { toast("Completa proveedor y precio", true); return; }
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales/${id}/precio`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({proveedor, precio_unitario: precio}) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok) { toast("✓ Precio actualizado"); cerrarModal("m-precio"); await cargarMateriales(); renderMateriales(); return; }
+    }
+  } catch(e) { console.error("Error precio:", e); toast("Error al guardar precio", true); }
+}
+
+async function cargarMateriales() {
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales`);
+    if (r.ok) { const d = await r.json(); if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
+  } catch(e) { console.error("Error cargando materiales:", e); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TICKETS (slide 2)
+// ═══════════════════════════════════════════════════════════
+
+let ticketFotoBase64 = localStorage.getItem("ticket_foto_temp") || null;
+
+function tomarFotoDirecta() {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = e => {
+    if (e.target.files[0]) _leerFotoTicket(e.target.files[0]);
+    input.remove();
+  };
+  input.click();
+}
+
+function ticketPreview(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  _leerFotoTicket(file);
+}
+
+function _leerFotoTicket(file) {
+  const url = URL.createObjectURL(file);
+  document.getElementById("ticket-img-movil").src = url;
+  document.getElementById("ticket-preview-movil").style.display = "block";
+  const reader = new FileReader();
+  reader.onload = e => {
+    ticketFotoBase64 = e.target.result;
+    localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+    URL.revokeObjectURL(url);
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    document.getElementById("ticket-faena-movil").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+  };
+  reader.readAsDataURL(file);
+}
+
+function cancelarTicket() {
+  localStorage.removeItem("ticket_foto_temp"); localStorage.removeItem("ticket_prompt_temp");
+  document.getElementById("ticket-json-movil").value = "";
+  document.getElementById("ticket-foto-movil").value = "";
+  document.getElementById("ticket-preview-movil").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("ticket-paso4").style.display = "none";
+  document.getElementById("ticket-prompt-box").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  ticketFotoBase64 = null;
+  toast("Ticket cancelado");
+}
+
+function restaurarTicket() {
+  const foto = localStorage.getItem("ticket_foto_temp");
+  const prompt = localStorage.getItem("ticket_prompt_temp");
+  if (foto) {
+    document.getElementById("ticket-img-movil").src = foto;
+    document.getElementById("ticket-preview-movil").style.display = "block";
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    ticketFotoBase64 = foto;
+    document.getElementById("ticket-faena-movil").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+  }
+  if (prompt) { document.getElementById("ticket-prompt-txt").textContent = prompt; document.getElementById("ticket-prompt-box").style.display = "block"; }
+}
+
+async function generarPromptTicketMovil() {
+  let prompt = "";
+  try {
+    const r = await fetch(`${getServerUrl()}/prompts/ticket`, { signal: AbortSignal.timeout(5000) });
+    if (r.ok) { const d = await r.json(); if (d.ok) prompt = d.data.prompt; }
+  } catch(e) { prompt = "Analiza el ticket y extrae los artículos en formato JSON: {proveedor, articulos:[{nombre,cantidad,unidad,precio_unitario}]}"; }
+  localStorage.setItem("ticket_prompt_temp", prompt);
+  document.getElementById("ticket-prompt-txt").textContent = prompt;
+  document.getElementById("ticket-prompt-box").style.display = "block";
+}
+
+function copiarTicketPrompt() {
+  const txt = document.getElementById("ticket-prompt-txt").textContent;
+  navigator.clipboard.writeText(txt).then(() => toast("✓ Prompt copiado")).catch(() => {
+    const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); toast("✓ Prompt copiado");
+  });
+}
+
+async function cargarJsonTicketMovil() {
+  const raw = document.getElementById("ticket-json-movil").value.trim();
+  if (!raw) { toast("Pega el JSON primero", true); return; }
+  let datos;
+  try { datos = JSON.parse(raw.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim()); } catch(e) { toast("JSON no válido", true); return; }
+  const faenaId = document.getElementById("ticket-faena-movil").value;
+  const articulos = datos.articulos || [];
+  if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+  const cola = cargarCola();
+  cola.tickets.push({ proveedor: datos.proveedor||"", fecha: datos.fecha||new Date().toISOString().substring(0,10), articulos, faena_id: faenaId||null });
+  guardarCola(cola);
+  for (const art of articulos) {
+    if (!art.nombre) continue;
+    if (!state.materiales.find(m => m.nombre.toLowerCase() === art.nombre.toLowerCase())) {
+      state.materiales.push({ id: `temp_${Date.now()}_${Math.random()}`, nombre: art.nombre, unidad: art.unidad||"ud", categoria: "Otro", precios: [] });
+    }
+  }
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales();
+  toast(`✓ ${articulos.length} artículo${articulos.length!==1?"s":""} guardado — se subirán al sincronizar`);
+  actualizarPendientesInfo();
+  cancelarTicket();
+}
+
+function mostrarTextoManual() {
+  document.getElementById("ticket-paso4").style.display = "block";
+  document.getElementById("ticket-faena-texto").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+}
+
+async function procesarTextoManual() {
+  const texto = document.getElementById("ticket-texto-manual").value.trim();
+  if (!texto) { toast("Escribe o pega el texto primero", true); return; }
+  const faenaId = document.getElementById("ticket-faena-texto").value;
+  toast("Enviando a IA...");
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/procesar-texto`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({texto, faena_id: faenaId||null}) });
+    const d = await r.json();
+    if (d.ok) { toast(`✓ ${d.data.articulos.length} artículos procesados`); await cargarMateriales(); renderMateriales(); document.getElementById("ticket-texto-manual").value = ""; document.getElementById("ticket-paso4").style.display = "none"; }
+    else toast(d.error||"Error al procesar", true);
+  } catch(e) { toast("Error de conexión con el PC", true); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOK
+// ═══════════════════════════════════════════════════════════
+
+let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
+let bookDirHandle = null;
+
+async function añadirFotoBook(faenaId = null) {
+  let titulo = "";
+  if (faenaId) {
+    const f = state.faenas.find(x => String(x.id||x._tempId) === String(faenaId));
+    titulo = f?.tipo_trabajo || "";
+  } else {
+    titulo = prompt("Título para la foto:", "") || "Sin título";
+  }
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async e => {
+    const file = e.target.files[0]; input.remove();
+    if (!file) return;
+    toast("Procesando imagen...");
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = async () => {
+      const MAX = 800; const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * ratio); canvas.height = Math.round(img.height * ratio);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const base64 = canvas.toDataURL("image/jpeg", 0.65);
+      const cola = cargarCola();
+      if (!cola.bookPendiente) cola.bookPendiente = [];
+      const fotoBook = { id: `book_${Date.now()}`, data: base64, titulo: titulo||"Sin título", fecha: new Date().toISOString() };
+      cola.bookPendiente.push(fotoBook); guardarCola(cola);
+      bookCache.push(fotoBook); localStorage.setItem("book_cache", JSON.stringify(bookCache));
+      renderBookMovil(); toast("✓ Foto añadida al book");
+    };
+    img.src = url;
+  };
+  input.click();
+}
+
+async function configurarCarpetaBook() {
+  if (!window.showDirectoryPicker) { toast("Carpeta no disponible en este navegador", true); return; }
+  try {
+    bookDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    localStorage.setItem("book_dir_name", bookDirHandle.name);
+    document.getElementById("book-carpeta-info").textContent = "📁 " + bookDirHandle.name;
+    document.getElementById("book-carpeta-info").style.display = "block";
+    toast("✓ Carpeta: " + bookDirHandle.name);
+    await cargarFotosDeCarpetaBook();
+  } catch(e) { if (e.name !== "AbortError") toast("Error al seleccionar carpeta", true); }
+}
+
+async function cargarFotosDeCarpetaBook() {
+  if (!bookDirHandle) return;
+  const fotos = [];
+  for await (const entry of bookDirHandle.values()) {
+    if (entry.kind === "file" && /\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
+      const file = await entry.getFile();
+      fotos.push({ nombre: entry.name, titulo: entry.name.replace(/\.[^.]+$/,"").replace(/_/g," "), data: await fileToBase64(file), _local: true });
+    }
+  }
+  bookCache = fotos; renderBookMovil();
+}
+
+function renderBookMovil() {
+  const el = document.getElementById("book-movil-galeria");
+  const dirN = localStorage.getItem("book_dir_name");
+  if (dirN) { const inf = document.getElementById("book-carpeta-info"); if (inf) { inf.textContent = "📁 " + dirN; inf.style.display = "block"; } }
+  if (!bookDirHandle && !dirN) { el.innerHTML = `<div class="empty"><div class="empty-icon">📁</div>Configura la carpeta del book<br><small>Pulsa 📁 para elegir dónde guardar las fotos</small></div>`; return; }
+  if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos.<br><small>Pulsa + Foto para añadir</small></div>`; return; }
+  el.innerHTML = `<div class="book-grid">${bookCache.map((f,i) => `<div class="book-card"><img src="${f.data}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoGrande('${f.data}')" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`).join("")}</div>`;
+}
+
+async function compartirFotoBook(idx) {
+  const f = bookCache[idx]; if (!f) return;
+  try {
+    const blob = await (await fetch(f.data)).blob();
+    const file = new File([blob], `${(f.titulo||"foto").replace(/\s+/g,"_")}.jpg`, {type:"image/jpeg"});
+    if (navigator.share && navigator.canShare?.({files:[file]})) { await navigator.share({files:[file], title: f.titulo||"Trabajo"}); return; }
+    const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = file.name; a.click(); URL.revokeObjectURL(url); toast("✓ Foto descargada");
+  } catch(e) { if (e.name !== "AbortError") toast("Error al compartir", true); }
+}
+
+async function quitarDelBook(idx) {
+  if (!confirm("¿Quitar esta foto del book?")) return;
+  const f = bookCache[idx];
+  if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
+  bookCache.splice(idx, 1);
+  localStorage.setItem("book_cache", JSON.stringify(bookCache));
+  renderBookMovil(); toast("Foto quitada del book");
+}
+
+async function compartirBook() {
+  if (!bookCache.length) { toast("El book está vacío", true); return; }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.2rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 5px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:8px 10px}.t{font-size:.85rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${bookCache.map(f=>`<div class="card"><img src="${f.data}" alt="${f.titulo||""}"><div class="info"><div class="t">${f.titulo||""}</div></div></div>`).join("")}</div></body></html>`;
+  const blob = new Blob([html], {type:"text/html"});
+  const file = new File([blob],"book_trabajos.html",{type:"text/html"});
+  if (navigator.share && navigator.canShare?.({files:[file]})) { try { await navigator.share({title:"Book de trabajos",files:[file]}); return; } catch(e) {} }
+  const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "book_trabajos.html"; a.click(); URL.revokeObjectURL(url); toast("✓ Book descargado");
+}
+
+async function sincronizarBook(API) {
+  try {
+    const cola = cargarCola();
+    for (const foto of (cola.bookPendiente||[])) {
+      try {
+        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:null, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(10000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch(e) { console.error("Error subiendo foto book:", e); }
+    }
+    cola.bookPendiente = []; guardarCola(cola);
+    const r = await fetch(`${API}/sync/book`, {signal: AbortSignal.timeout(60000)});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.ok && d.data.length > 0) {
+      bookCache = d.data;
+      if (bookDirHandle) {
+        for (const foto of bookCache) {
+          if (foto.data) {
+            const nombre = `${(foto.faena_numero||"foto").replace(/[^a-zA-Z0-9]/g,"_")}_${foto.id}.jpg`;
+            foto.nombre = nombre;
+            try {
+              const fh = await bookDirHandle.getFileHandle(nombre, {create:true});
+              const w = await fh.createWritable();
+              const data = foto.data.split(",")[1];
+              await w.write(Uint8Array.from(atob(data), c => c.charCodeAt(0)));
+              await w.close();
+            } catch(e) {}
+          }
+        }
+      }
+      localStorage.setItem("book_cache", JSON.stringify(bookCache));
+
+    }
+  } catch(e) { console.error("Error sync book:", e); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SYNC
+// ═══════════════════════════════════════════════════════════
+
+function actualizarPendientesInfo() {
+  const c = cargarCola();
+  const tkt = (c.tickets||[]).reduce((s,t) => s+(t.articulos||[]).length, 0);
+  const total = c.clientes.length + c.faenas.length + c.anotaciones.length + c.fotos.length +
+    c.ticketFotos.length + tkt + (c.definicionesPendientes||[]).length + (c.faenasEditar||[]).length + (c.gastos||[]).length;
+  const el = document.getElementById("pendientes-info");
+  if (total === 0) { el.innerHTML = ""; return; }
+  const lineas = [];
+  if (c.clientes.length) lineas.push(`${c.clientes.length} cliente${c.clientes.length>1?"s":""}`);
+  if (c.faenas.length) lineas.push(`${c.faenas.length} faena${c.faenas.length>1?"s":""} nueva${c.faenas.length>1?"s":""}`);
+  if ((c.faenasEditar||[]).length) lineas.push(`${c.faenasEditar.length} faena${c.faenasEditar.length>1?"s":""} editada${c.faenasEditar.length>1?"s":""}`);
+  if (c.anotaciones.length) lineas.push(`${c.anotaciones.length} anotación${c.anotaciones.length>1?"es":""}`);
+  if (c.fotos.length) lineas.push(`${c.fotos.length} foto${c.fotos.length>1?"s":""}`);
+  if (c.gastos.length) lineas.push(`${c.gastos.length} gasto${c.gastos.length>1?"s":""}`);
+  if (c.ticketFotos.length) lineas.push(`${c.ticketFotos.length} foto${c.ticketFotos.length>1?"s":""} de ticket`);
+  if (tkt) lineas.push(`${tkt} artículo${tkt>1?"s":""} de ticket`);
+  el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>· ${lineas.join("<br>· ")}</div>`;
+}
+
+function guardarIP() {
+  const ip = document.getElementById("ip-config").value.trim();
+  localStorage.setItem("server_ip", ip.replace(/:\d+$/,""));
+}
+
+function limpiarCacheLocal() {
+  if (!confirm("¿Borrar todos los datos del móvil?\n\nLos registros del PC no se eliminan.\nSincroniza después para recargarlos.")) return;
+  const ip = localStorage.getItem("server_ip");
+  localStorage.clear();
+  if (ip) localStorage.setItem("server_ip", ip);
+  location.reload();
+}
+
+async function sincronizar() {
+  const btn = document.getElementById("btn-sync");
+  const estado = document.getElementById("sync-estado");
+  const API = getServerUrl();
+  btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...';
+  btn.disabled = true; estado.textContent = ""; estado.className = "sync-estado";
+
+  const cola = cargarCola();
+  try {
+    await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
+    estado.textContent = "✓ Conectado...";
+
+    // Clientes nuevos
+    const mapaClientes = {};
+    for (const c of cola.clientes) {
+      try {
+        const r = await fetch(`${API}/clientes`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:c.nombre, telefono:c.telefono, direccion:c.direccion || "", email:c.email, intermediario_id:0}), signal:AbortSignal.timeout(8000)});
+        if (r.ok) { const d = await r.json(); if (d.ok) mapaClientes[c._tempId] = d.data.id; }
+      } catch(e) {}
+    }
+
+    // Faenas nuevas
+    const mapaFaenas = {};
+    for (const f of cola.faenas) {
+      try {
+        const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id;
+        const clienteBase = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(f._clienteTempId || f.cliente_id));
+        const direccionFaena = f.direccion || clienteBase?.direccion || "";
+        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:AbortSignal.timeout(8000)});
+        if (r.ok) { const d = await r.json(); if (d.ok) mapaFaenas[f._tempId] = {id:d.data.id, numero:d.data.numero}; }
+      } catch(e) {}
+    }
+    if (cola.faenas.length) estado.textContent = `✓ ${cola.faenas.length} faena${cola.faenas.length>1?"s":""} subida${cola.faenas.length>1?"s":""}...`;
+
+    // Faenas editadas
+    for (const ed of (cola.faenasEditar||[])) {
+      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:AbortSignal.timeout(6000)}); } catch(e) {}
+    }
+
+    // Anotaciones
+    if (cola.anotaciones.length) {
+      try {
+        const anots = cola.anotaciones.map(a => ({...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id}));
+        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:AbortSignal.timeout(10000)});
+        estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
+      } catch(e) {}
+    }
+    if ((cola.anotacionesEditar||[]).length) {
+      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
+    }
+    if ((cola.anotacionesEliminar||[]).length) {
+      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
+    }
+
+    if ((cola.gastos||[]).length) {
+      try {
+        const r = await fetch(`${API}/sync/gastos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({operaciones: cola.gastos}), signal:AbortSignal.timeout(10000)});
+        if (r.ok) {
+          const d = await r.json();
+          if (d.ok) {
+            for (const map of (d.data?.creados_detalle || [])) {
+              const tempId = String(map.temp_id || "");
+              const realId = map.id;
+              for (const faena of state.faenas) {
+                if (!faena.gastos) continue;
+                for (const gasto of faena.gastos) {
+                  if (String(gasto.id) === tempId) {
+                    gasto.id = realId;
+                    if (map.faena_id != null) gasto.faena_id = map.faena_id;
+                  }
+                }
+              }
+            }
+            cola.gastos = [];
+            guardarCola(cola);
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Tickets JSON (materiales)
+    if ((cola.tickets||[]).length) {
+      try {
+        const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:AbortSignal.timeout(30000)});
+        if (r.ok) { const d = await r.json(); if (d.ok) estado.textContent = `✓ ${d.data.procesados} artículo${d.data.procesados!==1?"s":""} de ticket subido${d.data.procesados!==1?"s":""}...`; }
+      } catch(e) {}
+    }
+
+    // Fotos de obra
+    let fotosEnviadas = 0;
+    if (cola.fotos.length) {
+      estado.textContent = `✓ Subiendo ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}...`;
+      for (const foto of cola.fotos) {
+        try {
+          const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
+          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
+          if (r.ok) { const d = await r.json(); if (d.ok) fotosEnviadas++; }
+        } catch(e) {}
+      }
+      estado.textContent = `✓ ${fotosEnviadas} foto${fotosEnviadas>1?"s":""} subida${fotosEnviadas>1?"s":""}...`;
+    }
+
+    // Fotos de tickets → PC para procesar
+    let ticketsEnviados = 0;
+    if ((cola.ticketFotos||[]).length) {
+      estado.textContent = `✓ Subiendo ${cola.ticketFotos.length} foto${cola.ticketFotos.length>1?"s":""} de ticket...`;
+      for (const tkt of cola.ticketFotos) {
+        try {
+          const faenaId = mapaFaenas[tkt.faena_id]?.id || tkt.faena_id;
+          const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:AbortSignal.timeout(30000)});
+          if (r.ok) { const d = await r.json(); if (d.ok) ticketsEnviados++; }
+        } catch(e) { console.error("Error subiendo ticket-foto:", e); }
+      }
+      estado.textContent = `✓ ${ticketsEnviados} foto${ticketsEnviados>1?"s":""} de ticket enviada${ticketsEnviados>1?"s":""}...`;
+    }
+
+    // Definiciones de material
+    for (const def of (cola.definicionesPendientes||[])) {
+      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:AbortSignal.timeout(6000)}); } catch(e) {}
+    }
+
+    // Descargar faenas + materiales + clientes
+    estado.textContent = "✓ Descargando datos del PC...";
+    const [rFaenas, rMat, rCli] = await Promise.all([
+      fetch(`${API}/sync/datos`, {signal:AbortSignal.timeout(15000)}),
+      fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
+      fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
+    ]);
+    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) { state.faenas = d.data; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } }
+    if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
+    if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
+
+    // Descargar fotos sincronizadas (thumbnails)
+    estado.textContent = "✓ Descargando fotos...";
+    for (const faena of state.faenas) {
+      try {
+        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:AbortSignal.timeout(15000)});
+        if (r.ok) { const d = await r.json(); if (d.ok) faena.fotos = d.data; }
+      } catch(e) {}
+    }
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+
+    await sincronizarBook(API);
+
+    // Limpiar cola
+    guardarCola({ clientes:[], faenas:[], anotaciones:[], anotacionesEditar:[], anotacionesEliminar:[], fotos:[], ticketFotos:[], tickets:[], faenasEditar:[], definicionesPendientes:[], bookEliminar:[], bookPendiente:[] });
+    const ahora = new Date().toLocaleString("es-ES");
+    localStorage.setItem("ultima_sync", ahora);
+    document.getElementById("ultima-sync").textContent = ahora;
+
+    renderFaenas();
+    renderMateriales();
+    actualizarPendientesInfo();
+
+    // Si hay un overlay abierto, refrescar los paneles
+    if (state.faenaActualId) {
+      const f = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+      if (f && document.getElementById("faena-overlay").classList.contains("open")) {
+        renderPanelDatos(f); renderPanelPresupuesto(f);
+        renderPanelDocumentos(f); renderPanelFotos(f); renderPanelGastos(f);
+      }
+    }
+
+    const partes = [];
+    if (cola.faenas.length) partes.push(`${cola.faenas.length} faena${cola.faenas.length>1?"s":""}`);
+    if (cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
+    if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
+    if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
+    estado.textContent = partes.length ? `✓ Sincronizado · ${partes.join(" · ")}` : "✓ Sincronizado";
+    estado.className = "sync-estado sync-ok";
+    toast("✓ Sincronización completada");
+  } catch(e) {
+    estado.textContent = `✗ Error: ${e.message}`;
+    estado.className = "sync-estado sync-error";
+    toast("Error: " + e.message, true);
+  }
+  btn.innerHTML = "⟳ &nbsp; Sincronizar ahora";
+  btn.disabled = false;
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+
+function init() {
+  // IP guardada
+  const ip = localStorage.getItem("server_ip");
+  const hostPagina = location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1" ? location.hostname : "";
+  if (hostPagina) localStorage.setItem("server_ip", hostPagina);
+  if (hostPagina) document.getElementById("ip-config").value = hostPagina;
+  else if (ip) document.getElementById("ip-config").value = ip;
+  // Última sync
+  const ultima = localStorage.getItem("ultima_sync");
+  if (ultima) document.getElementById("ultima-sync").textContent = ultima;
+  // Renders iniciales
+  renderFaenas();
+  renderMateriales();
+  actualizarPendientesInfo();
+  // Service Worker
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+  }
+  // Offline indicator
+  window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
+  window.addEventListener("offline", () => document.getElementById("offline-ind").classList.add("show"));
+  if (!navigator.onLine) document.getElementById("offline-ind").classList.add("show");
+}
+
+init();
+</script>
+</body>
+</html>

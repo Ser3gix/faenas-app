@@ -1,0 +1,10 @@
+1;447;0;0;477;0;0;Suelo;MELA_BL
+1;2761;0;0;100;0;0;Lateral Derecho;MELA_BL
+1;2761;1;0;480;0;0;Lateral Izquierdo;MELA_BL
+1;378;0;0;100;0;0;Faja superior;PLW_305
+1;2761;0;0;100;0;0;Faja Iz;MELA_BL
+1;40;0;0;392;1;0;Puerta_1;MELA_BL
+1;2713;0;0;392;0;0;Puerta_2;MELA_BL
+1;2756;0;0;34;1;0;Puerta_3;MELA_BL
+1;477;0;0;70;0;0;Zócalo 1 [1];MELA_BL
+1;447;0;0;70;0;0;Zócalo 1 [2];MELA_BL

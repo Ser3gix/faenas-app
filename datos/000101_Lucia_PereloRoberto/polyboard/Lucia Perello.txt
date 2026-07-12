@@ -1,0 +1,10 @@
+1.5 tableros    160
+2 canteorneras   20
+8 bisagras       20
+2 tiradores       8
+corte y canto   100
+herraje         100
+pino             20
+
+Total           460 estimado
+total           800

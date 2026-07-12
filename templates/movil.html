@@ -1,0 +1,2293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#5c3d0e">
+<title>Faenas</title>
+<style>
+/* Fuentes del sistema en lugar de Google Fonts — funciona sin internet */
+:root {
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}
+  --wood: #c8a96e;
+  --wood-dark: #8b6914;
+  --wood-light: #f0deb4;
+  --ink: #1a1208;
+  --paper: #faf6ee;
+  --paper-dark: #ede8dc;
+  --sawdust: #e8d9b8;
+  --accent: #5c3d0e;
+  --green: #3a6b3a;
+  --red: #8b2020;
+  --blue: #1e3a5f;
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: var(--font-mono);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  padding-bottom: calc(70px + var(--safe-bottom));
+}
+
+header {
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 14px 18px;
+  padding-top: max(14px, env(safe-area-inset-top, 14px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+header h1 { font-family: var(--font-serif); font-size: 1.1rem; flex: 1; }
+.sync-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--wood-light);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.offline-indicator {
+  font-size: 0.65rem;
+  background: rgba(255,255,255,0.15);
+  padding: 3px 8px;
+  border-radius: 10px;
+  display: none;
+}
+.offline-indicator.show { display: block; }
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: white;
+  border-top: 2px solid var(--sawdust);
+  display: flex;
+  padding-bottom: var(--safe-bottom);
+  z-index: 50;
+}
+.bottom-nav button {
+  flex: 1;
+  padding: 10px 4px;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.bottom-nav button .ni { font-size: 1.3rem; }
+.bottom-nav button.active { color: var(--accent); }
+
+main { padding: 16px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* CARDS */
+.card {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: 2px 2px 0 var(--sawdust);
+  cursor: pointer;
+}
+.card:active { background: var(--paper-dark); }
+.card-num { font-size: 0.68rem; margin-bottom: 4px; }
+.card-title { font-family: var(--font-serif); font-size: 1rem; color: var(--accent); margin-bottom: 6px; }
+.card-info { font-size: 0.78rem; color: #666; line-height: 1.6; }
+.card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+.num-faena {
+  background: var(--ink);
+  color: var(--wood-light);
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+.num-temp {
+  background: #8b5000;
+  color: #fdecd0;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.badge {
+  font-size: 0.62rem;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.b-direct { background: var(--wood-light); color: var(--wood-dark); }
+.b-inter  { background: #dde8f0; color: var(--blue); }
+.b-green  { background: #d4edda; color: var(--green); }
+.b-gray   { background: #e8e8e8; color: #555; }
+.b-orange { background: #fdecd0; color: #8b5000; }
+
+/* FORMS */
+.form-box {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.form-title {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.field { margin-bottom: 12px; }
+label { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: #888; margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: white;
+  color: var(--ink);
+  -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
+textarea { resize: vertical; min-height: 80px; }
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.btn:active { opacity: 0.85; }
+.btn-p { background: var(--accent); color: var(--wood-light); }
+.btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
+.btn-g { background: #d4edda; color: var(--green); border: 1px solid #a8d5b5; }
+.btn-d { background: #fde8e8; color: var(--red); border: 1px solid #f0b0b0; }
+.btn-inline { width: auto; margin-bottom: 0; padding: 7px 14px; font-size: 0.72rem; }
+
+/* DETALLE */
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-bottom: 16px;
+  padding: 4px 0;
+}
+.det-section { margin-bottom: 20px; }
+.det-section-title {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sawdust);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.det-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  font-size: 0.8rem;
+  gap: 8px;
+}
+.det-row:last-child { border-bottom: none; }
+.det-k { color: #999; font-size: 0.68rem; text-transform: uppercase; white-space: nowrap; }
+.det-v { color: var(--ink); font-weight: 500; text-align: right; }
+
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.tab-btn {
+  flex: 1;
+  border: 1px solid var(--sawdust);
+  background: white;
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.tab-btn.active {
+  background: var(--accent);
+  color: var(--wood-light);
+  border-color: var(--accent);
+}
+
+.tabla-sync {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.73rem;
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tabla-sync th,
+.tabla-sync td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+.tabla-sync th {
+  background: #f7f1e4;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.64rem;
+}
+.tabla-sync tr:last-child td { border-bottom: none; }
+.tabla-sync td.num { text-align: right; white-space: nowrap; }
+.tabla-sync td.desc { min-width: 120px; }
+
+.anot-item {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+.anot-meta { font-size: 0.65rem; color: #aaa; margin-top: 4px; }
+
+/* FOTOS */
+.foto-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.foto-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+}
+.foto-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.foto-thumb .foto-pending {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(139,80,0,0.85);
+  color: white;
+  font-size: 0.6rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.foto-thumb .foto-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(139,32,32,0.85);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* MATERIALES */
+.mat-cat {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.mat-item {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+.mat-nombre { font-size: 0.85rem; font-weight: 500; margin-bottom: 4px; }
+.mat-precios { font-size: 0.75rem; color: #666; }
+.mat-precio-min { color: var(--green); font-weight: 500; }
+
+/* SYNC */
+.sync-box {
+  background: white;
+  border: 2px solid var(--sawdust);
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+  margin: 20px 0;
+}
+.sync-estado { font-size: 0.8rem; color: #888; margin-top: 12px; line-height: 1.6; }
+.sync-ok { color: var(--green); }
+.sync-error { color: var(--red); }
+
+.pending-badge {
+  background: #fdecd0;
+  color: #8b5000;
+  border: 1px solid #f0c070;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.ip-box {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+
+.empty { text-align: center; padding: 40px 20px; color: #ccc; }
+.empty-icon { font-size: 2.5rem; margin-bottom: 8px; }
+
+.toast {
+  position: fixed;
+  bottom: calc(76px + var(--safe-bottom));
+  left: 16px; right: 16px;
+  background: var(--accent);
+  color: var(--wood-light);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  z-index: 999;
+  text-align: center;
+  transform: translateY(20px);
+  opacity: 0;
+  transition: all 0.25s;
+  pointer-events: none;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.err { background: var(--red); }
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* BOOK */
+.book-grid-movil {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.book-card-movil {
+  background: white;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 var(--sawdust);
+}
+.book-card-movil img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+}
+.book-card-movil-info {
+  padding: 8px 10px;
+}
+.book-card-movil-titulo {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.book-card-movil-meta {
+  font-size: 0.68rem;
+  color: #aaa;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.4rem">🪵</span>
+  <h1>Faenas</h1>
+  <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
+  <button class="sync-btn" onclick="navTo('sync')">⟳ Sync</button>
+</header>
+
+<main>
+
+  <!-- FAENAS -->
+  <div id="s-faenas" class="section active">
+    <div style="margin-bottom:14px;display:flex;gap:8px">
+      <input id="q-faena" placeholder="🔍 Buscar faena..." oninput="renderFaenas()" style="margin:0;flex:1">
+      <button class="btn btn-p btn-inline" onclick="navTo('nueva-faena')" style="white-space:nowrap">+ Nueva</button>
+    </div>
+    <div id="lista-faenas"></div>
+  </div>
+
+  <!-- DETALLE FAENA -->
+  <div id="s-detalle" class="section">
+    <div class="back-btn" onclick="navTo('faenas')">← Volver</div>
+    <div id="detalle-contenido"></div>
+  </div>
+
+  <!-- NUEVA FAENA -->
+  <div id="s-nueva-faena" class="section">
+    <div class="back-btn" onclick="navTo('faenas')">← Volver</div>
+    <div class="form-box">
+      <div class="form-title">🔨 Nueva Faena</div>
+
+      <div class="field">
+        <label>Cliente *</label>
+        <select id="nf-cliente-sel" onchange="toggleNuevoCliente()">
+          <option value="">— Selecciona o crea nuevo —</option>
+          <option value="__nuevo__">+ Crear cliente nuevo</option>
+        </select>
+      </div>
+
+      <!-- Formulario cliente nuevo (oculto por defecto) -->
+      <div id="nuevo-cliente-form" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:6px;padding:12px;margin-bottom:12px">
+        <div style="font-size:0.75rem;color:var(--accent);font-weight:500;margin-bottom:8px">Nuevo cliente</div>
+        <div class="field">
+          <label>Nombre *</label>
+          <input id="nc-nombre" placeholder="Nombre completo">
+        </div>
+        <div class="field">
+          <label>Teléfono</label>
+          <input id="nc-tel" type="tel" placeholder="600 000 000">
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label>Email</label>
+          <input id="nc-email" type="email" placeholder="correo@email.com">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Dirección de la obra</label>
+        <input id="nf-dir" placeholder="Calle, número, ciudad...">
+      </div>
+      <div class="field">
+        <label>Tipo de trabajo</label>
+        <input id="nf-tipo" placeholder="Cocina, armario, estantería...">
+      </div>
+      <div class="field">
+        <label>Importe estimado (€)</label>
+        <input id="nf-importe" type="number" placeholder="0.00" step="0.01">
+      </div>
+      <div class="field">
+        <label>Fecha</label>
+        <input id="nf-fecha" type="date">
+      </div>
+
+      <button class="btn btn-p" onclick="crearFaena()">💾 Crear faena</button>
+      <button class="btn btn-s" onclick="navTo('faenas')">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- NUEVA ANOTACIÓN -->
+  <div id="s-anotacion" class="section">
+    <div class="back-btn" onclick="volverDetalle()">← Volver</div>
+    <div class="form-box">
+      <div class="form-title">📝 Nueva Anotación</div>
+      <input type="hidden" id="anot-faena-id">
+      <div class="field">
+        <label>Tipo</label>
+        <select id="anot-tipo">
+          <option value="texto">📝 Texto</option>
+          <option value="archivo">📎 Archivo</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Contenido</label>
+        <textarea id="anot-contenido" rows="5" placeholder="Escribe aquí..."></textarea>
+      </div>
+      <button class="btn btn-p" onclick="guardarAnotacion()">💾 Guardar</button>
+      <button class="btn btn-s" onclick="volverDetalle()">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- MATERIALES -->
+  <div id="s-materiales" class="section">
+    <div style="margin-bottom:14px">
+      <input id="q-mat" placeholder="🔍 Buscar material..." oninput="renderMateriales()" style="margin:0">
+    </div>
+    <div id="lista-materiales"></div>
+  </div>
+
+  <!-- TICKETS -->
+  <div id="s-tickets" class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent)">🎫 Tickets</div>
+      <button class="btn btn-d btn-inline" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">× Cancelar</button>
+    </div>
+
+    <!-- PASO 1 — Seleccionar foto -->
+    <div class="form-box">
+      <div class="form-title">Paso 1 — Foto del ticket</div>
+      <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
+        Selecciona la foto del ticket de la galería del móvil.
+      </p>
+      <input type="file" id="ticket-foto-movil" accept="image/*"
+             onchange="ticketPreview(event)"
+             style="display:none">
+      <button class="btn btn-p" onclick="document.getElementById('ticket-foto-movil').click()">
+        🖼️ Seleccionar foto
+      </button>
+      <div id="ticket-preview-movil" style="display:none;margin-top:12px">
+        <img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:300px;object-fit:contain">
+      </div>
+    </div>
+
+    <!-- PASO 2 — Generar prompt -->
+    <div class="form-box" id="ticket-paso2" style="display:none">
+      <div class="form-title">Paso 2 — Generar y copiar prompt</div>
+      <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
+        Pulsa generar, copia el prompt, abre Claude.ai, adjunta la foto y pega el prompt.
+      </p>
+      <button class="btn btn-p" onclick="generarPromptTicketMovil()">Generar prompt</button>
+      <div id="ticket-prompt-box" style="display:none;margin-top:12px">
+        <div style="background:#1a1208;color:#f0deb4;border-radius:6px;padding:14px;font-size:0.75rem;line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-bottom:10px" id="ticket-prompt-txt"></div>
+        <button class="btn btn-g" onclick="copiarTicketPrompt()">📋 Copiar prompt</button>
+        <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px;font-size:0.75rem;color:#8b6914;margin-top:8px;line-height:1.6">
+          💡 Abre Claude.ai, adjunta la foto del ticket y pega el prompt
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 3 — Pegar JSON -->
+    <div class="form-box" id="ticket-paso3" style="display:none">
+      <div class="form-title">Paso 3 — Pegar JSON de respuesta</div>
+      <div class="field">
+        <label>JSON de Claude</label>
+        <textarea id="ticket-json-movil" rows="6"
+                  placeholder='{"proveedor":"...","articulos":[...]}'
+                  style="font-size:0.75rem"></textarea>
+      </div>
+      <div class="field">
+        <label>Asignar a faena (opcional)</label>
+        <select id="ticket-faena-movil">
+          <option value="">— Sin asignar —</option>
+        </select>
+      </div>
+      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Cargar datos</button>
+    </div>
+  </div>
+
+  <!-- BOOK DE FOTOS -->
+
+  <div id="s-book" class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent)">📸 Book</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s btn-inline" onclick="configurarCarpetaBook()">📁 Carpeta</button>
+        <button class="btn btn-g btn-inline" onclick="compartirBook()">↗ Compartir</button>
+      </div>
+    </div>
+    <div id="book-carpeta-info" style="font-size:0.72rem;color:#aaa;margin-bottom:12px;padding:8px 12px;background:var(--paper-dark);border-radius:6px;display:none"></div>
+    <div id="book-movil-galeria"></div>
+  </div>
+
+  <!-- SINCRONIZACIÓN -->
+
+  <div id="s-sync" class="section">
+    <div class="sync-box">
+      <div style="font-size:2.5rem;margin-bottom:10px">⟳</div>
+      <div style="font-family:var(--font-serif);font-size:1.1rem;color:var(--accent);margin-bottom:8px">Sincronizar con el PC</div>
+      <div style="font-size:0.8rem;color:#888;margin-bottom:20px;line-height:1.6">
+        El PC debe estar encendido y conectado al mismo WiFi.
+      </div>
+
+      <div id="pendientes-info"></div>
+
+      <button class="btn btn-p" onclick="sincronizar()" id="btn-sync">⟳ &nbsp; Sincronizar ahora</button>
+      <div class="sync-estado" id="sync-estado"></div>
+    </div>
+
+    <div class="ip-box">
+      <div class="form-title" style="margin-bottom:10px">⚙️ Dirección del PC</div>
+      <div class="field">
+        <label>IP del servidor</label>
+        <input id="ip-config" value="" readonly>
+      </div>
+      <div style="font-size:0.72rem;color:#aaa;line-height:1.6">
+        IP fija configurada para este PC.
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:14px 16px;background:var(--paper-dark);border-radius:8px;font-size:0.75rem;color:#888;line-height:1.7">
+      <strong style="color:var(--accent)">Última sincronización:</strong><br>
+      <span id="ultima-sync">Nunca</span>
+    </div>
+  </div>
+
+</main>
+
+<div class="bottom-nav">
+  <button class="active" id="nav-faenas" onclick="navTo('faenas')">
+    <span class="ni">🔨</span>Faenas
+  </button>
+  <button id="nav-materiales" onclick="navTo('materiales')">
+    <span class="ni">📦</span>Materiales
+  </button>
+  <button id="nav-tickets" onclick="navTo('tickets')">
+    <span class="ni">🎫</span>Tickets
+  </button>
+  <button id="nav-book" onclick="navTo('book')">
+    <span class="ni">📸</span>Book
+  </button>
+  <button id="nav-sync" onclick="navTo('sync')">
+    <span class="ni">⟳</span>Sync
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Input de cámara se crea dinámicamente en hacerFoto() -->
+
+<script>
+// ============================================================
+// COLA OFFLINE — todo lo pendiente de sincronizar
+// ============================================================
+function cargarCola() {
+  return {
+    clientes:    JSON.parse(localStorage.getItem("cola_clientes")    || "[]"),
+    faenas:      JSON.parse(localStorage.getItem("cola_faenas")      || "[]"),
+    anotaciones: JSON.parse(localStorage.getItem("cola_anotaciones") || "[]"),
+    fotos:       JSON.parse(localStorage.getItem("cola_fotos")       || "[]")
+  };
+}
+function guardarCola(cola) {
+  localStorage.setItem("cola_clientes",    JSON.stringify(cola.clientes));
+  localStorage.setItem("cola_faenas",      JSON.stringify(cola.faenas));
+  localStorage.setItem("cola_anotaciones", JSON.stringify(cola.anotaciones));
+  localStorage.setItem("cola_fotos",       JSON.stringify(cola.fotos));
+}
+
+function getHostActual() {
+  const hostPagina = location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1" ? location.hostname : "";
+  const hostGuardado = (localStorage.getItem("server_ip") || "").replace(/:\d+$/, "").trim();
+  return hostPagina || hostGuardado || "127.0.0.1";
+}
+
+// ============================================================
+// ESTADO
+// ============================================================
+let state = {
+  faenas:      JSON.parse(localStorage.getItem("faenas_cache")    || "[]"),
+  clientes:    JSON.parse(localStorage.getItem("clientes_cache")  || "[]"),
+  materiales:  JSON.parse(localStorage.getItem("materiales_cache")|| "[]"),
+  seccionActual: "faenas",
+  faenaActualId: null,
+  detalleTab: "presupuesto"
+};
+
+function getServerUrl() {
+  return `http://${getHostActual()}:5000/api`;
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  const campoIp = document.getElementById("ip-config");
+  if (campoIp) campoIp.value = getHostActual();
+  if (!localStorage.getItem("server_ip") && location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    localStorage.setItem("server_ip", location.hostname);
+  }
+
+  // Última sync
+  const ultima = localStorage.getItem("ultima_sync");
+  if (ultima) document.getElementById("ultima-sync").textContent = ultima;
+
+  // Fecha de hoy en nueva faena
+  document.getElementById("nf-fecha").value = new Date().toISOString().substring(0, 10);
+
+  // Poblar clientes en nueva faena
+  poblarClientesSel();
+
+  // Mostrar pendientes
+  actualizarPendientesInfo();
+
+  renderFaenas();
+  renderMateriales();
+
+  // Si no hay caché local, traer datos del PC automáticamente.
+  if (state.faenas.length === 0) {
+    setTimeout(() => {
+      sincronizar().catch(() => {});
+    }, 300);
+  }
+
+  // Service Worker — solo registrar si no es file://
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+  }
+
+  // Detectar online/offline
+  window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
+  window.addEventListener("offline", () => document.getElementById("offline-ind").classList.add("show"));
+  if (!navigator.onLine) document.getElementById("offline-ind").classList.add("show");
+}
+
+// ============================================================
+// NAV
+// ============================================================
+function navTo(id) {
+  // Secciones del bottom nav
+  const principales = ["faenas", "materiales", "sync"];
+
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  const el = document.getElementById("s-" + id);
+  if (el) el.classList.add("active");
+  state.seccionActual = id;
+
+  // Actualizar bottom nav
+  document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.remove("active"));
+  if (principales.includes(id)) {
+    const btn = document.getElementById("nav-" + id);
+    if (btn) btn.classList.add("active");
+  }
+
+  // Acciones al entrar en sección
+  if (id === "sync") actualizarPendientesInfo();
+  if (id === "book") renderBookMovil();
+  if (id === "tickets") {
+    restaurarTicket();
+  }
+  if (id === "nueva-faena") poblarClientesSel();
+}
+
+function volverDetalle() {
+  navTo("detalle");
+  if (state.faenaActualId) verDetalle(state.faenaActualId);
+}
+
+function setDetalleTab(tab) {
+  state.detalleTab = tab;
+  if (state.faenaActualId) verDetalle(state.faenaActualId, true);
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function toast(msg, error = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (error ? " err" : "");
+  setTimeout(() => t.className = "toast", 3000);
+}
+
+// ============================================================
+// CLIENTES
+// ============================================================
+function poblarClientesSel() {
+  const sel = document.getElementById("nf-cliente-sel");
+  const cola = cargarCola();
+  // Clientes del servidor + clientes pendientes offline
+  const todos = [
+    ...state.clientes,
+    ...cola.clientes.map(c => ({ ...c, nombre: c.nombre + " ⏳", _offline: true }))
+  ];
+  sel.innerHTML = '<option value="">— Selecciona o crea nuevo —</option>' +
+    '<option value="__nuevo__">+ Crear cliente nuevo</option>' +
+    todos.map(c => `<option value="${c.id || c._tempId}">${c.nombre}</option>`).join("");
+}
+
+function toggleNuevoCliente() {
+  const val = document.getElementById("nf-cliente-sel").value;
+  document.getElementById("nuevo-cliente-form").style.display = val === "__nuevo__" ? "block" : "none";
+}
+
+// ============================================================
+// CREAR FAENA (offline)
+// ============================================================
+async function crearFaena() {
+  const clienteSel = document.getElementById("nf-cliente-sel").value;
+  const esNuevoCliente = clienteSel === "__nuevo__";
+
+  let clienteId = null;
+  let clienteNombre = "";
+  const cola = cargarCola();
+
+  if (esNuevoCliente) {
+    const nombre = document.getElementById("nc-nombre").value.trim();
+    if (!nombre) { toast("El nombre del cliente es obligatorio", true); return; }
+
+    // Crear cliente offline con ID temporal
+    const tempClienteId = "TEMP-CLI-" + Date.now();
+    const nuevoCliente = {
+      _tempId: tempClienteId,
+      nombre,
+      telefono: document.getElementById("nc-tel").value,
+      email: document.getElementById("nc-email").value
+    };
+    cola.clientes.push(nuevoCliente);
+    clienteId = tempClienteId;
+    clienteNombre = nombre;
+
+    // Añadir a caché local
+    state.clientes.push({ id: tempClienteId, nombre, telefono: nuevoCliente.telefono, email: nuevoCliente.email });
+    localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+
+  } else {
+    if (!clienteSel) { toast("Selecciona un cliente", true); return; }
+    clienteId = clienteSel;
+    const cliente = state.clientes.find(c => String(c.id) === String(clienteSel));
+    clienteNombre = cliente ? cliente.nombre : "—";
+  }
+
+  const tipo = document.getElementById("nf-tipo").value.trim();
+  if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
+
+  // Número temporal
+  const ahora = new Date();
+  const numTemp = `TMP${String(ahora.getDate()).padStart(2,"0")}${String(ahora.getHours()).padStart(2,"0")}${String(ahora.getMinutes()).padStart(2,"0")}`;
+
+  const faena = {
+    _tempId: numTemp,
+    numero: numTemp,
+    _clienteTempId: clienteSel === "__nuevo__" ? clienteId : null,
+    cliente_id: clienteId,
+    cliente_nombre: clienteNombre,
+    intermediario_id: 0,
+    intermediario_nombre: "Cliente directo",
+    direccion: document.getElementById("nf-dir").value,
+    tipo_trabajo: tipo,
+    importe: parseFloat(document.getElementById("nf-importe").value) || 0,
+    fecha_inicio: document.getElementById("nf-fecha").value,
+    archivada: 0,
+    presupuesto: [],
+    anotaciones: [],
+    fotos: [],
+    _offline: true
+  };
+
+  cola.faenas.push(faena);
+  guardarCola(cola);
+
+  // Añadir a caché local para verla inmediatamente
+  state.faenas.unshift(faena);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+
+  toast("✓ Faena creada — se sincronizará al llegar a casa");
+  renderFaenas();
+  navTo("faenas");
+
+  // Limpiar formulario
+  document.getElementById("nf-dir").value = "";
+  document.getElementById("nf-tipo").value = "";
+  document.getElementById("nf-importe").value = "";
+  document.getElementById("nc-nombre").value = "";
+  document.getElementById("nc-tel").value = "";
+  document.getElementById("nc-email").value = "";
+  document.getElementById("nf-cliente-sel").value = "";
+  document.getElementById("nuevo-cliente-form").style.display = "none";
+}
+
+// ============================================================
+// RENDER FAENAS
+// ============================================================
+function renderFaenas() {
+  const q = (document.getElementById("q-faena")?.value || "").toLowerCase();
+  const cola = cargarCola();
+
+  // Faenas del servidor + faenas offline pendientes
+  const todas = [...state.faenas];
+
+  const lista = todas.filter(f =>
+    !q ||
+    (f.numero||"").toLowerCase().includes(q) ||
+    (f.cliente_nombre||"").toLowerCase().includes(q) ||
+    (f.tipo_trabajo||"").toLowerCase().includes(q)
+  );
+
+  const el = document.getElementById("lista-faenas");
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔨</div>
+      ${state.faenas.length === 0 ? 'Sin faenas.<br><small>Crea una nueva o sincroniza con el PC</small>' : 'Sin resultados'}
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = lista.map(f => {
+    const esTemp = f._offline;
+    const esDirecto = f.intermediario_id === 0;
+    const fotos = f.fotos || [];
+    const anotaciones = f.anotaciones || [];
+    const presupuesto = f.presupuesto || [];
+    const gastos = f.gastos_reales || f.gastos || [];
+    const gastosPendientes = f.gastos_pendientes || [];
+    const pendientesAnot = cola.anotaciones.filter(a => a.faena_id === (f.id || f._tempId));
+    const pendientesFotos = cola.fotos.filter(x => x.faena_id === (f.id || f._tempId));
+    const totalPendientes = pendientesAnot.length + pendientesFotos.length;
+
+    return `
+      <div class="card" onclick="verDetalle('${f.id || f._tempId}')">
+        <div class="card-num">
+          ${esTemp
+            ? `<span class="num-temp">⏳ ${f.numero}</span>`
+            : `<span class="num-faena">${f.numero}</span>`}
+        </div>
+        <div class="card-title">${f.tipo_trabajo || "Sin descripción"}</div>
+        <div class="card-info">
+          <strong>${f.cliente_nombre || "—"}</strong>
+          ${f.direccion ? `<br>${f.direccion}` : ""}
+          ${f.fecha_inicio ? `<br><span style="color:#aaa">${f.fecha_inicio}</span>` : ""}
+        </div>
+        <div class="card-badges">
+          <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre||"—"}</span>
+          ${f.importe > 0 ? `<span class="badge b-green">${parseFloat(f.importe).toFixed(2)} €</span>` : ""}
+          ${presupuesto.length > 0 ? `<span class="badge b-gray">📋 ${presupuesto.length}</span>` : ""}
+          ${gastos.length > 0 ? `<span class="badge b-gray">💶 ${gastos.length}</span>` : ""}
+          ${gastosPendientes.length > 0 ? `<span class="badge b-orange">⏳💶 ${gastosPendientes.length}</span>` : ""}
+          ${anotaciones.length + (f.fotos||[]).length > 0 ? `<span class="badge b-gray">📝 ${anotaciones.length + (f.fotos||[]).length}</span>` : ""}
+          ${totalPendientes > 0 ? `<span class="badge b-orange">⏳ ${totalPendientes} pendiente${totalPendientes>1?"s":""}</span>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+// ============================================================
+// DETALLE FAENA
+// ============================================================
+function verDetalle(id, preservarTab = false) {
+  state.faenaActualId = id;
+  if (!preservarTab) state.detalleTab = "presupuesto";
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (!f) return;
+
+  const cola = cargarCola();
+  const anotaciones = f.anotaciones || [];
+  const fotos = f.fotos || [];
+  const presupuesto = f.presupuesto || [];
+  const gastos = f.gastos_reales || f.gastos || [];
+  const gastosPendientes = f.gastos_pendientes || [];
+  const pendientesAnot  = cola.anotaciones.filter(a => String(a.faena_id) === String(id));
+  const pendientesFotos = cola.fotos.filter(x => String(x.faena_id) === String(id));
+  const esDirecto = f.intermediario_id === 0;
+  const esTemp = f._offline;
+  const totalPresupuesto = presupuesto.reduce((s, p) => s + (parseFloat(p.total) || 0), 0);
+  const totalGastos = gastos.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+  const totalGastosPendientes = gastosPendientes.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+  const tabActiva = state.detalleTab || "presupuesto";
+
+  const renderTabla = (items, vacio, esGasto = false) => {
+    if (!items.length) {
+      return `<div style="font-size:0.8rem;color:#aaa;padding:8px 0">${vacio}</div>`;
+    }
+
+    return `
+      <table class="tabla-sync">
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th>Tipo</th>
+            <th>Cant.</th>
+            <th>P.Unit.</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr>
+              <td class="desc">${item.descripcion || "—"}</td>
+              <td>${item.tipo || (esGasto ? "otro" : "material")}</td>
+              <td class="num">${(parseFloat(item.cantidad) || 0)}</td>
+              <td class="num">${(parseFloat(item.precio_unitario) || 0).toFixed(2)} €</td>
+              <td class="num"><strong>${(parseFloat(item.total) || 0).toFixed(2)} €</strong></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  };
+
+  document.getElementById("detalle-contenido").innerHTML = `
+    <div style="margin-bottom:14px">
+      ${esTemp
+        ? `<span class="num-temp">⏳ ${f.numero}</span> <span style="font-size:0.72rem;color:#8b5000">Pendiente de sync</span>`
+        : `<span class="num-faena">${f.numero}</span>`}
+      &nbsp;
+      <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre||"—"}</span>
+    </div>
+
+    <div class="det-section">
+      <div class="det-section-title">Datos</div>
+      <div class="det-row"><span class="det-k">Trabajo</span><span class="det-v">${f.tipo_trabajo||"—"}</span></div>
+      <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre||"—"}</span></div>
+      <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion||"—"}</span></div>
+      <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green)">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : "—"}</span></div>
+      <div class="det-row"><span class="det-k">Fecha</span><span class="det-v">${f.fecha_inicio||"—"}</span></div>
+    </div>
+
+    <div class="det-section">
+      <div class="tab-bar">
+        <button class="tab-btn ${tabActiva === "presupuesto" ? "active" : ""}" onclick="setDetalleTab('presupuesto')">📋 Presupuesto</button>
+        <button class="tab-btn ${tabActiva === "gastos" ? "active" : ""}" onclick="setDetalleTab('gastos')">💶 Gastos</button>
+      </div>
+
+      ${tabActiva === "presupuesto" ? `
+        <div class="det-section-title">📋 Presupuesto <span style="font-size:0.72rem;color:#aaa">${presupuesto.length} líneas</span></div>
+        <div class="det-row"><span class="det-k">Total sincronizado</span><span class="det-v" style="color:var(--green)">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
+        ${renderTabla(presupuesto, 'Sin presupuesto sincronizado')}
+      ` : `
+        <div class="det-section-title">💶 Gastos sincronizados <span style="font-size:0.72rem;color:#aaa">${gastos.length} líneas</span></div>
+        <div class="det-row"><span class="det-k">Total sincronizado</span><span class="det-v" style="color:var(--green)">${totalGastos > 0 ? totalGastos.toFixed(2) + " €" : "—"}</span></div>
+        ${renderTabla(gastos, 'Sin gastos sincronizados', true)}
+
+        ${gastosPendientes.length > 0 ? `
+          <div style="margin-top:10px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;font-size:0.75rem;color:#8b6914">
+            ⏳ ${gastosPendientes.length} gasto${gastosPendientes.length>1?"s":""} pendiente${gastosPendientes.length>1?"s":""} de sync · ${totalGastosPendientes.toFixed(2)} €
+          </div>
+          ${gastosPendientes.map(g => `
+            <div class="anot-item" style="border-color:#ffe082">
+              <span class="badge b-orange">pendiente</span>
+              <div style="margin-top:6px">${g.descripcion || "—"}</div>
+              <div class="anot-meta">${(parseFloat(g.cantidad) || 0)} x ${(parseFloat(g.precio_unitario) || 0).toFixed(2)} € = ${(parseFloat(g.total) || 0).toFixed(2)} €</div>
+            </div>
+          `).join("")}
+        ` : ''}
+      `}
+    </div>
+
+    <div class="det-section">
+      <div class="det-section-title">
+        📷 Fotos
+        <button class="btn btn-s btn-inline" onclick="añadirFoto('${id}')">+ Foto</button>
+      </div>
+      <div id="foto-contenedor-${id}">
+        ${renderFotos(fotos, pendientesFotos, id)}
+      </div>
+    </div>
+
+    <div class="det-section">
+      <div class="det-section-title">
+        📝 Anotaciones
+        <button class="btn btn-s btn-inline" onclick="nuevaAnotacion('${id}')">+ Añadir</button>
+      </div>
+
+      ${pendientesAnot.length > 0 ? `
+        <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.75rem;color:#8b6914">
+          ⏳ ${pendientesAnot.length} anotación${pendientesAnot.length>1?"es":""} pendiente${pendientesAnot.length>1?"s":""} de sync
+        </div>
+        ${pendientesAnot.map(a => `
+          <div class="anot-item" style="border-color:#ffe082">
+            <span class="badge b-gray">${a.tipo}</span>
+            <div style="margin-top:6px">${a.contenido}</div>
+            <div class="anot-meta">⏳ Pendiente</div>
+          </div>
+        `).join("")}
+      ` : ""}
+
+      ${anotaciones.length > 0 ? anotaciones.map(a => `
+        <div class="anot-item">
+          <span class="badge b-gray">${a.tipo}</span>
+          <div style="margin-top:6px">${a.contenido}</div>
+          <div class="anot-meta">${a.fecha||""}</div>
+        </div>
+      `).join("") : (pendientesAnot.length === 0 ? '<div style="font-size:0.8rem;color:#aaa;padding:8px 0">Sin anotaciones</div>' : "")}
+    </div>
+  `;
+
+  navTo("detalle");
+}
+
+function renderFotos(fotos, pendientes, faenaId) {
+  const todas = [
+    ...fotos.map(f => ({ ...f, _sync: true })),
+    ...pendientes.map(f => ({ ...f, _sync: false }))
+  ];
+
+  if (!todas.length) {
+    return `<div class="sin-fotos" style="font-size:0.8rem;color:#aaa;padding:8px 0">Sin fotos</div>`;
+  }
+
+  return `<div class="foto-grid" id="foto-grid-${faenaId}">
+    ${todas.map((f, i) => `
+      <div class="foto-thumb">
+        <img src="${f.data || f.url || ""}" alt="Foto ${i+1}" loading="lazy"
+             onclick="verFotoGrande('${f.data || f.url || ""}')">
+        ${!f._sync ? '<span class="foto-pending">⏳</span>' : ""}
+        ${!f._sync ? `<button class="foto-del" onclick="eliminarFotoPendiente('${faenaId}',${i})">×</button>` : ""}
+      </div>
+    `).join("")}
+  </div>`;
+}
+
+// ============================================================
+// FOTOS
+// ============================================================
+let fotoFaenaId = null;
+let fotoGridActual = null; // referencia al grid de la faena actual
+
+function añadirFoto(faenaId) {
+  fotoFaenaId = String(faenaId);
+
+  const old = document.getElementById("foto-input-temp");
+  if (old) old.remove();
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.id = "foto-input-temp";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+
+  // Guardar referencia al grid actual antes de abrir el selector
+  fotoGridActual = document.getElementById(`foto-grid-${faenaId}`);
+
+  input.addEventListener("change", procesarFotos);
+  input.click();
+}
+
+async function procesarFotos(event) {
+  const files = Array.from(event.target.files || []);
+
+  // Limpiar input para permitir seleccionar de nuevo
+  const inputEl = document.getElementById("foto-input-temp");
+  if (inputEl) inputEl.remove();
+
+  if (!files.length) return;
+
+  toast(`Guardando ${files.length} foto${files.length > 1 ? "s" : ""}...`);
+
+  let guardadas = 0;
+
+  for (const file of files) {
+    await new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      img.onload = () => {
+        // Comprimir — máximo 800px, calidad 65%
+        const MAX = 800;
+        const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        const base64 = canvas.toDataURL("image/jpeg", 0.65);
+
+        try {
+          const cola = cargarCola();
+          const nombre = `foto_${Date.now()}_${guardadas}.jpg`;
+          cola.fotos.push({
+            faena_id: fotoFaenaId,
+            data: base64,
+            nombre,
+            fecha: new Date().toISOString()
+          });
+          guardarCola(cola);
+          guardadas++;
+
+          // Buscar el grid específico de esta faena
+          let grid = document.getElementById(`foto-grid-${fotoFaenaId}`);
+
+          if (!grid) {
+            // Crear grid si no existe
+            grid = document.createElement("div");
+            grid.className = "foto-grid";
+            grid.id = `foto-grid-${fotoFaenaId}`;
+
+            // Buscar el contenedor de fotos de esta faena
+            const contenedor = document.getElementById(`foto-contenedor-${fotoFaenaId}`);
+            if (contenedor) {
+              const sinFotos = contenedor.querySelector(".sin-fotos");
+              if (sinFotos) sinFotos.remove();
+              contenedor.appendChild(grid);
+            }
+          }
+
+          if (grid) {
+            const idx = cola.fotos.filter(f => f.faena_id === fotoFaenaId).length - 1;
+            const div = document.createElement("div");
+            div.className = "foto-thumb";
+            div.innerHTML = `
+              <img src="${base64}" alt="Foto" loading="lazy" onclick="verFotoGrande('${base64}')">
+              <span class="foto-pending">⏳</span>
+              <button class="foto-del" onclick="eliminarFotoPendiente('${fotoFaenaId}',${idx})">×</button>
+            `;
+            grid.appendChild(div);
+          }
+
+        } catch(e) {
+          toast("Sin espacio — sincroniza para liberar", true);
+        }
+        resolve();
+      };
+
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      img.src = url;
+    });
+  }
+
+  toast(`✓ ${guardadas} foto${guardadas > 1 ? "s" : ""} guardada${guardadas > 1 ? "s" : ""} — se subirán al sincronizar`);
+}
+
+function verFotoGrande(src) {
+  const o = document.createElement("div");
+  o.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:999;display:flex;align-items:center;justify-content:center;";
+  o.innerHTML = `<img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain">`;
+  o.addEventListener("click", () => o.remove());
+  document.body.appendChild(o);
+}
+
+async function procesarFotos(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) { toast("No se seleccionó ninguna foto", true); return; }
+
+  toast(`Procesando ${files.length} foto${files.length > 1 ? "s" : ""}...`);
+
+  const cola = cargarCola();
+  let guardadas = 0;
+
+  for (const file of files) {
+    await new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      img.onload = () => {
+        // Comprimir — máximo 800px, calidad 65%
+        const MAX = 800;
+        const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        const base64 = canvas.toDataURL("image/jpeg", 0.65);
+
+        // Verificar que cabe en localStorage
+        try {
+          const cola = cargarCola();
+          cola.fotos.push({
+            faena_id: String(fotoFaenaId),
+            data: base64,
+            nombre: `foto_${Date.now()}_${guardadas}.jpg`,
+            fecha: new Date().toISOString()
+          });
+          guardarCola(cola);
+          guardadas++;
+
+          // Mostrar en el DOM inmediatamente
+          let grid = document.querySelector(".foto-grid");
+          if (!grid) {
+            grid = document.createElement("div");
+            grid.className = "foto-grid";
+            const tituloFotos = Array.from(document.querySelectorAll(".det-section-title"))
+              .find(el => el.textContent.includes("Fotos"));
+            if (tituloFotos) {
+              const noFotos = tituloFotos.parentNode.querySelector("[style*='color:#aaa']");
+              if (noFotos) noFotos.remove();
+              tituloFotos.parentNode.appendChild(grid);
+            }
+          }
+          const idx = cola.fotos.filter(f => String(f.faena_id) === String(fotoFaenaId)).length - 1;
+          const div = document.createElement("div");
+          div.className = "foto-thumb";
+          div.innerHTML = `
+            <img src="${base64}" alt="Foto" loading="lazy">
+            <span class="foto-pending">⏳</span>
+            <button class="foto-del" onclick="eliminarFotoPendiente('${fotoFaenaId}',${idx})">×</button>
+          `;
+          grid.appendChild(div);
+
+        } catch(e) {
+          toast("Sin espacio — sincroniza para liberar espacio", true);
+        }
+        resolve();
+      };
+
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      img.src = url;
+    });
+  }
+
+  toast(`✓ ${guardadas} foto${guardadas > 1 ? "s" : ""} guardada${guardadas > 1 ? "s" : ""} — se subirán al sincronizar`);
+}
+
+function procesarFoto(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    toast("No se seleccionó ninguna foto", true);
+    return;
+  }
+
+  toast("Guardando foto...");
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const base64 = e.target.result;
+      if (!base64 || base64.length < 100) {
+        toast("Error al leer la foto", true);
+        return;
+      }
+
+      // Guardar en cola
+      const cola = cargarCola();
+      const nuevaFoto = {
+        faena_id: String(fotoFaenaId),
+        data: base64,
+        nombre: `foto_${Date.now()}.jpg`,
+        fecha: new Date().toISOString()
+      };
+      cola.fotos.push(nuevaFoto);
+      guardarCola(cola);
+
+      // Inyectar foto directamente en el DOM sin rerenderizar todo
+      const grid = document.querySelector(".foto-grid");
+      const idx = cola.fotos.filter(f => String(f.faena_id) === String(fotoFaenaId)).length - 1;
+
+      if (grid) {
+        // Añadir al grid existente
+        const div = document.createElement("div");
+        div.className = "foto-thumb";
+        div.innerHTML = `
+          <img src="${base64}" alt="Foto nueva" loading="lazy">
+          <span class="foto-pending">⏳</span>
+          <button class="foto-del" onclick="eliminarFotoPendiente('${fotoFaenaId}',${idx})">×</button>
+        `;
+        grid.appendChild(div);
+      } else {
+        // No hay grid todavía — crear sección de fotos
+        const secFotos = document.querySelector(".det-section");
+        if (secFotos) {
+          const nuevoGrid = document.createElement("div");
+          nuevoGrid.className = "foto-grid";
+          nuevoGrid.innerHTML = `
+            <div class="foto-thumb">
+              <img src="${base64}" alt="Foto nueva" loading="lazy">
+              <span class="foto-pending">⏳</span>
+              <button class="foto-del" onclick="eliminarFotoPendiente('${fotoFaenaId}',0)">×</button>
+            </div>
+          `;
+          // Insertar después del título de fotos
+          const tituloFotos = Array.from(document.querySelectorAll(".det-section-title"))
+            .find(el => el.textContent.includes("Fotos"));
+          if (tituloFotos) {
+            tituloFotos.parentNode.insertBefore(nuevoGrid, tituloFotos.nextSibling);
+          }
+        }
+      }
+
+      toast("✓ Foto guardada — se subirá al sincronizar");
+
+    } catch(err) {
+      toast("Error: " + err.message, true);
+    }
+  };
+
+  reader.onerror = () => toast("Error al leer el archivo", true);
+  reader.readAsDataURL(file);
+}
+
+function eliminarFotoPendiente(faenaId, idx) {
+  const cola = cargarCola();
+  // Filtrar solo las fotos de esta faena y eliminar por índice relativo
+  let contador = 0;
+  cola.fotos = cola.fotos.filter(f => {
+    if (String(f.faena_id) !== String(faenaId)) return true;
+    return contador++ !== idx;
+  });
+  guardarCola(cola);
+  toast("Foto eliminada");
+  verDetalle(faenaId);
+}
+
+// ============================================================
+// ANOTACIONES
+// ============================================================
+function nuevaAnotacion(faenaId) {
+  document.getElementById("anot-faena-id").value = faenaId;
+  document.getElementById("anot-contenido").value = "";
+  navTo("anotacion");
+}
+
+async function guardarAnotacion() {
+  const faenaId = document.getElementById("anot-faena-id").value;
+  const tipo = document.getElementById("anot-tipo").value;
+  const contenido = document.getElementById("anot-contenido").value.trim();
+  if (!contenido) { toast("Escribe algo antes de guardar", true); return; }
+
+  const anotacion = {
+    faena_id: faenaId,
+    tipo,
+    contenido,
+    fecha: new Date().toISOString()
+  };
+
+  // Intentar enviar al servidor si la faena no es temporal
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
+  const esTemp = faena && faena._offline;
+
+  if (!esTemp && navigator.onLine) {
+    try {
+      const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/anotaciones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(anotacion),
+        signal: AbortSignal.timeout(4000)
+      });
+      const data = await r.json();
+      if (data.ok) {
+        // Actualizar cache local
+        if (faena) {
+          if (!faena.anotaciones) faena.anotaciones = [];
+          faena.anotaciones.unshift(anotacion);
+          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        }
+        toast("✓ Anotación guardada");
+        volverDetalle();
+        return;
+      }
+    } catch (_) {}
+  }
+
+  // Guardar en cola offline
+  const cola = cargarCola();
+  cola.anotaciones.push(anotacion);
+  guardarCola(cola);
+  toast("⏳ Guardado offline");
+  volverDetalle();
+}
+
+// ============================================================
+// MATERIALES
+// ============================================================
+function renderMateriales() {
+  const q = (document.getElementById("q-mat")?.value || "").toLowerCase();
+  const lista = state.materiales.filter(m =>
+    !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q)
+  );
+
+  const el = document.getElementById("lista-materiales");
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${state.materiales.length === 0 ? "Sincroniza para ver materiales" : "Sin resultados"}</div>`;
+    return;
+  }
+
+  const cats = {};
+  lista.forEach(m => {
+    const cat = m.categoria || "Otros";
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(m);
+  });
+
+  el.innerHTML = Object.entries(cats).map(([cat, mats]) => `
+    <div class="mat-cat">${cat}</div>
+    ${mats.map(m => {
+      const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
+      const preciosTxt = precios.map((p, i) =>
+        `<span class="${i===0?"mat-precio-min":""}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`
+      ).join("  ·  ");
+      return `<div class="mat-item">
+        <div class="mat-nombre">${m.nombre} <span style="color:#aaa;font-size:0.72rem">(${m.unidad})</span></div>
+        <div class="mat-precios">${preciosTxt || '<em style="color:#ccc">Sin precios</em>'}</div>
+      </div>`;
+    }).join("")}
+  `).join("");
+}
+
+// ============================================================
+// PENDIENTES INFO
+// ============================================================
+function actualizarPendientesInfo() {
+  const cola = cargarCola();
+  const tickets = (cola.tickets || []).reduce((s, t) => s + (t.articulos || []).length, 0);
+  const total = cola.clientes.length + cola.faenas.length + cola.anotaciones.length + cola.fotos.length + tickets;
+  const el = document.getElementById("pendientes-info");
+
+  if (total === 0) { el.innerHTML = ""; return; }
+
+  el.innerHTML = `<div class="pending-badge">
+    ⏳ Pendiente de sincronizar:<br>
+    ${cola.clientes.length > 0    ? `· ${cola.clientes.length} cliente${cola.clientes.length>1?"s":""}<br>` : ""}
+    ${cola.faenas.length > 0      ? `· ${cola.faenas.length} faena${cola.faenas.length>1?"s":""}<br>` : ""}
+    ${cola.anotaciones.length > 0 ? `· ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}<br>` : ""}
+    ${cola.fotos.length > 0       ? `· ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}<br>` : ""}
+    ${tickets > 0                 ? `· ${tickets} artículo${tickets>1?"s":""} de ticket${tickets>1?"s":""}` : ""}
+  </div>`;
+}
+
+// ============================================================
+// SINCRONIZACIÓN
+// ============================================================
+async function sincronizar() {
+  const btn = document.getElementById("btn-sync");
+  const estado = document.getElementById("sync-estado");
+  const API = getServerUrl();
+
+  btn.innerHTML = '<span class="spinner"></span> &nbsp; Sincronizando...';
+  btn.disabled = true;
+  estado.textContent = "";
+
+  const cola = cargarCola();
+
+  try {
+    // 1. Verificar conexión
+    const checkResp = await fetch(`${API}/sync/estado`, { signal: AbortSignal.timeout(5000) });
+    if (!checkResp.ok) throw new Error(`Estado HTTP: ${checkResp.status}`);
+
+    estado.textContent = "✓ Conectado...";
+
+    // 2. Crear clientes nuevos
+    const mapaClientes = {};
+    for (const c of cola.clientes) {
+      try {
+        const r = await fetch(`${API}/clientes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre: c.nombre, telefono: c.telefono, email: c.email, intermediario_id: 0 }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const data = await r.json();
+        if (data.ok) mapaClientes[c._tempId] = data.data.id;
+      } catch(e) { console.error("Error cliente:", e); }
+    }
+
+    estado.textContent = "✓ Clientes...";
+
+    // 3. Crear faenas temporales
+    const mapaFaenas = {};
+    for (const f of cola.faenas) {
+      try {
+        const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id;
+        const r = await fetch(`${API}/faenas`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: clienteId,
+            intermediario_id: f.intermediario_id || 0,
+            direccion: f.direccion,
+            tipo_trabajo: f.tipo_trabajo,
+            importe: f.importe,
+            fecha_inicio: f.fecha_inicio
+          }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const data = await r.json();
+        if (data.ok) mapaFaenas[f._tempId] = { id: data.data.id, numero: data.data.numero };
+      } catch(e) { console.error("Error faena:", e); }
+    }
+
+    estado.textContent = "✓ Faenas...";
+
+    // 4. Enviar anotaciones
+    try {
+      const anotacionesReales = cola.anotaciones.map(a => ({
+        ...a,
+        faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id
+      }));
+      if (anotacionesReales.length > 0) {
+        await fetch(`${API}/sync/anotaciones`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ anotaciones: anotacionesReales }),
+          signal: AbortSignal.timeout(10000)
+        });
+      }
+    } catch(e) { console.error("Error anotaciones:", e); }
+
+    // 4. Enviar tickets pendientes (materiales y gastos de tickets)
+    const ticketsPendientes = cola.tickets || [];
+    for (const ticket of ticketsPendientes) {
+      try {
+        for (const art of (ticket.articulos || [])) {
+          if (!art.nombre) continue;
+
+          // Buscar o crear material
+          let mat = state.materiales.find(m =>
+            m.nombre.toLowerCase() === art.nombre.toLowerCase()
+          );
+          if (!mat || String(mat.id).startsWith("temp_")) {
+            const rm = await fetch(`${API}/materiales`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nombre: art.nombre, unidad: art.unidad || "ud", categoria: "Otro" }),
+              signal: AbortSignal.timeout(8000)
+            });
+            const dm = await rm.json();
+            if (dm.ok) mat = { id: dm.data.id };
+          }
+
+          // Actualizar precio
+          if (mat && ticket.proveedor && art.precio_unitario) {
+            await fetch(`${API}/materiales/${mat.id}/precio`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ proveedor: ticket.proveedor, precio_unitario: art.precio_unitario }),
+              signal: AbortSignal.timeout(8000)
+            }).catch(() => {});
+          }
+
+          // Añadir gasto a faena
+          if (ticket.faena_id && art.precio_unitario) {
+            await fetch(`${API}/faenas/${ticket.faena_id}/gastos`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tipo: "herraje",
+                descripcion: art.nombre,
+                cantidad: art.cantidad || 1,
+                precio_unitario: art.precio_unitario
+              }),
+              signal: AbortSignal.timeout(8000)
+            }).catch(() => {});
+          }
+        }
+      } catch(e) { console.error("Error ticket:", e); }
+    }
+
+    estado.textContent = "✓ Anotaciones...";
+
+    // 5. Enviar fotos
+    let fotosEnviadas = 0;
+    for (const foto of cola.fotos) {
+      try {
+        const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
+        const r = await fetch(`${API}/sync/fotos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ faena_id: faenaId, nombre: foto.nombre, data: foto.data }),
+          signal: AbortSignal.timeout(30000)
+        });
+        const data = await r.json();
+        if (data.ok) fotosEnviadas++;
+      } catch(e) { console.error("Error foto:", e); }
+    }
+
+    estado.textContent = "✓ Fotos...";
+
+    // 6. Descargar faenas
+    const rFaenas = await fetch(`${API}/sync/datos`, { signal: AbortSignal.timeout(15000) });
+    const datosFaenas = await rFaenas.json();
+    if (datosFaenas.ok) {
+      state.faenas = datosFaenas.data;
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    }
+
+    // 7. Descargar materiales
+    const rMat = await fetch(`${API}/materiales`, { signal: AbortSignal.timeout(10000) });
+    const datosMat = await rMat.json();
+    if (datosMat.ok) {
+      state.materiales = datosMat.data;
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    }
+
+    // 8. Descargar clientes
+    const rCli = await fetch(`${API}/clientes`, { signal: AbortSignal.timeout(10000) });
+    const datosCli = await rCli.json();
+    if (datosCli.ok) {
+      state.clientes = datosCli.data;
+      localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+    }
+
+
+    // 9. Sincronizar book (descargar fotos a carpeta configurada)
+    await sincronizarBook(API);
+
+    // 10. Limpiar cola
+    guardarCola({ clientes: [], faenas: [], anotaciones: [], fotos: [], bookEliminar: [], bookPendiente: [], tickets: [] });
+
+    const ahora = new Date().toLocaleString("es-ES");
+    localStorage.setItem("ultima_sync", ahora);
+    document.getElementById("ultima-sync").textContent = ahora;
+
+    renderFaenas();
+    renderMateriales();
+    actualizarPendientesInfo();
+
+    estado.textContent = `✓ Sincronizado correctamente`;
+    estado.className = "sync-estado sync-ok";
+    toast("✓ Sincronización completada");
+
+  } catch (e) {
+    estado.textContent = `✗ Error: ${e.message}`;
+    estado.className = "sync-estado sync-error";
+    toast("Error: " + e.message, true);
+  }
+
+  btn.innerHTML = "⟳ &nbsp; Sincronizar ahora";
+  btn.disabled = false;
+}
+
+// ===== TICKETS =====
+let ticketFotoBase64 = localStorage.getItem("ticket_foto_temp") || null;
+
+function cancelarTicket() {
+  localStorage.removeItem("ticket_foto_temp");
+  localStorage.removeItem("ticket_prompt_temp");
+  document.getElementById("ticket-json-movil").value = "";
+  document.getElementById("ticket-foto-movil").value = "";
+  document.getElementById("ticket-preview-movil").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("ticket-prompt-box").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  ticketFotoBase64 = null;
+  toast("Ticket cancelado");
+}
+
+function restaurarTicket() {
+  const foto = localStorage.getItem("ticket_foto_temp");
+  const prompt = localStorage.getItem("ticket_prompt_temp");
+
+  if (foto) {
+    document.getElementById("ticket-img-movil").src = foto;
+    document.getElementById("ticket-preview-movil").style.display = "block";
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    ticketFotoBase64 = foto;
+
+    const sel = document.getElementById("ticket-faena-movil");
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+      state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+  } else {
+    document.getElementById("btn-cancelar-ticket").style.display = "none";
+  }
+
+  if (prompt) {
+    document.getElementById("ticket-prompt-txt").textContent = prompt;
+    document.getElementById("ticket-prompt-box").style.display = "block";
+  }
+}
+
+function ticketPreview(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+  document.getElementById("ticket-img-movil").src = url;
+  document.getElementById("ticket-preview-movil").style.display = "block";
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    ticketFotoBase64 = e.target.result;
+    localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+
+    const sel = document.getElementById("ticket-faena-movil");
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+      state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+  };
+  reader.readAsDataURL(file);
+}
+
+async function generarPromptTicketMovil() {
+  const API = getServerUrl();
+  let prompt = "";
+  try {
+    const r = await fetch(`${API}/prompts/ticket`, { signal: AbortSignal.timeout(8000) });
+    const data = await r.json();
+    if (data.ok) prompt = data.data.prompt;
+  } catch(e) {
+    prompt = `Analiza la imagen del ticket o factura de compra que te adjunto.
+Extrae todos los artículos y devuelve ÚNICAMENTE el siguiente JSON, sin texto adicional:
+
+{
+  "proveedor": "Nombre del establecimiento",
+  "fecha": "YYYY-MM-DD",
+  "articulos": [
+    {
+      "nombre": "Nombre del artículo",
+      "cantidad": 1,
+      "precio_unitario": 0.00,
+      "total": 0.00,
+      "unidad": "ud"
+    }
+  ],
+  "total_ticket": 0.00
+}
+
+Si no puedes leer algún dato con claridad, usa null para ese campo.`;
+  }
+
+  // Guardar prompt en localStorage para que persista si se sale de la app
+  localStorage.setItem("ticket_prompt_temp", prompt);
+
+  document.getElementById("ticket-prompt-txt").textContent = prompt;
+  document.getElementById("ticket-prompt-box").style.display = "block";
+}
+
+function copiarTicketPrompt() {
+  const txt = document.getElementById("ticket-prompt-txt").textContent;
+  navigator.clipboard.writeText(txt)
+    .then(() => toast("✓ Prompt copiado — abre Claude.ai"))
+    .catch(() => {
+      // Fallback para móviles que no soportan clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = txt;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      toast("✓ Prompt copiado — abre Claude.ai");
+    });
+}
+
+async function cargarJsonTicketMovil() {
+  const raw = document.getElementById("ticket-json-movil").value.trim();
+  if (!raw) { toast("Pega el JSON primero", true); return; }
+
+  let datos;
+  try {
+    const limpio = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    datos = JSON.parse(limpio);
+  } catch(e) {
+    toast("JSON no válido — cópialo completo desde Claude", true);
+    return;
+  }
+
+  const faenaId = document.getElementById("ticket-faena-movil").value;
+  const articulos = datos.articulos || [];
+  const proveedor = datos.proveedor || "";
+
+  if (!articulos.length) {
+    toast("No se encontraron artículos en el JSON", true);
+    return;
+  }
+
+  // Guardar en cola offline — se procesará al sincronizar
+  const cola = cargarCola();
+  if (!cola.tickets) cola.tickets = [];
+  cola.tickets.push({
+    proveedor,
+    fecha: datos.fecha || new Date().toISOString().substring(0, 10),
+    articulos,
+    faena_id: faenaId || null
+  });
+  guardarCola(cola);
+
+  // Actualizar caché local de materiales para verlos inmediatamente
+  for (const art of articulos) {
+    if (!art.nombre) continue;
+    const existe = state.materiales.find(m =>
+      m.nombre.toLowerCase() === art.nombre.toLowerCase()
+    );
+    if (!existe) {
+      state.materiales.push({
+        id: `temp_${Date.now()}_${Math.random()}`,
+        nombre: art.nombre,
+        unidad: art.unidad || "ud",
+        categoria: "Otro",
+        precios: proveedor && art.precio_unitario ? [{
+          proveedor,
+          precio_unitario: art.precio_unitario
+        }] : []
+      });
+    }
+  }
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales();
+
+  // Si hay faena asignada, añadir gastos a la caché local
+  if (faenaId) {
+    const faena = state.faenas.find(f => String(f.id) === String(faenaId));
+    if (faena) {
+      if (!faena.gastos_pendientes) faena.gastos_pendientes = [];
+      for (const art of articulos) {
+        if (!art.nombre || !art.precio_unitario) continue;
+        faena.gastos_pendientes.push({
+          descripcion: art.nombre,
+          tipo: "herraje",
+          cantidad: art.cantidad || 1,
+          precio_unitario: art.precio_unitario,
+          total: (art.cantidad || 1) * art.precio_unitario
+        });
+      }
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    }
+  }
+
+  toast(`✓ ${articulos.length} artículo${articulos.length !== 1 ? "s" : ""} guardado${articulos.length !== 1 ? "s" : ""} — se subirán al sincronizar`);
+  actualizarPendientesInfo();
+
+  // Limpiar formulario
+  localStorage.removeItem("ticket_foto_temp");
+  localStorage.removeItem("ticket_prompt_temp");
+  document.getElementById("ticket-json-movil").value = "";
+  document.getElementById("ticket-foto-movil").value = "";
+  document.getElementById("ticket-preview-movil").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("ticket-prompt-box").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  ticketFotoBase64 = null;
+}
+
+// ===== BOOK DE FOTOS — File System Access API =====
+let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
+let bookDirHandle = null;
+
+async function configurarCarpetaBook() {
+  if (!window.showDirectoryPicker) {
+    toast("Actualiza Brave para usar esta función", true);
+    return;
+  }
+  try {
+    bookDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    localStorage.setItem("book_dir_name", bookDirHandle.name);
+    mostrarInfoCarpeta(bookDirHandle.name);
+    toast("✓ Carpeta configurada: " + bookDirHandle.name);
+    await cargarFotosDeCarpeta();
+  } catch(e) {
+    if (e.name !== "AbortError") toast("Error al seleccionar carpeta", true);
+  }
+}
+
+function mostrarInfoCarpeta(nombre) {
+  const el = document.getElementById("book-carpeta-info");
+  if (el) { el.textContent = `📁 Carpeta: ${nombre}`; el.style.display = "block"; }
+}
+
+async function cargarFotosDeCarpeta() {
+  if (!bookDirHandle) return;
+  try {
+    const fotos = [];
+    for await (const entry of bookDirHandle.values()) {
+      if (entry.kind === "file" && /\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
+        const file = await entry.getFile();
+        const base64 = await fileToBase64(file);
+        fotos.push({ nombre: entry.name, titulo: entry.name.replace(/\.[^.]+$/, "").replace(/_/g, " "), data: base64, _local: true });
+      }
+    }
+    bookCache = fotos;
+    renderBookMovil();
+  } catch(e) { console.error("Error cargando carpeta:", e); }
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function guardarFotoEnCarpeta(base64, nombre) {
+  if (!bookDirHandle) return false;
+  try {
+    const fh = await bookDirHandle.getFileHandle(nombre, { create: true });
+    const w  = await fh.createWritable();
+    const d  = base64.split(",")[1];
+    await w.write(Uint8Array.from(atob(d), c => c.charCodeAt(0)));
+    await w.close();
+    return true;
+  } catch(e) { return false; }
+}
+
+async function eliminarFotoDeCarpeta(nombre) {
+  if (!bookDirHandle || !nombre) return false;
+  try { await bookDirHandle.removeEntry(nombre); return true; } catch(e) { return false; }
+}
+
+function renderBookMovil() {
+  const el = document.getElementById("book-movil-galeria");
+  const dirNombre = localStorage.getItem("book_dir_name");
+  if (dirNombre) mostrarInfoCarpeta(dirNombre);
+
+  if (!bookDirHandle && !dirNombre) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📁</div>
+      Configura la carpeta del book<br>
+      <small style="line-height:1.8">Pulsa 📁 Carpeta para elegir<br>dónde guardar las fotos</small>
+    </div>`;
+    return;
+  }
+  if (!bookCache.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>
+      Sin fotos en el book.<br><small>Sincroniza con el PC para verlas</small>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="book-grid-movil">
+    ${bookCache.map((f, i) => `
+      <div class="book-card-movil">
+        <img src="${f.data}" alt="${f.titulo||""}" loading="lazy" onclick="verFotoBook(${i})" style="cursor:pointer">
+        <div class="book-card-movil-info">
+          <div class="book-card-movil-titulo">${f.titulo||f.tipo_trabajo||"Sin título"}</div>
+          <div class="book-card-movil-meta">${f.cliente_nombre||""}</div>
+          <div style="margin-top:6px;display:flex;gap:6px">
+            <button class="btn btn-s btn-inline" onclick="compartirFoto(${i})" style="flex:1">↗</button>
+            <button class="btn btn-d btn-inline" onclick="quitarDelBook(${i})" style="flex:1">× Quitar</button>
+          </div>
+        </div>
+      </div>`).join("")}
+  </div>`;
+}
+
+function verFotoBook(idx) {
+  const f = bookCache[idx]; if (!f) return;
+  const o = document.createElement("div");
+  o.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;";
+  o.innerHTML = `<img src="${f.data}" style="max-width:100%;max-height:85vh;object-fit:contain">
+    <div style="color:white;font-size:.85rem;margin-top:12px;text-align:center;padding:0 20px">${f.titulo||f.tipo_trabajo||""}</div>
+    <button onclick="this.parentNode.remove()" style="margin-top:16px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;padding:8px 24px;border-radius:6px;font-size:.85rem;cursor:pointer">Cerrar</button>`;
+  o.addEventListener("click", e => { if (e.target===o) o.remove(); });
+  document.body.appendChild(o);
+}
+
+async function compartirFoto(idx) {
+  const f = bookCache[idx]; if (!f) return;
+  try {
+    const blob = await (await fetch(f.data)).blob();
+    const file = new File([blob], `${f.titulo||"foto"}.jpg`, { type: "image/jpeg" });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: f.titulo||"Trabajo de carpintería" });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=`${f.titulo||"foto"}.jpg`; a.click();
+    URL.revokeObjectURL(url); toast("✓ Foto descargada");
+  } catch(e) { if (e.name!=="AbortError") toast("Error al compartir", true); }
+}
+
+async function quitarDelBook(idx) {
+  if (!confirm("¿Quitar esta foto del book?")) return;
+  const f = bookCache[idx];
+  if (bookDirHandle && f.nombre) await eliminarFotoDeCarpeta(f.nombre);
+  if (f.id) {
+    const cola = cargarCola();
+    if (!cola.bookEliminar) cola.bookEliminar = [];
+    cola.bookEliminar.push(f.id);
+    guardarCola(cola);
+  }
+  bookCache.splice(idx, 1);
+  renderBookMovil();
+  toast("Foto quitada del book");
+}
+
+async function compartirBook() {
+  if (!bookCache.length) { toast("El book está vacío", true); return; }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title>
+<style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}
+h1{font-size:1.3rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 6px rgba(0,0,0,.1)}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.info{padding:10px 12px}.titulo{font-size:.9rem;font-weight:bold;color:#5c3d0e}</style></head>
+<body><h1>🪵 Book de trabajos</h1>
+<div class="grid">${bookCache.map(f=>`<div class="card"><img src="${f.data}" alt="${f.titulo||""}">
+<div class="info"><div class="titulo">${f.titulo||f.tipo_trabajo||"Sin título"}</div></div></div>`).join("")}
+</div></body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const file = new File([blob], "book_trabajos.html", { type: "text/html" });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ title: "Book de trabajos", files: [file] }); return; } catch(_){}
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download="book_trabajos.html"; a.click();
+  URL.revokeObjectURL(url); toast("✓ Book descargado");
+}
+
+async function sincronizarBook(API) {
+  try {
+    const cola = cargarCola();
+    for (const id of (cola.bookEliminar||[])) {
+      await fetch(`${API}/book/${id}`, { method: "DELETE", signal: AbortSignal.timeout(5000) }).catch(()=>{});
+    }
+    const r = await fetch(`${API}/sync/book`, { signal: AbortSignal.timeout(60000) });
+    const d = await r.json();
+    if (d.ok && d.data.length > 0) {
+      bookCache = d.data;
+      if (bookDirHandle) {
+        for (const foto of bookCache) {
+          if (foto.data) {
+            const nombre = `${(foto.faena_numero||"foto").replace(/[^a-zA-Z0-9]/g,"_")}_${foto.id}.jpg`;
+            foto.nombre = nombre;
+            await guardarFotoEnCarpeta(foto.data, nombre);
+          }
+        }
+        toast("✓ Book guardado en carpeta");
+      }
+      localStorage.setItem("book_cache", JSON.stringify(bookCache));
+    }
+  } catch(e) { console.error("Error sync book:", e); }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+init();
+
+// ============================================================
+// PWA — AUTOCONTENIDO (sin depender del servidor)
+// ============================================================
+
+// Generar manifest dinámicamente
+(function() {
+  const manifest = {
+    name: "Gestión de Faenas",
+    short_name: "Faenas",
+    description: "App de carpintería para gestión de faenas",
+    start_url: ".",
+    display: "standalone",
+    background_color: "#faf6ee",
+    theme_color: "#5c3d0e",
+    orientation: "portrait",
+    icons: [{
+      src: "data:image/svg+xml," + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+          <rect width="192" height="192" rx="32" fill="#5c3d0e"/>
+          <text x="96" y="130" font-size="100" text-anchor="middle">🪵</text>
+        </svg>`),
+      sizes: "192x192",
+      type: "image/svg+xml"
+    }]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("link");
+  link.rel   = "manifest";
+  link.href  = url;
+  document.head.appendChild(link);
+})();
+
+// Registrar Service Worker inline — solo cuando no es file://
+(function() {
+  if (location.protocol === "file:") return; // No funciona en file://
+
+  const swCode = `
+    const CACHE = 'faenas-standalone-v1';
+    self.addEventListener('install', e => { self.skipWaiting(); });
+    self.addEventListener('activate', e => { self.clients.claim(); });
+    self.addEventListener('fetch', e => {
+      if (e.request.url.includes('/api/')) return;
+      e.respondWith(
+        caches.open(CACHE).then(cache =>
+          cache.match(e.request).then(cached => {
+            const fresh = fetch(e.request).then(res => {
+              if (e.request.method === 'GET') cache.put(e.request, res.clone());
+              return res;
+            }).catch(() => cached);
+            return cached || fresh;
+          })
+        )
+      );
+    });
+  `;
+  const blob = new Blob([swCode], { type: "application/javascript" });
+  const url  = URL.createObjectURL(blob);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register(url, { scope: "/" }).catch(() => {
+      navigator.serviceWorker.register(url).catch(() => {});
+    });
+  }
+})();
+
+// Prompt de instalación en Android
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Mostrar banner de instalación si no está instalada
+  if (!window.matchMedia("(display-mode: standalone)").matches) {
+    mostrarBannerInstalacion();
+  }
+});
+
+function mostrarBannerInstalacion() {
+  const banner = document.createElement("div");
+  banner.id = "install-banner";
+  banner.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0;
+    background: #3a6b3a; color: white;
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--font-mono); font-size: 0.78rem;
+    z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  `;
+  banner.innerHTML = `
+    <span>📲 Instalar app en el móvil</span>
+    <div style="display:flex;gap:8px">
+      <button onclick="instalarApp()" style="background:white;color:#3a6b3a;border:none;padding:6px 12px;border-radius:4px;font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;font-weight:500">Instalar</button>
+      <button onclick="document.getElementById('install-banner').remove()" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.5);padding:6px 10px;border-radius:4px;font-family:var(--font-mono);font-size:0.75rem;cursor:pointer">×</button>
+    </div>
+  `;
+  document.body.prepend(banner);
+}
+
+async function instalarApp() {
+  if (!deferredPrompt) {
+    toast("Usa el menú del navegador → 'Añadir a pantalla de inicio'");
+    return;
+  }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === "accepted") toast("✓ App instalada");
+  deferredPrompt = null;
+  const banner = document.getElementById("install-banner");
+  if (banner) banner.remove();
+}
+</script>
+</body>
+</html>
