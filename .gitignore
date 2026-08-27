@@ -1,4 +1,12 @@
 .env
+.venv/
+venv/
 __pycache__/
 *.pyc
+*.log
+build_env.txt
 datos/faenas.db
+datos/
+Imágenes/
+.cursor/
+.vault/

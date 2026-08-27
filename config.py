@@ -68,8 +68,11 @@ HOST = "0.0.0.0"       # Escucha en todas las interfaces (necesario para el móv
 PORT = int(os.environ.get("PORT", "5000") or 5000)
 
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+_render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 _railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
-if not _public_base_url and _railway_domain:
+if not _public_base_url and _render_url:
+	_public_base_url = _render_url
+elif not _public_base_url and _railway_domain:
 	_public_base_url = f"https://{_railway_domain}"
 PUBLIC_BASE_URL = _public_base_url
 
