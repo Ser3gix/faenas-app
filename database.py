@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from config import (
+    APP_DIR,
     CARPETA_RAIZ,
     DB_BACKEND,
     DB_PATH,
@@ -13,8 +14,11 @@ from config import (
     MYSQL_PASSWORD,
     MYSQL_PORT,
     MYSQL_CREATE_DATABASE,
+    MYSQL_SSL,
     MYSQL_USER,
 )
+
+MYSQL_CONNECT_TIMEOUT = int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10") or 10)
 
 try:
     import mysql.connector
@@ -25,7 +29,11 @@ else:
 
 
 def _usar_mysql():
-    return DB_BACKEND == "mysql"
+    return DB_BACKEND == "mysql" and not _MYSQL_DESHABILITADO
+
+
+_MYSQL_DESHABILITADO = False
+_MYSQL_ERROR = None
 
 
 def _serializar_valor(valor):
@@ -135,10 +143,27 @@ class _ConnectionCompat:
         return getattr(self._connection, name)
 
 
-def _mysql_conectar_sin_bd():
+def _mysql_ssl_params():
+    if not MYSQL_SSL:
+        return {}
+    ca_path = os.path.join(APP_DIR, "isrgrootx1.pem")
+    if os.path.exists(ca_path):
+        return {
+            "ssl_ca": ca_path,
+            "ssl_verify_cert": True,
+            "ssl_verify_identity": False,
+        }
+    return {
+        "ssl_disabled": False,
+        "ssl_verify_cert": False,
+        "ssl_verify_identity": False,
+    }
+
+
+def _mysql_params(include_database=True):
     if mysql is None:
         raise RuntimeError("Falta la dependencia mysql-connector-python. Instala requirements.txt primero.")
-    return mysql.connect(
+    params = dict(
         host=MYSQL_HOST,
         port=MYSQL_PORT,
         user=MYSQL_USER,
@@ -146,7 +171,16 @@ def _mysql_conectar_sin_bd():
         charset=MYSQL_CHARSET,
         use_unicode=True,
         autocommit=False,
+        connection_timeout=MYSQL_CONNECT_TIMEOUT,
     )
+    if include_database:
+        params["database"] = MYSQL_DATABASE
+    params.update(_mysql_ssl_params())
+    return params
+
+
+def _mysql_conectar_sin_bd():
+    return mysql.connect(**_mysql_params(include_database=False))
 
 
 def _mysql_asegurar_base():
@@ -166,26 +200,63 @@ def _mysql_asegurar_base():
 
 def _mysql_conectar_con_bd():
     _mysql_asegurar_base()
-    conexion = mysql.connect(
-        host=MYSQL_HOST,
-        port=MYSQL_PORT,
-        user=MYSQL_USER,
-        password=MYSQL_PASSWORD,
-        database=MYSQL_DATABASE,
-        charset=MYSQL_CHARSET,
-        use_unicode=True,
-        autocommit=False,
-    )
+    conexion = mysql.connect(**_mysql_params(include_database=True))
     return _ConnectionCompat(conexion, "mysql")
 
 
-def get_connection():
-    if _usar_mysql():
-        return _mysql_conectar_con_bd()
+def _sqlite_conectar_local():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return _ConnectionCompat(conn, "sqlite")
+
+
+def get_sqlite_local():
+    """Siempre SQLite local — para leer/escribir faenas archivadas."""
+    return _sqlite_conectar_local()
+
+
+def inicializar_sqlite_local():
+    """Asegura que el esquema SQLite local existe (necesario cuando el backend es MySQL)."""
+    os.makedirs(CARPETA_RAIZ, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = _CursorCompat(conn.cursor(), "sqlite")
+    _crear_esquema_sqlite(cur)
+    conn.commit()
+    conn.close()
+
+
+def mysql_configurado():
+    return DB_BACKEND == "mysql" or bool(MYSQL_HOST and MYSQL_USER and MYSQL_DATABASE)
+
+
+def get_db_status():
+    conn = get_connection()
+    activo = conn._backend
+    conn.close()
+    return {
+        "backend_configurado": DB_BACKEND,
+        "backend_activo": activo,
+        "mysql_configurado": mysql_configurado(),
+        "mysql_deshabilitado": _MYSQL_DESHABILITADO,
+        "mysql_error": _MYSQL_ERROR,
+    }
+
+
+def get_connection():
+    global _MYSQL_DESHABILITADO, _MYSQL_ERROR
+
+    if _usar_mysql():
+        try:
+            return _mysql_conectar_con_bd()
+        except Exception as exc:
+            _MYSQL_DESHABILITADO = True
+            _MYSQL_ERROR = str(exc)
+            print("[AVISO] No se pudo conectar a MySQL. Se usara SQLite local.")
+            print(f"[AVISO] Motivo MySQL: {_MYSQL_ERROR}")
+
+    return _sqlite_conectar_local()
 
 
 def _crear_esquema_sqlite(cursor):
@@ -311,6 +382,11 @@ def _crear_esquema_sqlite(cursor):
         )
     """)
 
+    try:
+        cursor.execute("ALTER TABLE fotos_faena ADD COLUMN data_base64 TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS book_fotos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,6 +396,57 @@ def _crear_esquema_sqlite(cursor):
             descripcion TEXT DEFAULT '',
             fecha TEXT DEFAULT (datetime('now')),
             orden INTEGER DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS archivos_faena (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faena_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL DEFAULT 'documento',
+            nombre TEXT NOT NULL,
+            storage_backend TEXT NOT NULL DEFAULT 'local',
+            bucket TEXT DEFAULT '',
+            object_key TEXT NOT NULL DEFAULT '',
+            public_url TEXT DEFAULT '',
+            mime_type TEXT DEFAULT '',
+            tamaño INTEGER DEFAULT 0,
+            hash_sha256 TEXT DEFAULT '',
+            origen_local TEXT DEFAULT '',
+            estado_ia TEXT NOT NULL DEFAULT 'pendiente',
+            metadata_json TEXT DEFAULT '',
+            fecha TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (faena_id) REFERENCES faenas(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analisis_archivos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            archivo_id INTEGER NOT NULL,
+            agente TEXT NOT NULL DEFAULT '',
+            tipo_analisis TEXT NOT NULL DEFAULT 'extraccion',
+            version_modelo TEXT DEFAULT '',
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            resumen TEXT DEFAULT '',
+            datos_json TEXT DEFAULT '',
+            confianza REAL DEFAULT 0,
+            fecha TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (archivo_id) REFERENCES archivos_faena(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_memoria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pregunta TEXT NOT NULL,
+            respuesta TEXT NOT NULL,
+            contexto_tipo TEXT NOT NULL DEFAULT 'general',
+            alcance TEXT NOT NULL DEFAULT 'general',
+            faena_id INTEGER DEFAULT 0,
+            tokens TEXT NOT NULL DEFAULT '',
+            fuente TEXT NOT NULL DEFAULT 'local',
+            creado_en TEXT DEFAULT (datetime('now'))
         )
     """)
 
@@ -433,6 +560,7 @@ def _crear_esquema_mysql(cursor):
             faena_id INT NOT NULL,
             nombre VARCHAR(255) NOT NULL,
             ruta_foto VARCHAR(500) NOT NULL,
+            data_base64 LONGTEXT,
             fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_fotos_faena
                 FOREIGN KEY (faena_id) REFERENCES faenas(id)
@@ -449,13 +577,75 @@ def _crear_esquema_mysql(cursor):
             orden INT NOT NULL DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
+        """
+        CREATE TABLE IF NOT EXISTS archivos_faena (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            faena_id INT NOT NULL,
+            tipo VARCHAR(50) NOT NULL DEFAULT 'documento',
+            nombre VARCHAR(255) NOT NULL,
+            storage_backend VARCHAR(50) NOT NULL DEFAULT 'local',
+            bucket VARCHAR(255) NOT NULL DEFAULT '',
+            object_key VARCHAR(500) NOT NULL DEFAULT '',
+            public_url VARCHAR(1000) NOT NULL DEFAULT '',
+            mime_type VARCHAR(255) NOT NULL DEFAULT '',
+            tamaño BIGINT NOT NULL DEFAULT 0,
+            hash_sha256 VARCHAR(128) NOT NULL DEFAULT '',
+            origen_local VARCHAR(500) NOT NULL DEFAULT '',
+            estado_ia VARCHAR(50) NOT NULL DEFAULT 'pendiente',
+            metadata_json LONGTEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_archivos_faena_faena (faena_id),
+            KEY idx_archivos_faena_object_key (object_key),
+            CONSTRAINT fk_archivos_faena
+                FOREIGN KEY (faena_id) REFERENCES faenas(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS analisis_archivos (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            archivo_id INT NOT NULL,
+            agente VARCHAR(100) NOT NULL DEFAULT '',
+            tipo_analisis VARCHAR(100) NOT NULL DEFAULT 'extraccion',
+            version_modelo VARCHAR(255) NOT NULL DEFAULT '',
+            estado VARCHAR(50) NOT NULL DEFAULT 'pendiente',
+            resumen VARCHAR(5000) NOT NULL DEFAULT '',
+            datos_json LONGTEXT,
+            confianza DOUBLE NOT NULL DEFAULT 0,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_analisis_archivos_archivo (archivo_id),
+            CONSTRAINT fk_analisis_archivos
+                FOREIGN KEY (archivo_id) REFERENCES archivos_faena(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ia_memoria (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            pregunta VARCHAR(5000) NOT NULL,
+            respuesta LONGTEXT NOT NULL,
+            contexto_tipo VARCHAR(50) NOT NULL DEFAULT 'general',
+            alcance VARCHAR(50) NOT NULL DEFAULT 'general',
+            faena_id INT NOT NULL DEFAULT 0,
+            tokens VARCHAR(2000) NOT NULL DEFAULT '',
+            fuente VARCHAR(50) NOT NULL DEFAULT 'local',
+            creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_ia_memoria_tokens (tokens(255)),
+            KEY idx_ia_memoria_faena (faena_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
     ]
     for sentencia in sentencias:
         cursor.execute(sentencia)
 
+    try:
+        cursor.execute("ALTER TABLE fotos_faena ADD COLUMN data_base64 LONGTEXT")
+    except Exception:
+        pass
+
 
 def inicializar_db():
     os.makedirs(CARPETA_RAIZ, exist_ok=True)
+    if _usar_mysql():
+        inicializar_sqlite_local()  # siempre mantener SQLite para faenas archivadas
     conn = get_connection()
     cursor = conn.cursor()
     try:

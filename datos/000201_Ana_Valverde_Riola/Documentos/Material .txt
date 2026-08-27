@@ -1,0 +1,43 @@
+1  Columna HM 2200
+1  Columna Despensa 2200x40
+1 alto 70x60
+2 alto 80x40
+2 alto 80x60
+2 alto 80x70
+1 Bajo freg 80x90
+1 Mod horno 80x60
+1 Mod bajo  80x40
+3 melamina 16
+1 tablex 3 mm o simil
+2 cc 32x60
+1 caj 16x60
+5 caj 16x40
+2 caj 28x60
+34 bisagras rectas clip 
+4 bisagras 180 clip
+32 patas
+1 perfil gola mod sup
+2 tiras zocalo aluminio
+ 
+  Lista puertas J Line melamina 
+
+  Sin J
+1 Lateral 230x60
+1 70x60
+2 80x60
+2 80x40
+1 140x60
+1 140x40
+1 80x30
+1 140x30
+ 
+  Con J
+
+1 45x60
+2 80x40
+1 80x50
+4 80x35
+1 16x60
+2 32x60
+5 16x40
+2 28x60

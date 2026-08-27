@@ -1,0 +1,10 @@
+4 tableros interior 2800x2070x19              300
+2 tableros puerta   2800x2070x19              140
+1 tableros trasera 2800x2070x10                70
+70 m cortados +18 +42             130 m       130 
+16 m canto  +35                    80 m       160
+12 bisagras                                    30
+rodapie                                        25
+tiradores                                      30
+                              total          885
+                            presupuesto   1800

@@ -887,6 +887,18 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     </div>
   </div>
 
+  <div class="form-box" style="margin-top:12px;padding:12px 14px">
+    <div class="form-title">Filtrar consulta</div>
+    <div class="form-grid">
+      <div><label>Contexto</label><select id="ia-contexto-index">
+        <option value="general">General</option>
+        <option value="materiales">Materiales</option>
+        <option value="trabajos">Trabajos</option>
+      </select></div>
+      <div><label>Faena opcional</label><select id="ia-faena-index"><option value="">— Todas —</option></select></div>
+    </div>
+  </div>
+
   <!-- CHAT -->
   <div id="chat-mensajes" style="
     background:white;border:1px solid var(--sawdust);border-radius:6px;
@@ -1266,6 +1278,10 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <script>
 const API = `${window.location.origin}/api`;
 
+function esc(value) {
+  return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 // ===== ESTADO =====
 let state = {
   faenas: [], clientes: [], intermediarios: [], materiales: [],
@@ -1276,6 +1292,7 @@ let state = {
 
 // ===== ARRANQUE =====
 async function init() {
+  await cargarEstadoDb();
   await Promise.all([
     cargarFaenas(), cargarClientes(),
     cargarIntermediarios(), cargarMateriales()
@@ -1288,6 +1305,24 @@ async function init() {
   poblarSelectPolyboard();
   poblarSelectPresupuesto();
   cargarIP();
+}
+
+async function cargarEstadoDb() {
+  try {
+    const r = await api("GET", "/info/db");
+    if (!r.ok) return;
+    const d = r.data;
+    const sub = document.querySelector(".header-sub");
+    if (!sub) return;
+    if (d.backend_activo === "mysql") {
+      sub.textContent = "Carpintería · Nube conectada";
+    } else if (d.mysql_configurado && d.mysql_deshabilitado) {
+      sub.textContent = "Carpintería · Local (sin nube)";
+      toast("No se pudo conectar a la nube: " + (d.mysql_error || "error desconocido"), true);
+    } else {
+      sub.textContent = "Carpintería · Gestión local";
+    }
+  } catch (e) {}
 }
 
 async function cargarIP() {
@@ -1313,12 +1348,12 @@ function copiarIP() {
 // ===== API CALLS =====
 async function api(method, path, body) {
   try {
-    const opts = { method, headers: { "Content-Type": "application/json" } };
+    const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
     return await r.json();
   } catch (e) {
-    return { ok: false, error: "Error de conexión con el servidor" };
+    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al conectar con el servidor" : "Error de conexión con el servidor" };
   }
 }
 
@@ -1532,6 +1567,56 @@ function renderMateriales() {
        </table>
     </div>
   `).join("");
+}
+
+function abrirMaterial(id) {
+  const m = state.materiales.find(x => String(x.id) === String(id));
+  if (!m) return;
+  document.getElementById("material-editar-id").value = m.id;
+  document.getElementById("material-editar-nombre").value = m.nombre || "";
+  document.getElementById("material-editar-unidad").value = m.unidad || "ud";
+  document.getElementById("material-editar-categoria").value = m.categoria || "Otro";
+  document.getElementById("material-editar-definicion").value = m.definicion || "";
+  const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
+  document.getElementById("material-editar-precios").innerHTML = precios.length
+    ? `<strong>Precios registrados</strong><table class="gastos-table"><thead><tr><th>Proveedor</th><th>Precio</th></tr></thead><tbody>${precios.map((p,i) => `<tr><td><input data-precio-proveedor="${i}" value="${esc(p.proveedor)}"></td><td><input type="number" step="0.01" data-precio-valor="${i}" value="${Number(p.precio_unitario || 0).toFixed(2)}"></td></tr>`).join("")}</tbody></table>`
+    : "<strong>Precios registrados</strong><div style='color:#888;margin-top:6px'>Sin precios</div>";
+  abrirModal("m-material-detalle");
+}
+
+async function guardarMaterialEditado() {
+  const id = document.getElementById("material-editar-id").value;
+  const payload = {
+    nombre: document.getElementById("material-editar-nombre").value.trim(),
+    unidad: document.getElementById("material-editar-unidad").value.trim(),
+    categoria: document.getElementById("material-editar-categoria").value.trim(),
+    definicion: document.getElementById("material-editar-definicion").value.trim()
+  };
+  if (!payload.nombre) { toast("El nombre es obligatorio", true); return; }
+  const r = await api("PUT", `/materiales/${id}`, payload);
+  if (!r.ok) { toast(r.error || "No se pudo actualizar", true); return; }
+  const precios = Array.from(document.querySelectorAll("#material-editar-precios tbody tr")).map((tr,i) => ({
+    proveedor: tr.querySelector(`[data-precio-proveedor="${i}"]`)?.value.trim() || "",
+    precio_unitario: Number(tr.querySelector(`[data-precio-valor="${i}"]`)?.value || 0)
+  })).filter(p => p.proveedor && Number.isFinite(p.precio_unitario) && p.precio_unitario >= 0);
+  const rp = await api("PUT", `/materiales/${id}/precios`, { precios });
+  if (!rp.ok) { toast(rp.error || "No se pudieron actualizar los precios", true); return; }
+  await cargarMateriales();
+  cerrarModal("m-material-detalle");
+  renderMateriales();
+  toast("✓ Material actualizado");
+}
+
+async function eliminarMaterialDesdeModal() {
+  const id = document.getElementById("material-editar-id").value;
+  const m = state.materiales.find(x => String(x.id) === String(id));
+  if (!m || !confirm(`¿Eliminar el material "${m.nombre}" y sus precios?`)) return;
+  const r = await api("DELETE", `/materiales/${id}`);
+  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  await cargarMateriales();
+  cerrarModal("m-material-detalle");
+  renderMateriales();
+  toast("✓ Material eliminado");
 }
 
 // ===== DETALLE FAENA =====
@@ -2369,6 +2454,8 @@ async function verificarOllama() {
 }
 function poblarSelectAsistente() {
   const sel = document.getElementById("asistente-faena-sel"); if (!sel) return; sel.innerHTML = '<option value="">— Todo el negocio —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre} · ${f.tipo_trabajo||"—"}</option>`).join("");
+  const contextoSel = document.getElementById("ia-faena-index");
+  if (contextoSel) contextoSel.innerHTML = '<option value="">— Todas —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
 }
 function añadirMensaje(texto, tipo) {
   const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; div.innerHTML = `<div class="chat-burbuja">${texto}</div><div class="chat-hora">${hora}</div>`; const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
@@ -2377,13 +2464,20 @@ function mostrarTyping() { const contenedor = document.getElementById("chat-mens
 function quitarTyping() { const el = document.getElementById("typing-indicator"); if (el) el.remove(); }
 async function enviarConsulta() {
   const input = document.getElementById("chat-input"); const pregunta = input.value.trim(); if (!pregunta) return;
-  const faenaId = document.getElementById("asistente-faena-sel")?.value || null; const btn = document.getElementById("btn-consulta");
+  const faenaId = document.getElementById("ia-faena-index")?.value || document.getElementById("asistente-faena-sel")?.value || null;
+  const contextoTipo = document.getElementById("ia-contexto-index")?.value || "general";
+  const faenas = state.faenas.map(f => ({ id: f.id, numero: f.numero, cliente_nombre: f.cliente_nombre, tipo_trabajo: f.tipo_trabajo, trabajo: f.tipo_trabajo, importe: f.importe, direccion: f.direccion, archivada: f.archivada, presupuesto: f.presupuesto || [], gastos: f.gastos || [], gastos_reales: f.gastos_reales || [], anotaciones: f.anotaciones || [], documentos: f.documentos || [] }));
+  const clientes = state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono, direccion: c.direccion, email: c.email }));
+  const materiales = state.materiales.map(m => ({ nombre: m.nombre, categoria: m.categoria, unidad: m.unidad, definicion: m.definicion, precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario, precio_unitario: p.precio_unitario, fecha_actualizacion: p.fecha_actualizacion })) }));
+  const contexto = { faenas: contextoTipo === "materiales" ? [] : faenas, clientes: contextoTipo === "materiales" ? [] : clientes, materiales: contextoTipo === "trabajos" ? [] : materiales };
+  if (faenaId && contexto.faenas.length) contexto.faenas = contexto.faenas.filter(f => String(f.id) === String(faenaId));
+  const btn = document.getElementById("btn-consulta");
   añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
   try {
-    const r = await fetch(API + "/ollama/consulta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null }) });
+    const r = await fetch(API + "/ia/consulta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, contexto, contexto_tipo: contextoTipo, alcance: faenaId ? "manual" : "general", faena_id: faenaId ? parseInt(faenaId) : null }) });
     quitarTyping(); const data = await r.json();
     if (data.ok) añadirMensaje(data.data.respuesta, "asistente"); else añadirMensaje("⚠️ " + (data.error || "Error al consultar Ollama"), "asistente");
-  } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. ¿Está Ollama arrancado?", "asistente"); }
+  } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente"); }
   btn.disabled = false; btn.textContent = "Enviar";
 }
 function usarSugerencia(texto) { document.getElementById("chat-input").value = texto; document.getElementById("chat-input").focus(); }

@@ -17,7 +17,7 @@ import os
 import sqlite3
 import sys
 
-from config import MYSQL_CHARSET, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_USER
+from config import MYSQL_CHARSET, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_SSL, MYSQL_USER
 
 try:
     import mysql.connector
@@ -59,6 +59,10 @@ def connect_mysql(include_database=True):
     }
     if include_database:
         params["database"] = MYSQL_DATABASE
+    if MYSQL_SSL:
+        params["ssl_disabled"] = False
+        params["ssl_verify_cert"] = False
+        params["ssl_verify_identity"] = False
     return mysql.connect(**params)
 
 
@@ -103,7 +107,18 @@ def migrate_from_sqlite(sqlite_path):
             placeholders = ", ".join(["%s"] * len(columnas))
             insert_sql = f"INSERT IGNORE INTO `{table}` ({columnas_sqlite}) VALUES ({placeholders})"
 
-            filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table}").fetchall()
+            # Faenas archivadas se quedan en SQLite local; solo migrar activas
+            if table == "faenas":
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table} WHERE archivada = 0").fetchall()
+            elif table in ("anotaciones", "gastos_faena", "presupuestos_faena", "fotos_faena"):
+                ids_activas = [str(r[0]) for r in sq.execute("SELECT id FROM faenas WHERE archivada = 0").fetchall()]
+                if not ids_activas:
+                    print(f"  — {table}: sin faenas activas, omitida")
+                    continue
+                marcas = ",".join(ids_activas)
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table} WHERE faena_id IN ({marcas})").fetchall()
+            else:
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table}").fetchall()
             insertados = 0
 
             cursor = my.cursor()

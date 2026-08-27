@@ -676,7 +676,7 @@ textarea { resize: vertical; min-height: 80px; }
   <span style="font-size:1.3rem">🪵</span>
   <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
-  <button class="sync-btn" onclick="irASync()">⟳ Sync</button>
+  <button class="sync-btn" onclick="recargarDatos()">⟳ Recargar</button>
 </header>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
@@ -704,40 +704,62 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div class="form-box">
       <div class="form-title">Paso 1 — Foto del ticket</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Selecciona o haz una foto del ticket de compra.</p>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Selecciona una foto o un archivo (PDF/TXT) del ticket o lista de compra.</p>
       <input type="file" id="ticket-foto-movil" accept="image/*" onchange="ticketPreview(event)" style="display:none">
+      <input type="file" id="ticket-doc-movil" accept=".pdf,.txt,text/plain,application/pdf" onchange="ticketDocumentoPreview(event)" style="display:none">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-p btn-inline" onclick="document.getElementById('ticket-foto-movil').click()">🖼️ Galería</button>
         <button class="btn btn-p btn-inline" onclick="tomarFotoDirecta()">📷 Cámara</button>
+        <button class="btn btn-s btn-inline" onclick="document.getElementById('ticket-doc-movil').click()">📄 PDF/TXT</button>
       </div>
       <div id="ticket-preview-movil" style="display:none;margin-top:10px">
         <img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:260px;object-fit:contain">
+        <button class="btn btn-d btn-inline" type="button" onclick="limpiarImagenTicket()" style="margin-top:8px">🗑️ Limpiar imagen</button>
       </div>
+      <div id="ticket-doc-info" style="display:none;margin-top:10px;font-size:0.85rem;color:#555;padding:8px;border:1px solid var(--sawdust);border-radius:8px;background:#fff"></div>
     </div>
     <div class="form-box" id="ticket-paso2" style="display:none">
-      <div class="form-title">Paso 2 — Prompt para Claude.ai</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Genera el prompt, cópialo, abre Claude.ai, adjunta la foto y pégalo.</p>
-      <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Procesar con IA</button>
-      <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
-      <button class="btn btn-p" onclick="generarPromptTicketMovil()">Generar prompt</button>
-      <div id="ticket-prompt-box" style="display:none;margin-top:10px">
-        <div style="background:#1a1208;color:#f0deb4;border-radius:6px;padding:12px;font-size:0.88rem;line-height:1.5;max-height:180px;overflow-y:auto;white-space:pre-wrap;margin-bottom:8px" id="ticket-prompt-txt"></div>
-        <button class="btn btn-g" onclick="copiarTicketPrompt()">📋 Copiar prompt</button>
+      <div class="form-title">Paso 2 — Procesar ticket</div>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Pulsa para analizar. Después podrás editar en tabla antes de guardar.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Procesar con IA</button>
+        <button class="btn btn-s btn-inline" type="button" onclick="cancelarTicket()">↺ Resetear ticket</button>
       </div>
+      <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
     </div>
     <div class="form-box" id="ticket-paso3" style="display:none">
-      <div class="form-title">Paso 3 — Pegar JSON de respuesta</div>
-      <div class="field"><label>JSON de Claude</label><textarea id="ticket-json-movil" rows="5" placeholder='{"proveedor":"...","articulos":[...]}' style="font-size:0.88rem"></textarea></div>
-      <div class="field"><label>Faena (opcional)</label><select id="ticket-faena-movil"><option value="">— Sin asignar —</option></select></div>
-      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Cargar datos</button>
+      <div class="form-title">Paso 3 — Revisar y editar</div>
+      <div id="ticket-tabla-wrap"></div>
+      <textarea id="ticket-json-movil" style="display:none"></textarea>
+      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Guardar en nube</button>
     </div>
     <div class="btn-row">
       <button class="btn btn-s" onclick="mostrarTextoManual()">✍️ Texto manual</button>
     </div>
     <div class="form-box" id="ticket-paso4" style="display:none">
-      <div class="form-title">✍️ Texto manual</div>
+      <div class="form-title">✍️ Entrada manual</div>
+      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Añade los materiales directamente con los mismos campos de la tabla.</div>
+      <div style="overflow:auto;border:1px solid var(--sawdust);border-radius:8px;background:#fff;margin-bottom:8px">
+        <table style="width:100%;border-collapse:collapse;min-width:720px">
+          <thead><tr>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Categoría</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Material</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Proveedor</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Cant.</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">P. unit.</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Total</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Unidad</th>
+            <th style="padding:8px;text-align:left;font-size:0.8rem">Faena</th>
+          </tr></thead>
+          <tbody id="ticket-formulario-manual"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-s btn-inline" onclick="anadirFilaManual()">+ Añadir material</button>
+        <button class="btn btn-p btn-inline" onclick="usarFormularioManual()">Usar formulario</button>
+      </div>
+      <div style="font-size:0.82rem;color:#777;margin:12px 0 6px">O pega una lista y deja que la IA la convierta:</div>
       <div class="field"><label>Lista de materiales</label><textarea id="ticket-texto-manual" rows="5" placeholder="Ej: 2x Bisagra 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€" style="font-size:0.88rem"></textarea></div>
-      <div class="field"><label>Faena (opcional)</label><select id="ticket-faena-texto"><option value="">— Sin asignar —</option></select></div>
       <div class="btn-row">
         <button class="btn btn-p" onclick="procesarTextoManual()">🤖 Procesar con IA</button>
         <button class="btn btn-s btn-inline" onclick="document.getElementById('ticket-paso4').style.display='none'">Cancelar</button>
@@ -763,16 +785,39 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="slide" id="sl-ia">
     <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">🤖 Asistente IA</div>
     <div class="form-box">
-      <div class="form-title">Consulta en lenguaje natural</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Pregunta sobre tus faenas, materiales o clientes en español normal. Requiere conexión al servidor.</p>
-      <div class="field"><textarea id="ia-pregunta" rows="3" placeholder="Ej: ¿Cuánto he cobrado este mes?&#10;¿Qué faenas están pendientes?&#10;¿Cuál es el material más caro?" style="font-size:0.95rem"></textarea></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuánto he cobrado en total en las faenas activas?')">💰 Total cobrado</button>
-        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Qué faenas no están archivadas?')">🔨 Faenas activas</button>
-        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuál es el cliente con más faenas?')">👤 Mejor cliente</button>
-        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuáles son los materiales más caros según los precios registrados?')">📦 Materiales caros</button>
+      <div class="form-title">Haz una pregunta</div>
+      <div class="field"><textarea id="ia-pregunta" rows="3" placeholder="Ej: presupuesto de Puri, dirección de María José, materiales más caros..." style="font-size:0.95rem"></textarea></div>
+      <details style="margin-bottom:10px;background:var(--paper-dark);border:1px solid var(--sawdust);border-radius:8px;padding:10px 12px">
+        <summary style="cursor:pointer;font-size:0.88rem;color:var(--accent)">Filtrar consulta</summary>
+        <div style="margin-top:10px">
+          <div class="field">
+            <label>Alcance</label>
+            <select id="ia-scope" onchange="actualizarPanelConsultaIA()">
+              <option value="general">General</option>
+              <option value="actual">Faena abierta</option>
+              <option value="manual">Elegir faena</option>
+            </select>
+          </div>
+          <div class="field" id="ia-faena-wrap" style="display:none">
+            <label>Faena</label>
+            <input id="ia-faena-buscar" placeholder="Buscar faena" oninput="actualizarSelectorFaenasIA()" style="margin-bottom:8px">
+            <select id="ia-faena-id"><option value="">— Selecciona —</option></select>
+          </div>
+          <div class="field">
+            <label>Contexto</label>
+            <select id="ia-contexto">
+              <option value="general">General</option>
+              <option value="materiales">Materiales</option>
+              <option value="trabajos">Trabajos</option>
+            </select>
+          </div>
+          <div id="ia-ayuda-contexto" style="font-size:0.8rem;color:#777;line-height:1.5">Consulta general sobre todas las faenas.</div>
+        </div>
+      </details>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" onclick="enviarConsultaIA()">🤖 Preguntar</button>
+        <button class="btn btn-s" onclick="resetearConsultaIA()">↺ Reset</button>
       </div>
-      <button class="btn btn-p" onclick="enviarConsultaIA()">🤖 Preguntar</button>
     </div>
     <div id="ia-respuesta-box" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:8px;padding:16px;margin-top:12px">
       <div style="font-family:var(--font-serif);font-size:0.95rem;color:var(--accent);margin-bottom:8px">Respuesta:</div>
@@ -780,37 +825,26 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
   </div>
 
-  <!-- Slide 4: SYNC -->
+  <!-- Slide 4: CONEXIÓN -->
   <div class="slide" id="sl-sync">
-    <div class="sync-box">
-      <div style="font-size:2.2rem;margin-bottom:8px">⟳</div>
-      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:6px">Sincronizar con el PC</div>
-      <div style="font-size:0.85rem;color:#888;margin-bottom:16px;line-height:1.6">El PC debe estar encendido y en la misma red WiFi.</div>
-      <div id="pendientes-info"></div>
-      <button class="btn btn-p" onclick="sincronizar()" id="btn-sync">⟳ &nbsp; Sincronizar ahora</button>
-      <div class="sync-estado" id="sync-estado"></div>
-    </div>
     <div class="ip-box">
-        <div class="form-title" style="margin-bottom:10px">⚙️ Servidor</div>
+        <div class="form-title" style="margin-bottom:10px">⚙️ Conexión</div>
+        <div style="font-size:0.85rem;color:#888;margin-bottom:12px;line-height:1.6">El móvil consulta directamente la API del servidor. Ya no hace falta sincronizar manualmente.</div>
         <div class="field">
           <label>Modo de conexión</label>
           <select id="server-modo-sel" onchange="cambiarModoServidor()">
-            <option value="local">📶 WiFi Local (PC en casa)</option>
-            <option value="nube">☁️ Nube (acceso remoto + IA)</option>
+            <option value="local">📶 API del PC (usa TiDB en segundo plano)</option>
+            <option value="nube">☁️ API remota desplegada</option>
           </select>
         </div>
         <div id="panel-servidor-local">
           <div class="field"><label>Dirección IP</label><input id="ip-config" placeholder="IP del PC" oninput="guardarIP()"></div>
-          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">El móvil y el PC deben estar conectados al mismo WiFi.</div>
+          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">Usa esta opción si abres la app desde tu PC. Aunque la base esté en TiDB Cloud, el móvil sigue entrando por esta API.</div>
         </div>
         <div id="panel-servidor-nube" style="display:none">
           <div class="field"><label>URL del servidor en la nube</label><input id="cloud-url-config" placeholder="https://tu-api.railway.app/api" oninput="guardarCloudUrl()"></div>
-          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">URL completa de la API cloud (Railway, Render u otro). Incluye <em>/api</em> al final.</div>
+          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">Solo úsalo si has desplegado también Flask en Railway, Render u otro. TiDB por sí solo no sirve la app móvil.</div>
         </div>
-    </div>
-    <div style="margin-top:12px;padding:12px;background:var(--paper-dark);border-radius:8px;font-size:0.88rem;color:#888;line-height:1.6">
-      <strong style="color:var(--accent)">Última sincronización:</strong><br>
-      <span id="ultima-sync">Nunca</span>
     </div>
     <div style="margin-top:10px">
       <button class="btn btn-d" onclick="limpiarCacheLocal()">🗑️ Borrar caché del móvil</button>
@@ -826,7 +860,7 @@ textarea { resize: vertical; min-height: 80px; }
   <button id="nav-tickets"                  onclick="navTo(2)"><span class="ni">🎫</span>Tickets</button>
   <button id="nav-book"                     onclick="navTo(3)"><span class="ni">📸</span>Book</button>
   <button id="nav-ia"                       onclick="navTo(4)"><span class="ni">🤖</span>IA</button>
-  <button id="nav-sync"                     onclick="navTo(5)"><span class="ni">⟳</span>Sync</button>
+  <button id="nav-sync"                     onclick="navTo(5)"><span class="ni">⚙️</span>Conexión</button>
 </nav>
 
 <!-- ═══════════ FAENA OVERLAY ═══════════ -->
@@ -958,6 +992,21 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<div class="overlay-modal" id="m-material">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">Material seleccionado</div>
+    <input type="hidden" id="material-editar-id">
+    <div class="field"><label>Material</label><input id="material-editar-nombre"></div>
+    <div class="field"><label>Categoría</label><input id="material-editar-categoria"></div>
+    <div class="field"><label>Unidad</label><input id="material-editar-unidad"></div>
+    <div class="field"><label>Definición</label><textarea id="material-editar-definicion" rows="3"></textarea></div>
+    <div id="material-editar-precios" style="font-size:0.84rem;margin-bottom:12px"></div>
+    <button class="btn btn-p" onclick="guardarMaterialEditado()">✓ Guardar cambios</button>
+    <button class="btn btn-d" onclick="eliminarMaterialDesdeModal()">🗑️ Eliminar material</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-material')">Cancelar</button>
+  </div>
+</div>
+
 <!-- Modal: Presupuesto -->
 <div class="overlay-modal" id="m-gasto-presupuesto">
   <div class="modal-box">
@@ -984,6 +1033,7 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="field"><label>Cantidad</label><input id="gasto-fab-cant" type="number" step="0.01" value="1"></div>
     <div class="field"><label>Precio unitario (€)</label><input id="gasto-fab-precio" type="number" step="0.01" placeholder="0.00"></div>
     <button class="btn btn-p" onclick="guardarGastoFabricacion()">💾 Guardar gasto</button>
+    <button class="btn btn-d" id="gasto-fab-eliminar" onclick="eliminarGastoFabricacionDesdeModal()" style="display:none">🗑️ Eliminar gasto</button>
     <button class="btn btn-s" onclick="cerrarModal('m-gasto-fabricacion')">Cancelar</button>
   </div>
 </div>
@@ -1030,22 +1080,140 @@ function guardarCola(c) {
 }
 
 const state = {
-  faenas:        JSON.parse(localStorage.getItem("faenas_cache")    || "[]"),
-  clientes:      JSON.parse(localStorage.getItem("clientes_cache")  || "[]"),
-  materiales:    JSON.parse(localStorage.getItem("materiales_cache")|| "[]"),
+  faenas:        [],
+  clientes:      [],
+  materiales:    [],
   faenaActualId: null,
   panelActual:   0
 };
 
+function actualizarSelectorFaenasIA() {
+  const sel = document.getElementById("ia-faena-id");
+  if (!sel) return;
+  const valorActual = sel.value;
+  const filtro = (document.getElementById("ia-faena-buscar")?.value || "").trim().toLowerCase();
+  const opciones = state.faenas
+    .filter(f => {
+      if (!filtro) return true;
+      const base = `${f.numero || ""} ${f.cliente_nombre || ""} ${f.tipo_trabajo || ""}`.toLowerCase();
+      return base.includes(filtro);
+    })
+    .map(f => `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")} · ${escHtml(f.tipo_trabajo||"")}</option>`)
+    .join("");
+  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + opciones;
+  if ([...sel.options].some(o => String(o.value) === String(valorActual))) sel.value = valorActual;
+  else if (state.faenaActualId && [...sel.options].some(o => String(o.value) === String(state.faenaActualId))) sel.value = String(state.faenaActualId);
+}
+
+function actualizarPanelConsultaIA() {
+  const scope = document.getElementById("ia-scope")?.value || "general";
+  const tipo = document.getElementById("ia-contexto")?.value || "general";
+  const wrap = document.getElementById("ia-faena-wrap");
+  const ayuda = document.getElementById("ia-ayuda-contexto");
+  if (wrap) wrap.style.display = scope === "manual" ? "block" : "none";
+  if (scope === "manual") actualizarSelectorFaenasIA();
+  if (!ayuda) return;
+  const alcanceTxt = scope === "general"
+    ? "todas las faenas"
+    : (scope === "actual" ? "la faena que tienes abierta" : "solo la faena seleccionada");
+  const contextoTxt = {
+    general: "todos los datos disponibles",
+    materiales: "materiales y sus precios",
+    trabajos: "trabajos, faenas, clientes, estados e importes"
+  }[tipo] || "todos los datos disponibles";
+  ayuda.textContent = `La respuesta se centrará en ${alcanceTxt}, usando ${contextoTxt}.`;
+}
+
+function resetearConsultaIA() {
+  const pregunta = document.getElementById("ia-pregunta");
+  const scope = document.getElementById("ia-scope");
+  const contexto = document.getElementById("ia-contexto");
+  const buscar = document.getElementById("ia-faena-buscar");
+  const faena = document.getElementById("ia-faena-id");
+  const respuestaBox = document.getElementById("ia-respuesta-box");
+  const respuesta = document.getElementById("ia-respuesta");
+  const details = document.querySelector("#sl-ia details");
+
+  if (pregunta) pregunta.value = "";
+  if (scope) scope.value = "general";
+  if (contexto) contexto.value = "general";
+  if (buscar) buscar.value = "";
+  if (faena) faena.value = "";
+  if (respuesta) respuesta.textContent = "";
+  if (respuestaBox) respuestaBox.style.display = "none";
+  if (details) details.open = false;
+  actualizarSelectorFaenasIA();
+  actualizarPanelConsultaIA();
+}
+
+function construirContextoConsultaIA() {
+  const scope = document.getElementById("ia-scope")?.value || "general";
+  const tipo = document.getElementById("ia-contexto")?.value || "general";
+  const manualId = document.getElementById("ia-faena-id")?.value || "";
+  const faenaId = scope === "actual" ? (state.faenaActualId || "") : (scope === "manual" ? manualId : "");
+
+  let faenasBase = state.faenas.map(f => ({
+    id: f.id || f._tempId,
+    numero: f.numero,
+    cliente_nombre: f.cliente_nombre,
+    trabajo: f.tipo_trabajo,
+    tipo_trabajo: f.tipo_trabajo,
+    importe: f.importe,
+    fecha: f.fecha_inicio,
+    direccion: f.direccion,
+    archivada: f.archivada,
+    anotaciones: f.anotaciones || [],
+    presupuesto: f.presupuesto || [],
+    gastos: f.gastos || [],
+    gastos_reales: f.gastos_reales || [],
+    documentos: f.documentos || []
+  }));
+  if (faenaId) faenasBase = faenasBase.filter(f => String(f.id) === String(faenaId));
+
+  const clientesBase = state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono }));
+  const materialesBase = state.materiales.map(m => ({
+    nombre: m.nombre,
+    categoria: m.categoria,
+    unidad: m.unidad,
+    definicion: m.definicion,
+    precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario, precio_unitario: p.precio_unitario, fecha_actualizacion: p.fecha_actualizacion }))
+  }));
+
+  const contexto = { faenas: [], clientes: [], materiales: [] };
+  if (tipo === "general" || tipo === "trabajos") {
+    contexto.faenas = faenasBase;
+  }
+  if (tipo === "general" || tipo === "trabajos") {
+    contexto.clientes = clientesBase;
+  }
+  if (tipo === "general" || tipo === "materiales") {
+    contexto.materiales = materialesBase;
+  }
+  return { contexto, faenaId, scope, tipo };
+}
+
 function getServerUrl() {
+  const apiActual = `${window.location.origin}/api`;
+  const servidaPorServidor = /^https?:$/i.test(window.location.protocol);
+
+  // Si la página ya viene del servidor Flask, usa siempre esa misma API.
+  if (servidaPorServidor) {
+    const modo = localStorage.getItem("server_modo") || "local";
+    if (modo === "nube") {
+      const cloudUrl = (localStorage.getItem("server_cloud_url") || "").trim();
+      if (/^https?:\/\//i.test(cloudUrl)) return cloudUrl.replace(/\/$/, "");
+    }
+    return apiActual;
+  }
+
   const modo = localStorage.getItem("server_modo") || "local";
   if (modo === "nube") {
     const cloudUrl = (localStorage.getItem("server_cloud_url") || "").trim();
-    if (cloudUrl) return cloudUrl.replace(/\/$/, "");
+    if (/^https?:\/\//i.test(cloudUrl)) return cloudUrl.replace(/\/$/, "");
   }
   let ip = (localStorage.getItem("server_ip") || "").replace(/:\d+$/, "").trim();
-  ip = ip || "127.0.0.1";
-  return `http://${ip}:5000/api`;
+  if (ip) return `http://${ip}:5000/api`;
+  return apiActual;
 }
 
 function guardarCloudUrl() {
@@ -1097,6 +1265,32 @@ function fileToBase64(file) {
   });
 }
 
+async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.72) {
+  if (!dataUrl || typeof dataUrl !== "string") return dataUrl;
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    const ratio = Math.min(1, maxWidth / Math.max(img.width, 1));
+    const width = Math.max(1, Math.round(img.width * ratio));
+    const height = Math.max(1, Math.round(img.height * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch (e) {
+    return dataUrl;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // NAVEGACIÓN PRINCIPAL (carousel)
 // ═══════════════════════════════════════════════════════════
@@ -1110,7 +1304,6 @@ function navTo(idx) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle("active", i === idx);
   });
-  if (idx === 5) actualizarPendientesInfo();
   if (idx === 2) restaurarTicket();
   if (idx === 1) renderMateriales();
   if (idx === 3) renderBookMovil();
@@ -1425,6 +1618,13 @@ function renderPanelDocumentos(f) {
       📄 Documentos del PC
       <button class="btn btn-s btn-inline" onclick="cargarDocumentosPC('${f.id || f._tempId}')">↻ Cargar</button>
     </div>
+    <div id="docs-ia-result-${f.id||f._tempId}" style="display:none;margin:10px 0;padding:10px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <strong style="font-size:0.86rem">Resultado IA</strong>
+        <button class="btn btn-s btn-inline" onclick="importarJsonDocumentos('${f.id || f._tempId}')">Añadir a materiales</button>
+      </div>
+      <textarea id="docs-ia-json-${f.id||f._tempId}" style="width:100%;min-height:140px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#10131a;color:#fff;padding:10px;font-size:0.8rem"></textarea>
+    </div>
     <div id="docs-list-${f.id||f._tempId}">
       <div style="font-size:0.82rem;color:#aaa;padding:8px 0">Pulsa ↻ Cargar para ver los archivos del PC.</div>
     </div>
@@ -1466,8 +1666,15 @@ async function cargarDocumentosPC(faenaId) {
     const el = document.getElementById(`docs-list-${faenaId}`);
     if (!el) return;
     if (!d.data.length) {
+      const faenaVacia = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+      if (faenaVacia) faenaVacia.documentos = [];
       el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Sin documentos en esta faena.</div>`;
       return;
+    }
+    const faena = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (faena) {
+      faena.documentos = d.data;
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
     }
     el.innerHTML = d.data.map(doc => {
       const ext = doc.nombre.split(".").pop().toUpperCase();
@@ -1480,12 +1687,59 @@ async function cargarDocumentosPC(faenaId) {
           <div class="doc-nombre">${escHtml(doc.nombre)}</div>
           <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""}</div>
         </div>
+        <button class="btn btn-s btn-inline" style="margin-left:auto" onclick="analizarDocumentoPC('${faenaId}','${escHtml(doc.ruta || "")}','${escHtml(doc.nombre || "")}')">🤖 IA</button>
       </div>`;
     }).join("");
     toast(`✓ ${d.data.length} documento${d.data.length!==1?"s":""} cargado${d.data.length!==1?"s":""}`);
   } catch(e) {
     toast("Error al cargar documentos del PC", true);
   }
+}
+
+async function analizarDocumentoPC(faenaId, ruta, nombre) {
+  const panel = document.getElementById(`docs-ia-result-${faenaId}`);
+  const textarea = document.getElementById(`docs-ia-json-${faenaId}`);
+  if (panel) panel.style.display = "block";
+  if (textarea) textarea.value = "Analizando documento...";
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/procesar-documento`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ruta, nombre, faena_id: faenaId || null, prompt: localStorage.getItem("ticket_prompt_temp") || "" }),
+      signal: AbortSignal.timeout(45000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error al analizar el documento");
+    if (textarea) textarea.value = JSON.stringify(d.data, null, 2);
+    const resumen = (d.data || {}).resumen_guardado || {};
+    toast(`✓ Documento analizado y guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales nuevos`);
+  } catch (e) {
+    if (textarea) textarea.value = "";
+    toast("Error al analizar el documento", true);
+  }
+}
+
+function importarJsonDocumentos(faenaId) {
+  const textarea = document.getElementById(`docs-ia-json-${faenaId}`);
+  if (!textarea || !textarea.value.trim()) { toast("No hay JSON para importar", true); return; }
+  let datos;
+  try {
+    datos = JSON.parse(textarea.value.trim().replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+  } catch (e) {
+    toast("JSON no válido", true);
+    return;
+  }
+  const articulos = datos.articulos || [];
+  if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+  for (const art of articulos) {
+    if (!art.nombre) continue;
+    if (!state.materiales.find(m => m.nombre.toLowerCase() === art.nombre.toLowerCase())) {
+      state.materiales.push({ id: `temp_${Date.now()}_${Math.random()}`, nombre: art.nombre, unidad: art.unidad||"ud", categoria: "Otro", precios: [] });
+    }
+  }
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  renderMateriales();
+  toast(`✓ ${articulos.length} artículo${articulos.length!==1?"s":""} importado${articulos.length!==1?"s":""} a materiales`);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1678,31 +1932,17 @@ function renderPanelGastos(f) {
   const faenaId = f.id || f._tempId;
   const cola = cargarCola();
   const pendientesGastos = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
-  const pendTickets = cola.ticketFotos.filter(t => String(t.faena_id) === String(faenaId));
   const gastos = (f.gastos_reales && f.gastos_reales.length)
     ? f.gastos_reales
     : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
   const total = gastos.reduce((s, g) => s + (parseFloat(g.total)||0), 0);
 
-  const htmlTicketsPend = pendTickets.length
-    ? `<div class="pending-badge">⏳ ${pendTickets.length} foto${pendTickets.length>1?"s":""} de ticket pendiente${pendTickets.length>1?"s":""} de procesar en el PC</div>
-       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-         ${pendTickets.map((t,i) => `<div style="position:relative;width:70px;height:70px">
-           <img src="${t.data}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--sawdust)" onclick="verFotoGrande('${t.data}')">
-           <button style="position:absolute;top:2px;right:2px;background:rgba(139,32,32,0.85);color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:0.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="eliminarTicketPendiente('${faenaId}',${i})">×</button>
-         </div>`).join("")}
-       </div>`
-    : "";
   const htmlGastos = gastos.length
     ? `<div style="margin-bottom:6px;display:flex;justify-content:space-between;font-size:0.78rem;color:#888"><span>${gastos.length} gasto${gastos.length!==1?"s":""}</span><span style="color:var(--red);font-weight:600">Total: ${total.toFixed(2)} €</span></div>
-       ${gastos.map(g => `<div class="gasto-item">
+       ${gastos.map(g => `<div class="gasto-item" onclick="abrirGastoFabricacion('${faenaId}','${g.id}')" style="cursor:pointer" title="Pulsa para editar o eliminar">
          <div class="gasto-desc">${escHtml(g.descripcion||"—")} <span class="badge b-gray" style="font-size:0.58rem">${escHtml(g.tipo||"gasto")}</span></div>
          <div style="text-align:right">
            <div class="gasto-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
-           <div class="presup-actions" style="justify-content:flex-end">
-             <button class="btn btn-s" onclick="abrirGastoFabricacion('${faenaId}','${g.id}')">Editar</button>
-             <button class="btn btn-d" onclick="eliminarGastoFabricacion('${faenaId}','${g.id}')">Borrar</button>
-           </div>
          </div>
        </div>`).join("")}`
     : `<div class="presup-empty">Sin gastos de fabricación.<br><small>Añade aquí jambas, herrajes, cortes, montaje y demás costes.</small></div>`;
@@ -1725,23 +1965,138 @@ function renderPanelGastos(f) {
     ${htmlGastos}
 
     <div class="section-sep" style="margin-top:16px">
-      🧾 Tickets para procesar en el PC
+      🤖 Procesar ticket o factura con IA
       <div style="display:flex;gap:6px">
-        <button class="btn btn-s btn-inline" onclick="capturarFotoTicket('${faenaId}')">📷 Foto</button>
-        <button class="btn btn-s btn-inline" onclick="seleccionarFotoTicket('${faenaId}')">🖼️ Galería</button>
+        <button class="btn btn-s btn-inline" onclick="capturarFotoGastoIA('${faenaId}')">📷 Foto</button>
+        <button class="btn btn-s btn-inline" onclick="seleccionarFotoGastoIA('${faenaId}')">🖼️ Galería</button>
+        <button class="btn btn-s btn-inline" onclick="seleccionarDocumentoGastoIA('${faenaId}')">📄 PDF/TXT</button>
       </div>
     </div>
     <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
-      Las fotos de ticket se envían al PC al sincronizar. El PC las procesa y en la siguiente sincronización aparecen como costes de fabricación si lo necesitas.
+      Igual que en Tickets: analiza al instante y guarda como gasto de esta faena, con el campo de faena ya cargado.
     </div>
-    ${htmlTicketsPend}
+    <div id="gasto-ia-estado-${faenaId}" style="display:none;margin-bottom:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
+    <div id="gasto-ia-box-${faenaId}" style="display:none;margin-bottom:16px">
+      <div id="gasto-ia-tabla-${faenaId}"></div>
+      <button class="btn btn-p" style="margin-top:8px" onclick="guardarGastoIA('${faenaId}')">✓ Guardar en gastos</button>
+    </div>
   `;
+}
+
+const gastoIaDatos = {};
+const gastoIaOrigen = {};
+
+async function procesarGastoFotoTicket(faenaId, file) {
+  const estado = document.getElementById(`gasto-ia-estado-${faenaId}`);
+  if (estado) { estado.style.display = "block"; estado.style.color = "#666"; estado.textContent = "🤖 La IA está analizando…"; }
+  try {
+    const original = await fileToBase64(file);
+    const imagen = await comprimirImagenParaTicket(original, 1900, 0.82);
+    const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagen, faena_id: faenaId, guardar: false }),
+      signal: AbortSignal.timeout(50000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error al procesar el ticket");
+    gastoIaOrigen[faenaId] = "ticket";
+    gastoIaDatos[faenaId] = d.data;
+    _renderTablaAnalisisTicket(d.data, `gasto-ia-tabla-${faenaId}`, faenaId);
+    document.getElementById(`gasto-ia-box-${faenaId}`).style.display = "block";
+    const n = (d.data.articulos || []).length;
+    if (estado) { estado.style.color = "var(--green)"; estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa/edita y guarda.`; }
+  } catch (e) {
+    if (estado) { estado.style.color = "var(--red)"; estado.textContent = e.message || "Error al procesar el ticket"; }
+    toast(e.message || "Error al procesar el ticket", true);
+  }
+}
+
+async function procesarGastoDocumento(faenaId, file) {
+  const estado = document.getElementById(`gasto-ia-estado-${faenaId}`);
+  if (estado) { estado.style.display = "block"; estado.style.color = "#666"; estado.textContent = "🤖 La IA está analizando…"; }
+  try {
+    const archivo_base64 = await fileToBase64(file);
+    const r = await fetch(`${getServerUrl()}/ia/procesar-documento`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archivo_base64, nombre: file.name || "documento", mime_type: file.type || "", faena_id: faenaId, guardar: false }),
+      signal: AbortSignal.timeout(50000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error al procesar el documento");
+    gastoIaOrigen[faenaId] = "pdf";
+    gastoIaDatos[faenaId] = d.data;
+    _renderTablaAnalisisTicket(d.data, `gasto-ia-tabla-${faenaId}`, faenaId);
+    document.getElementById(`gasto-ia-box-${faenaId}`).style.display = "block";
+    const n = (d.data.articulos || []).length;
+    if (estado) { estado.style.color = "var(--green)"; estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa/edita y guarda.`; }
+  } catch (e) {
+    if (estado) { estado.style.color = "var(--red)"; estado.textContent = e.message || "Error al procesar el documento"; }
+    toast(e.message || "Error al procesar el documento", true);
+  }
+}
+
+function capturarFotoGastoIA(faenaId) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => { const file = e.target.files[0]; input.remove(); if (file) await procesarGastoFotoTicket(faenaId, file); };
+  input.click();
+}
+
+function seleccionarFotoGastoIA(faenaId) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => { const file = e.target.files[0]; input.remove(); if (file) await procesarGastoFotoTicket(faenaId, file); };
+  input.click();
+}
+
+function seleccionarDocumentoGastoIA(faenaId) {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".pdf,.txt,text/plain,application/pdf";
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
+  input.onchange = async (e) => { const file = e.target.files[0]; input.remove(); if (file) await procesarGastoDocumento(faenaId, file); };
+  input.click();
+}
+
+async function guardarGastoIA(faenaId) {
+  const datos = _leerTablaAnalisisTicket(`gasto-ia-tabla-${faenaId}`, gastoIaDatos[faenaId]);
+  const articulos = datos ? (datos.articulos || []) : [];
+  if (!articulos.length) { toast("No hay artículos para guardar", true); return; }
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/guardar-json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ origen: gastoIaOrigen[faenaId] || "gasto", faena_id: faenaId, data: datos })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "No se pudo guardar en nube");
+    const resumen = (d.data || {}).resumen_guardado || {};
+    delete gastoIaDatos[faenaId];
+    delete gastoIaOrigen[faenaId];
+    const box = document.getElementById(`gasto-ia-box-${faenaId}`);
+    if (box) box.style.display = "none";
+    const estado = document.getElementById(`gasto-ia-estado-${faenaId}`);
+    if (estado) estado.style.display = "none";
+    await recargarPresupuestoFaena(faenaId);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) renderPanelGastos(f);
+    renderFaenas();
+    toast(`✓ Guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales nuevos`);
+  } catch (e) {
+    toast(e.message || "Error al guardar en nube", true);
+  }
 }
 
 function abrirGastoFabricacion(faenaId, gastoId = "") {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
-  const gasto = (f.gastos || []).find(g => String(g.id) === String(gastoId) && (g.tipo || "gasto") === "gasto");
+  const gasto = (f.gastos || []).find(g => String(g.id) === String(gastoId));
   document.getElementById("gasto-fab-faena-id").value = faenaId;
   document.getElementById("gasto-fab-id").value = gasto?.id || "";
   document.getElementById("gasto-fab-title").textContent = gasto ? "🧾 Editar gasto" : "🧾 Nuevo gasto";
@@ -1749,6 +2104,8 @@ function abrirGastoFabricacion(faenaId, gastoId = "") {
   document.getElementById("gasto-fab-tipo").value = gasto?.tipo || "gasto";
   document.getElementById("gasto-fab-cant").value = gasto?.cantidad ?? 1;
   document.getElementById("gasto-fab-precio").value = gasto?.precio_unitario ?? "";
+  const btnEliminar = document.getElementById("gasto-fab-eliminar");
+  if (btnEliminar) btnEliminar.style.display = gasto ? "block" : "none";
   abrirModal("m-gasto-fabricacion");
 }
 
@@ -1760,14 +2117,53 @@ async function guardarGastoFabricacion() {
   const cantidad = parseFloat(document.getElementById("gasto-fab-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-fab-precio").value) || 0;
   if (!descripcion) { toast("El gasto es obligatorio", true); return; }
-  const body = { descripcion, tipo: "gasto", cantidad, precio_unitario };
+  const body = { descripcion, tipo, cantidad, precio_unitario };
+
+  if (gastoId && String(gastoId).startsWith("temp_")) {
+    // Gasto aun no sincronizado: actualiza directamente la cola pendiente.
+    const cola = cargarCola();
+    const opIdx = cola.gastos.findIndex(g => String(g.id) === String(gastoId));
+    if (opIdx >= 0) cola.gastos[opIdx] = { ...cola.gastos[opIdx], descripcion, tipo, cantidad, precio_unitario };
+    guardarCola(cola);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) {
+      const idx = (f.gastos || []).findIndex(g => String(g.id) === String(gastoId));
+      if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo, cantidad, precio_unitario, total: cantidad * precio_unitario };
+      renderPanelGastos(f);
+    }
+    renderFaenas();
+    cerrarModal("m-gasto-fabricacion");
+    toast("✓ Gasto actualizado (pendiente de sincronizar)");
+    return;
+  }
+
+  try {
+    const base = getServerUrl();
+    const url = gastoId ? `${base}/gastos/${gastoId}` : `${base}/faenas/${faenaId}/gastos`;
+    const method = gastoId ? "PUT" : "POST";
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) renderPanelGastos(f);
+    renderFaenas();
+    cerrarModal("m-gasto-fabricacion");
+    toast(gastoId ? "✓ Gasto actualizado" : "✓ Gasto añadido");
+    return;
+  } catch (e) {
+    console.error(e);
+  }
+
+  // Sin conexión: guarda en el móvil y se sincroniza automáticamente al recuperar señal.
   const cola = cargarCola();
   cola.gastos.push({
     op: gastoId ? "update" : "create",
     id: gastoId || `temp_${Date.now()}`,
     faena_id: faenaId,
     descripcion,
-    tipo: "gasto",
+    tipo,
     cantidad,
     precio_unitario
   });
@@ -1777,19 +2173,51 @@ async function guardarGastoFabricacion() {
     f.gastos = f.gastos || [];
     if (gastoId) {
       const idx = f.gastos.findIndex(g => String(g.id) === String(gastoId));
-      if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo: "gasto", cantidad, precio_unitario, total: cantidad * precio_unitario };
+      if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo, cantidad, precio_unitario, total: cantidad * precio_unitario };
     } else {
-      f.gastos.push({ id: `temp_${Date.now()}`, faena_id: faenaId, tipo: "gasto", descripcion, cantidad, precio_unitario, total: cantidad * precio_unitario });
+      f.gastos.push({ id: `temp_${Date.now()}`, faena_id: faenaId, tipo, descripcion, cantidad, precio_unitario, total: cantidad * precio_unitario });
     }
     renderPanelGastos(f);
   }
   renderFaenas();
   cerrarModal("m-gasto-fabricacion");
-  toast("✓ Gasto guardado en el móvil, pulsa Sync para enviarlo al PC");
+  toast("⏳ Sin conexión: guardado en el móvil, se sincronizará automáticamente", true);
 }
 
 async function eliminarGastoFabricacion(faenaId, gastoId) {
   if (!confirm("¿Borrar este gasto?")) return;
+
+  if (String(gastoId).startsWith("temp_")) {
+    // Gasto aun no sincronizado: quita la operación pendiente de la cola.
+    const cola = cargarCola();
+    cola.gastos = cola.gastos.filter(g => String(g.id) !== String(gastoId));
+    guardarCola(cola);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) {
+      f.gastos = (f.gastos || []).filter(g => String(g.id) !== String(gastoId));
+      renderPanelGastos(f);
+    }
+    renderFaenas();
+    toast("✓ Gasto eliminado");
+    return;
+  }
+
+  try {
+    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) renderPanelGastos(f);
+    renderFaenas();
+    toast("✓ Gasto eliminado");
+    return;
+  } catch (e) {
+    console.error(e);
+  }
+
+  // Sin conexión: encola el borrado para sincronizar automáticamente más tarde.
   const cola = cargarCola();
   cola.gastos.push({ op: "delete", id: gastoId, faena_id: faenaId });
   guardarCola(cola);
@@ -1799,7 +2227,15 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
     renderPanelGastos(f);
   }
   renderFaenas();
-  toast("✓ Borrado guardado en el móvil, pulsa Sync para enviarlo al PC");
+  toast("⏳ Sin conexión: se eliminará al sincronizar", true);
+}
+
+async function eliminarGastoFabricacionDesdeModal() {
+  const faenaId = document.getElementById("gasto-fab-faena-id").value;
+  const gastoId = document.getElementById("gasto-fab-id").value;
+  if (!gastoId) return;
+  await eliminarGastoFabricacion(faenaId, gastoId);
+  cerrarModal("m-gasto-fabricacion");
 }
 
 async function sincronizarGastosFaena(faenaId) {
@@ -1822,76 +2258,6 @@ async function sincronizarGastosFaena(faenaId) {
     console.error(e);
     toast("No se pudieron sincronizar los gastos", true);
   }
-}
-
-async function _procesarFotoTicket(faenaId, file) {
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-  const numeroFaena = codigoFaenaSeguro(f || { numero: faenaId });
-  const img = new Image();
-  const url = URL.createObjectURL(file);
-  return new Promise(resolve => {
-    img.onload = async () => {
-      const MAX = 1200;
-      const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * ratio);
-      canvas.height = Math.round(img.height * ratio);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      const base64 = canvas.toDataURL("image/jpeg", 0.80);
-      const nombre = `${numeroFaena}_ticket_${Date.now()}.jpg`;
-      // Guardar en carpeta real del móvil si está disponible
-      await guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena);
-      // Encolar para sync con PC
-      const cola = cargarCola();
-      cola.ticketFotos.push({ faena_id: faenaId, data: base64, nombre, fecha: new Date().toISOString() });
-      guardarCola(cola);
-      toast("✓ Foto de ticket guardada — se procesará en el PC al sincronizar");
-      if (f) renderPanelGastos(f);
-      resolve();
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-    img.src = url;
-  });
-}
-
-function capturarFotoTicket(faenaId) {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    input.remove();
-    if (file) await _procesarFotoTicket(faenaId, file);
-  };
-  input.click();
-}
-
-function seleccionarFotoTicket(faenaId) {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*";
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    input.remove();
-    if (file) await _procesarFotoTicket(faenaId, file);
-  };
-  input.click();
-}
-
-function eliminarTicketPendiente(faenaId, idx) {
-  const cola = cargarCola();
-  let cont = 0;
-  cola.ticketFotos = cola.ticketFotos.filter(t => {
-    if (String(t.faena_id) !== String(faenaId)) return true;
-    return cont++ !== idx;
-  });
-  guardarCola(cola);
-  toast("Foto de ticket eliminada");
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-  if (f) renderPanelGastos(f);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1933,8 +2299,9 @@ function renderFaenas() {
   const todas = [...state.faenas];
   const lista = todas;
   const el = document.getElementById("lista-faenas");
+  actualizarSelectorFaenasIA();
   if (!lista.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state.faenas.length === 0 ? "Sin faenas.<br><small>Crea una nueva o sincroniza con el PC</small>" : "Sin resultados"}</div>`;
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas.<br><small>Crea la primera faena</small>"}</div>`;
     return;
   }
   el.innerHTML = lista.map(f => {
@@ -2319,27 +2686,135 @@ function _refrescarDocumentos(faenaId) {
 
 function renderMateriales() {
   const q = (document.getElementById("q-mat")?.value || "").toLowerCase();
-  const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
+  const lista = state.materiales.filter(m => {
+    if (!q) return true;
+    const campos = [m.nombre, m.categoria, m.unidad, m.definicion];
+    (m.precios || []).forEach(p => campos.push(p.proveedor, p.precio_unitario, p.fecha_actualizacion));
+    return campos.some(valor => String(valor || "").toLowerCase().includes(q));
+  });
   const el = document.getElementById("lista-materiales");
   if (!lista.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${state.materiales.length === 0 ? "Sincroniza para ver materiales" : "Sin resultados"}</div>`; return; }
-  const cats = {};
-  lista.forEach(m => { const cat = m.categoria || "Otros"; if (!cats[cat]) cats[cat] = []; cats[cat].push(m); });
-  el.innerHTML = Object.entries(cats).map(([cat, mats]) =>
-    `<div class="mat-cat">${cat}</div>` +
-    mats.map(m => {
-      const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
-      const preciosTxt = precios.map((p,i) => `<span class="${i===0?"mat-precio-min":""}">${escHtml(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`).join("  ·  ");
-      return `<div class="mat-item">
-        <div class="mat-nombre">${escHtml(m.nombre)} <span style="color:#aaa;font-size:0.85rem">(${escHtml(m.unidad)})</span></div>
-        ${m.definicion ? `<div style="font-size:0.7rem;color:#666;font-style:italic;margin-top:2px">📝 ${escHtml(m.definicion)}</div>` : ""}
-        <div class="mat-precios">${preciosTxt || '<em style="color:#ccc">Sin precios</em>'}</div>
-        <div class="btn-row" style="margin-top:6px">
-          <button class="btn btn-s btn-inline" style="font-size:0.75rem" onclick="editarDefinicionMaterial(${m.id},'${escHtml(m.nombre).replace(/'/g,"\\'")}','${(m.definicion||"").replace(/'/g,"\\'")}')">📝 Def.</button>
-          <button class="btn btn-s btn-inline" style="font-size:0.75rem" onclick="abrirPrecio(${m.id})">+ Precio</button>
-        </div>
-      </div>`;
-    }).join("")
-  ).join("");
+  const rows = lista.map(m => {
+    const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
+    const proveedoresTxt = precios.length
+      ? precios.map(p => `<div>${escHtml(p.proveedor)}</div>`).join("")
+      : '<em style="color:#aaa">Sin proveedor</em>';
+    const preciosTxt = precios.length
+      ? precios.map((p, i) => `<div class="${i === 0 ? "mat-precio-min" : ""}">${Number(p.precio_unitario || 0).toFixed(2)}€</div>`).join("")
+      : '<em style="color:#aaa">Sin precio</em>';
+    return `<tr onclick="abrirMaterial(${m.id})" style="cursor:pointer" title="Pulsa para editar o eliminar">
+      <td>${escHtml(m.categoria || "Otros")}</td>
+      <td><strong>${escHtml(m.nombre)}</strong>${m.definicion ? `<div style="font-size:0.75rem;color:#666;margin-top:3px">${escHtml(m.definicion)}</div>` : ""}</td>
+      <td>${escHtml(m.unidad || "ud")}</td>
+      <td>${proveedoresTxt}</td>
+      <td>${preciosTxt}</td>
+      <td style="color:#888;font-size:0.78rem">Seleccionar ›</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<div style="overflow:auto;border:1px solid var(--sawdust);border-radius:8px;background:#fff">
+    <table style="width:100%;border-collapse:collapse;min-width:760px">
+      <thead><tr>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Categoría</th>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Material</th>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Unidad</th>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Proveedor</th>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Precio</th>
+        <th style="text-align:left;padding:9px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Detalle</th>
+      </tr></thead><tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+  function abrirMaterial(id) {
+    const m = state.materiales.find(x => String(x.id) === String(id));
+    if (!m) return;
+    document.getElementById("material-editar-id").value = m.id;
+    document.getElementById("material-editar-nombre").value = m.nombre || "";
+    document.getElementById("material-editar-categoria").value = m.categoria || "Herraje";
+    document.getElementById("material-editar-unidad").value = m.unidad || "ud";
+    document.getElementById("material-editar-definicion").value = m.definicion || "";
+    const precios = [...(m.precios || [])].sort((a, b) => Number(a.precio_unitario) - Number(b.precio_unitario));
+    document.getElementById("material-editar-precios").innerHTML = precios.length
+      ? `<strong>Precios registrados</strong><table style="width:100%;border-collapse:collapse;margin-top:6px"><thead><tr><th style="text-align:left;padding:5px;border-bottom:1px solid var(--sawdust)">Proveedor</th><th style="text-align:left;padding:5px;border-bottom:1px solid var(--sawdust)">Precio</th></tr></thead><tbody>${precios.map((p, i) => `<tr><td style="padding:5px"><input type="text" data-precio-proveedor="${i}" value="${escHtml(p.proveedor || "")}" style="margin:0;padding:7px"></td><td style="padding:5px"><input type="number" step="0.01" data-precio-valor="${i}" value="${Number(p.precio_unitario || 0).toFixed(2)}" style="margin:0;padding:7px"></td></tr>`).join("")}</tbody></table>`
+      : '<strong>Precios registrados</strong><div style="color:#888;margin-top:6px">Sin precios</div>';
+    abrirModal("m-material");
+  }
+
+  async function guardarMaterialEditado() {
+    const id = document.getElementById("material-editar-id").value;
+    const payload = {
+      nombre: document.getElementById("material-editar-nombre").value.trim(),
+      categoria: document.getElementById("material-editar-categoria").value.trim(),
+      unidad: document.getElementById("material-editar-unidad").value.trim(),
+      definicion: document.getElementById("material-editar-definicion").value.trim()
+    };
+    if (!payload.nombre) { toast("El nombre es obligatorio", true); return; }
+    try {
+      const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo actualizar");
+      const preciosEditados = Array.from(document.querySelectorAll("#material-editar-precios tbody tr")).map((tr, i) => ({
+        proveedor: (tr.querySelector(`[data-precio-proveedor="${i}"]`)?.value || "").trim(),
+        precio_unitario: Number(tr.querySelector(`[data-precio-valor="${i}"]`)?.value || 0)
+      })).filter(p => p.proveedor && Number.isFinite(p.precio_unitario) && p.precio_unitario >= 0);
+      const rp = await fetch(`${getServerUrl()}/materiales/${id}/precios`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({precios: preciosEditados}) });
+      const dp = await rp.json();
+      if (!rp.ok || !dp.ok) throw new Error(dp.error || "No se pudieron actualizar los precios");
+      await cargarMateriales();
+      cerrarModal("m-material");
+      renderMateriales();
+      toast("✓ Material actualizado");
+    } catch (e) { toast(e.message || "Error al actualizar material", true); }
+  }
+
+  async function eliminarMaterialDesdeModal() {
+    const id = document.getElementById("material-editar-id").value;
+    const m = state.materiales.find(x => String(x.id) === String(id));
+    if (!m || !confirm(`¿Eliminar el material "${m.nombre}" y sus precios?`)) return;
+    try {
+      const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo eliminar");
+      state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+      cerrarModal("m-material");
+      renderMateriales();
+      toast("✓ Material eliminado");
+    } catch (e) { toast(e.message || "Error al eliminar material", true); }
+  }
+
+async function editarMaterial(id) {
+  const m = state.materiales.find(x => String(x.id) === String(id));
+  if (!m) return;
+  const nombre = prompt("Nombre del material:", m.nombre || "");
+  if (nombre === null) return;
+  const unidad = prompt("Unidad:", m.unidad || "ud");
+  if (unidad === null) return;
+  const categoria = prompt("Categoría:", m.categoria || "Herraje");
+  if (categoria === null) return;
+  const definicion = prompt("Definición:", m.definicion || "");
+  if (definicion === null) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({nombre, unidad, categoria, definicion}) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo actualizar");
+    await cargarMateriales();
+    renderMateriales();
+    toast("✓ Material actualizado");
+  } catch (e) { toast(e.message || "Error al actualizar material", true); }
+}
+
+async function eliminarMaterial(id) {
+  const m = state.materiales.find(x => String(x.id) === String(id));
+  if (!m || !confirm(`¿Eliminar el material "${m.nombre}" y sus precios?`)) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "DELETE" });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo eliminar");
+    state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    renderMateriales();
+    toast("✓ Material eliminado");
+  } catch (e) { toast(e.message || "Error al eliminar material", true); }
 }
 
 function editarDefinicionMaterial(id, nombre, def) {
@@ -2402,6 +2877,137 @@ async function cargarMateriales() {
 // ═══════════════════════════════════════════════════════════
 
 let ticketFotoBase64 = localStorage.getItem("ticket_foto_temp") || null;
+let ticketDocumentoBase64 = null;
+let ticketDocumentoNombre = "";
+let ticketDocumentoMime = "";
+let ticketOrigenAnalisis = "ticket";
+let ticketAnalisisActual = null;
+
+function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto = null) {
+  const proveedorBase = (data && data.proveedor) ? String(data.proveedor).trim() : "";
+  const fechaBase = (data && data.fecha) ? String(data.fecha).trim() : "";
+  const articulos = (data && Array.isArray(data.articulos)) ? data.articulos : [];
+  return {
+    proveedor: proveedorBase,
+    fecha: fechaBase,
+    articulos: articulos
+      .filter(a => a && typeof a === "object")
+      .map(a => {
+        const nombre = String(a.nombre || "").trim();
+        const unidad = String(a.unidad || "ud").trim() || "ud";
+        const categoria = String(a.categoria || "Otro").trim() || "Otro";
+        const proveedor = String(a.proveedor || proveedorBase || "").trim();
+        const cantidad = Number(a.cantidad || 0) || 0;
+        const precio = Number(a.precio_unitario || 0) || 0;
+        const total = Number(a.total || (cantidad * precio)) || 0;
+        const faena_id = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
+          ? (faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null)
+          : String(a.faena_id).trim();
+        return { nombre, unidad, categoria, proveedor, cantidad, precio_unitario: precio, total, faena_id };
+      })
+      .filter(a => a.nombre)
+  };
+}
+
+function _ticketOpcionesFaena(valueSeleccionado) {
+  const base = '<option value="">— Sin faena —</option>';
+  const opciones = (state.faenas || []).map(f => {
+    const id = String(f.id || f._tempId || "");
+    const num = f.numero ? `${f.numero} · ` : "";
+    const cli = f.cliente_nombre || "";
+    const selected = String(valueSeleccionado || "") === id ? " selected" : "";
+    return `<option value="${id}"${selected}>${escHtml(num + cli)}</option>`;
+  }).join("");
+  return base + opciones;
+}
+
+function _renderTablaAnalisisTicket(data, containerId = "ticket-tabla-wrap", faenaPorDefecto = null) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  const normalizado = _normalizarAnalisisParaTablaMateriales(data || {}, faenaPorDefecto);
+  const articulos = normalizado.articulos.length ? normalizado.articulos : [{
+    nombre: "", unidad: "ud", categoria: "Otro", proveedor: normalizado.proveedor,
+    cantidad: 1, precio_unitario: 0, total: 0, faena_id: faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null
+  }];
+  const prov = escHtml(normalizado.proveedor || "");
+  const fec = escHtml(normalizado.fecha || "");
+  const rows = articulos.map((a, i) => {
+    const nombre = escHtml(a.nombre || "");
+    const categoria = escHtml(a.categoria || "Otro");
+    const proveedor = escHtml(a.proveedor || normalizado.proveedor || "");
+    const cantidad = Number(a.cantidad || 0);
+    const precio = Number(a.precio_unitario || 0);
+    const total = Number(a.total || (cantidad * precio));
+    const unidad = escHtml(a.unidad || "ud");
+    const faena = a.faena_id ? String(a.faena_id) : "";
+    return `<tr data-i="${i}">
+      <td><input type="text" data-k="categoria" value="${categoria}" style="margin:0;font-size:0.82rem;width:110px"></td>
+      <td><input type="text" data-k="nombre" value="${nombre}" style="margin:0;font-size:0.82rem"></td>
+      <td><input type="text" data-k="proveedor" value="${proveedor}" style="margin:0;font-size:0.82rem;width:120px"></td>
+      <td><input type="number" step="0.01" data-k="cantidad" value="${Number.isFinite(cantidad) ? cantidad : 0}" style="margin:0;font-size:0.82rem;width:84px"></td>
+      <td><input type="number" step="0.01" data-k="precio_unitario" value="${Number.isFinite(precio) ? precio : 0}" style="margin:0;font-size:0.82rem;width:92px"></td>
+      <td><input type="number" step="0.01" data-k="total" value="${Number.isFinite(total) ? total : 0}" style="margin:0;font-size:0.82rem;width:96px"></td>
+      <td><input type="text" data-k="unidad" value="${unidad}" style="margin:0;font-size:0.82rem;width:72px"></td>
+      <td><select data-k="faena_id" style="margin:0;font-size:0.82rem;min-width:160px">${_ticketOpcionesFaena(faena)}</select></td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML = `
+    <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""}</div>
+    <div style="overflow:auto;border:1px solid var(--sawdust);border-radius:8px;background:#fff">
+      <table style="width:100%;border-collapse:collapse;min-width:720px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Categoría</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Material</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Proveedor</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Cant.</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">P. unit.</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Total</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Unidad</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Faena</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function _leerTablaAnalisisTicket(containerId = "ticket-tabla-wrap", datosReferencia = null) {
+  const wrap = document.getElementById(containerId);
+  const referencia = datosReferencia || ticketAnalisisActual;
+  if (!wrap || !referencia) return null;
+  const filas = Array.from(wrap.querySelectorAll("tbody tr"));
+  const articulos = [];
+  let proveedorComun = "";
+  for (const tr of filas) {
+    const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
+    if (!nombre) continue;
+    const categoria = (tr.querySelector('[data-k="categoria"]')?.value || "Otro").trim() || "Otro";
+    const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
+    if (!proveedorComun && proveedor) proveedorComun = proveedor;
+    const cantidad = Number((tr.querySelector('[data-k="cantidad"]')?.value || "0").replace(",", "."));
+    const precio = Number((tr.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
+    const totalVal = (tr.querySelector('[data-k="total"]')?.value || "").trim();
+    const totalNum = Number(totalVal.replace(",", "."));
+    const unidad = (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud";
+    const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
+    articulos.push({
+      nombre,
+      categoria,
+      proveedor,
+      cantidad: Number.isFinite(cantidad) ? cantidad : 0,
+      precio_unitario: Number.isFinite(precio) ? precio : 0,
+      total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
+      unidad,
+      faena_id: faenaRaw || null
+    });
+  }
+  return {
+    proveedor: proveedorComun || referencia.proveedor || "",
+    fecha: referencia.fecha || "",
+    articulos
+  };
+}
 
 function tomarFotoDirecta() {
   const input = document.createElement("input");
@@ -2421,154 +3027,251 @@ function ticketPreview(event) {
   _leerFotoTicket(file);
 }
 
-function _leerFotoTicket(file) {
+async function ticketDocumentoPreview(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    ticketDocumentoBase64 = await fileToBase64(file);
+    ticketDocumentoNombre = file.name || "documento";
+    ticketDocumentoMime = file.type || "";
+    ticketFotoBase64 = null;
+    localStorage.removeItem("ticket_foto_temp");
+    document.getElementById("ticket-foto-movil").value = "";
+    document.getElementById("ticket-preview-movil").style.display = "none";
+    const info = document.getElementById("ticket-doc-info");
+    if (info) {
+      info.style.display = "block";
+      info.textContent = `Archivo seleccionado: ${file.name}`;
+    }
+    document.getElementById("ticket-paso2").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "none";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+  } catch (e) {
+    toast("No se pudo leer el archivo", true);
+  }
+}
+
+async function _leerFotoTicket(file) {
   const url = URL.createObjectURL(file);
   document.getElementById("ticket-img-movil").src = url;
   document.getElementById("ticket-preview-movil").style.display = "block";
+  const info = document.getElementById("ticket-doc-info");
+  if (info) info.style.display = "none";
+  ticketDocumentoBase64 = null;
+  ticketDocumentoNombre = "";
+  ticketDocumentoMime = "";
+  document.getElementById("ticket-doc-movil").value = "";
   const reader = new FileReader();
-  reader.onload = e => {
-    ticketFotoBase64 = e.target.result;
-    localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
-    URL.revokeObjectURL(url);
-    document.getElementById("ticket-paso2").style.display = "block";
-    document.getElementById("ticket-paso3").style.display = "block";
-    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-    document.getElementById("ticket-faena-movil").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
+  reader.onload = async e => {
+    try {
+      const original = e.target.result;
+      ticketFotoBase64 = await comprimirImagenParaTicket(original, 1900, 0.82);
+      localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+      URL.revokeObjectURL(url);
+      document.getElementById("ticket-paso2").style.display = "block";
+      document.getElementById("ticket-paso3").style.display = "none";
+      document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    } catch (err) {
+      ticketFotoBase64 = e.target.result;
+      localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+      URL.revokeObjectURL(url);
+      toast("La imagen se ha enviado con compresión mínima por seguridad", true);
+    }
   };
   reader.readAsDataURL(file);
 }
 
-function cancelarTicket() {
+function cancelarTicket(mostrarMensaje = true) {
   localStorage.removeItem("ticket_foto_temp"); localStorage.removeItem("ticket_prompt_temp");
   document.getElementById("ticket-json-movil").value = "";
   document.getElementById("ticket-foto-movil").value = "";
+  document.getElementById("ticket-doc-movil").value = "";
   document.getElementById("ticket-preview-movil").style.display = "none";
+  document.getElementById("ticket-doc-info").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "none";
   document.getElementById("ticket-paso3").style.display = "none";
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) tabla.innerHTML = "";
   document.getElementById("ticket-paso4").style.display = "none";
-  document.getElementById("ticket-prompt-box").style.display = "none";
+  const promptBox = document.getElementById("ticket-prompt-box");
+  if (promptBox) promptBox.style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "none";
   ticketFotoBase64 = null;
-  toast("Ticket cancelado");
+  ticketDocumentoBase64 = null;
+  ticketDocumentoNombre = "";
+  ticketDocumentoMime = "";
+  ticketOrigenAnalisis = "ticket";
+  ticketAnalisisActual = null;
+  if (mostrarMensaje) toast("Ticket cancelado");
+}
+
+function limpiarImagenTicket() {
+  cancelarTicket(false);
+  toast("Imagen eliminada");
 }
 
 function restaurarTicket() {
   const foto = localStorage.getItem("ticket_foto_temp");
-  const prompt = localStorage.getItem("ticket_prompt_temp");
   if (foto) {
     document.getElementById("ticket-img-movil").src = foto;
     document.getElementById("ticket-preview-movil").style.display = "block";
     document.getElementById("ticket-paso2").style.display = "block";
-    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("ticket-paso3").style.display = "none";
     document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
     ticketFotoBase64 = foto;
-    document.getElementById("ticket-faena-movil").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
   }
-  if (prompt) { document.getElementById("ticket-prompt-txt").textContent = prompt; document.getElementById("ticket-prompt-box").style.display = "block"; }
-}
-
-async function generarPromptTicketMovil() {
-  let prompt = "";
-  try {
-    const r = await fetch(`${getServerUrl()}/prompts/ticket`, { signal: AbortSignal.timeout(5000) });
-    if (r.ok) { const d = await r.json(); if (d.ok) prompt = d.data.prompt; }
-  } catch(e) { prompt = "Analiza el ticket y extrae los artículos en formato JSON: {proveedor, articulos:[{nombre,cantidad,unidad,precio_unitario}]}"; }
-  localStorage.setItem("ticket_prompt_temp", prompt);
-  document.getElementById("ticket-prompt-txt").textContent = prompt;
-  document.getElementById("ticket-prompt-box").style.display = "block";
 }
 
 async function procesarTicketConIA() {
-  if (!ticketFotoBase64) { toast("Selecciona una foto primero", true); return; }
+  if (!ticketFotoBase64 && !ticketDocumentoBase64) { toast("Selecciona una foto o PDF/TXT primero", true); return; }
   const btn = document.getElementById("btn-ai-ticket");
   const estado = document.getElementById("ticket-ai-estado");
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Procesando...'; }
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "#666";
-    estado.textContent = "🤖 La IA está analizando el ticket…";
+    estado.textContent = "🤖 La IA está analizando…";
   }
   try {
-    const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
+    const endpoint = ticketFotoBase64 ? "/ia/procesar-ticket" : "/ia/procesar-documento";
+    const bodyPayload = ticketFotoBase64
+      ? { imagen: ticketFotoBase64, guardar: false }
+      : {
+          archivo_base64: ticketDocumentoBase64,
+          nombre: ticketDocumentoNombre || "documento",
+          mime_type: ticketDocumentoMime || "",
+          prompt: localStorage.getItem("ticket_prompt_temp") || "",
+          guardar: false
+        };
+    const r = await fetch(`${getServerUrl()}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imagen: ticketFotoBase64 }),
-      signal: AbortSignal.timeout(40000)
+      body: JSON.stringify(bodyPayload),
+      signal: AbortSignal.timeout(50000)
     });
     const data = await r.json();
     if (data.ok && data.data) {
+      ticketOrigenAnalisis = ticketFotoBase64 ? "ticket" : "pdf";
+      ticketAnalisisActual = data.data;
       document.getElementById("ticket-json-movil").value = JSON.stringify(data.data, null, 2);
+      _renderTablaAnalisisTicket(data.data);
       document.getElementById("ticket-paso3").style.display = "block";
       const n = (data.data.articulos || []).length;
       if (estado) {
         estado.style.color = "var(--green)";
-        estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa y pulsa \"Cargar datos\".`;
+        estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa/edita en la tabla y guarda.`;
       }
-      toast(`✓ Ticket procesado — ${n} artículo${n !== 1 ? "s" : ""}`);
+      toast(`✓ Análisis completado — edita tabla y guarda`);
     } else {
       if (estado) {
         estado.style.color = "var(--red)";
-        estado.textContent = data.error || "Error al procesar. Usa el método manual.";
+        estado.textContent = data.error || "Error al procesar. Usa el guardado manual JSON.";
       }
       toast(data.error || "Error al procesar con IA", true);
     }
   } catch (e) {
     if (estado) {
       estado.style.color = "var(--red)";
-      estado.textContent = "Sin conexión al servidor. Usa el método manual.";
+      estado.textContent = `Error al conectar o procesar: ${e.message || "desconocido"}`;
     }
-    toast("Error: " + e.message, true);
+    toast("Error: " + (e.message || "desconocido"), true);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "🤖 Procesar con IA"; }
   }
 }
 
-function copiarTicketPrompt() {
-  const txt = document.getElementById("ticket-prompt-txt").textContent;
-  navigator.clipboard.writeText(txt).then(() => toast("✓ Prompt copiado")).catch(() => {
-    const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
-    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); toast("✓ Prompt copiado");
-  });
-}
-
 async function cargarJsonTicketMovil() {
-  const raw = document.getElementById("ticket-json-movil").value.trim();
-  if (!raw) { toast("Pega el JSON primero", true); return; }
-  let datos;
-  try { datos = JSON.parse(raw.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim()); } catch(e) { toast("JSON no válido", true); return; }
-  const faenaId = document.getElementById("ticket-faena-movil").value;
+  const datos = _leerTablaAnalisisTicket();
+  if (!datos) { toast("No hay análisis para guardar", true); return; }
   const articulos = datos.articulos || [];
   if (!articulos.length) { toast("No se encontraron artículos", true); return; }
-  const cola = cargarCola();
-  cola.tickets.push({ proveedor: datos.proveedor||"", fecha: datos.fecha||new Date().toISOString().substring(0,10), articulos, faena_id: faenaId||null });
-  guardarCola(cola);
-  for (const art of articulos) {
-    if (!art.nombre) continue;
-    if (!state.materiales.find(m => m.nombre.toLowerCase() === art.nombre.toLowerCase())) {
-      state.materiales.push({ id: `temp_${Date.now()}_${Math.random()}`, nombre: art.nombre, unidad: art.unidad||"ud", categoria: "Otro", precios: [] });
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/guardar-json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ origen: ticketOrigenAnalisis || "ticket", data: datos })
+    });
+    const txt = await r.text();
+    let d = null;
+    try { d = JSON.parse(txt); } catch(_) { d = null; }
+    if (!d) {
+      throw new Error(`Respuesta no JSON del servidor (${r.status})`);
     }
+    if (!d.ok) throw new Error(d.error || "No se pudo guardar en nube");
+    const resumen = (d.data || {}).resumen_guardado || {};
+    await cargarMateriales();
+    renderMateriales();
+    toast(`✓ Guardado nube: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales nuevos`);
+    cancelarTicket(false);
+  } catch (e) {
+    toast(e.message || "Error al guardar JSON en nube", true);
   }
-  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-  renderMateriales();
-  toast(`✓ ${articulos.length} artículo${articulos.length!==1?"s":""} guardado — se subirán al sincronizar`);
-  actualizarPendientesInfo();
-  cancelarTicket();
+}
+
+function filaFormularioManualHtml() {
+  return `<tr>
+    <td><input type="text" data-manual="categoria" value="Otro" style="margin:0;font-size:0.82rem;width:110px"></td>
+    <td><input type="text" data-manual="nombre" style="margin:0;font-size:0.82rem"></td>
+    <td><input type="text" data-manual="proveedor" style="margin:0;font-size:0.82rem;width:120px"></td>
+    <td><input type="number" step="0.01" data-manual="cantidad" value="1" style="margin:0;font-size:0.82rem;width:84px"></td>
+    <td><input type="number" step="0.01" data-manual="precio_unitario" value="0" style="margin:0;font-size:0.82rem;width:92px"></td>
+    <td><input type="number" step="0.01" data-manual="total" value="0" style="margin:0;font-size:0.82rem;width:96px"></td>
+    <td><input type="text" data-manual="unidad" value="ud" style="margin:0;font-size:0.82rem;width:72px"></td>
+    <td><select data-manual="faena_id" style="margin:0;font-size:0.82rem;min-width:160px">${_ticketOpcionesFaena("")}</select></td>
+  </tr>`;
+}
+
+function renderFormularioManual() {
+  const tbody = document.getElementById("ticket-formulario-manual");
+  if (tbody && !tbody.children.length) tbody.innerHTML = filaFormularioManualHtml();
+}
+
+function anadirFilaManual() {
+  const tbody = document.getElementById("ticket-formulario-manual");
+  if (tbody) tbody.insertAdjacentHTML("beforeend", filaFormularioManualHtml());
+}
+
+function usarFormularioManual() {
+  const filas = Array.from(document.querySelectorAll("#ticket-formulario-manual tr"));
+  const articulos = filas.map(tr => {
+    const valor = clave => (tr.querySelector(`[data-manual="${clave}"]`)?.value || "").trim();
+    const cantidad = Number(valor("cantidad").replace(",", ".")) || 0;
+    const precio = Number(valor("precio_unitario").replace(",", ".")) || 0;
+    const total = Number(valor("total").replace(",", ".")) || cantidad * precio;
+    return { nombre: valor("nombre"), categoria: valor("categoria") || "Otro", proveedor: valor("proveedor"), cantidad, precio_unitario: precio, total, unidad: valor("unidad") || "ud", faena_id: valor("faena_id") || null };
+  }).filter(a => a.nombre);
+  if (!articulos.length) { toast("Escribe al menos un material", true); return; }
+  ticketOrigenAnalisis = "texto";
+  ticketAnalisisActual = { proveedor: articulos[0].proveedor || "", fecha: "", articulos };
+  document.getElementById("ticket-json-movil").value = JSON.stringify(ticketAnalisisActual, null, 2);
+  _renderTablaAnalisisTicket(ticketAnalisisActual);
+  document.getElementById("ticket-paso3").style.display = "block";
+  document.getElementById("ticket-paso4").style.display = "none";
+  toast("Formulario preparado para revisar y guardar");
 }
 
 function mostrarTextoManual() {
+  renderFormularioManual();
   document.getElementById("ticket-paso4").style.display = "block";
-  document.getElementById("ticket-faena-texto").innerHTML = '<option value="">— Sin asignar —</option>' + opcionesFaenasHtml();
 }
 
 async function procesarTextoManual() {
   const texto = document.getElementById("ticket-texto-manual").value.trim();
   if (!texto) { toast("Escribe o pega el texto primero", true); return; }
-  const faenaId = document.getElementById("ticket-faena-texto").value;
   toast("Enviando a IA...");
   try {
-    const r = await fetch(`${getServerUrl()}/ia/procesar-texto`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({texto, faena_id: faenaId||null}) });
+    const r = await fetch(`${getServerUrl()}/ia/procesar-texto`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({texto, prompt: localStorage.getItem("ticket_prompt_temp") || "", tipo_fuente: "texto", guardar: false}) });
     const d = await r.json();
-    if (d.ok) { toast(`✓ ${d.data.articulos.length} artículos procesados`); await cargarMateriales(); renderMateriales(); document.getElementById("ticket-texto-manual").value = ""; document.getElementById("ticket-paso4").style.display = "none"; }
+    if (d.ok) {
+      ticketOrigenAnalisis = "texto";
+      ticketAnalisisActual = d.data;
+      document.getElementById("ticket-json-movil").value = JSON.stringify(d.data, null, 2);
+      _renderTablaAnalisisTicket(d.data);
+      document.getElementById("ticket-paso3").style.display = "block";
+      toast(`✓ ${d.data.articulos.length} artículos procesados. Revisa tabla y guarda.`);
+      document.getElementById("ticket-texto-manual").value = "";
+      document.getElementById("ticket-paso4").style.display = "none";
+    }
     else toast(d.error||"Error al procesar", true);
   } catch(e) { toast("Error de conexión con el PC", true); }
 }
@@ -2582,27 +3285,19 @@ async function enviarConsultaIA() {
   respBox.style.display = "block";
   respEl.textContent = "🤖 Pensando…";
   try {
-    const contexto = {
-      faenas: state.faenas.map(f => ({
-        numero: f.numero,
-        cliente: f.cliente_nombre,
-        trabajo: f.tipo_trabajo,
-        importe: f.importe,
-        fecha: f.fecha_inicio,
-        archivada: f.archivada
-      })),
-      clientes: state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono })),
-      materiales: state.materiales.map(m => ({
-        nombre: m.nombre,
-        categoria: m.categoria,
-        precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario }))
-      }))
-    };
+    const { contexto, faenaId, scope, tipo } = construirContextoConsultaIA();
+    if (scope !== "general" && !faenaId && scope !== "actual") {
+      respEl.textContent = "Selecciona una faena para esa consulta.";
+      toast("Selecciona una faena", true);
+      return;
+    }
+    let preguntaFinal = pregunta;
+    if (tipo === "materiales") preguntaFinal = `Contexto seleccionado: materiales. Pregunta: ${pregunta}`;
+    if (tipo === "trabajos") preguntaFinal = `Contexto seleccionado: trabajos y faenas. Pregunta: ${pregunta}`;
     const r = await fetch(`${getServerUrl()}/ia/consulta`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta, contexto }),
-      signal: AbortSignal.timeout(40000)
+      body: JSON.stringify({ pregunta: preguntaFinal, contexto, faena_id: faenaId || null, alcance: scope, contexto_tipo: tipo })
     });
     const data = await r.json();
     if (data.ok && data.data) {
@@ -2801,13 +3496,25 @@ function limpiarCacheLocal() {
 async function sincronizar() {
   const btn = document.getElementById("btn-sync");
   const estado = document.getElementById("sync-estado");
-  const API = getServerUrl();
+  let API = getServerUrl();
   btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...';
   btn.disabled = true; estado.textContent = ""; estado.className = "sync-estado";
 
   const cola = cargarCola();
   try {
-    await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
+    let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
+    if (!comprobacion.ok) {
+      const apiLocal = `${window.location.origin}/api`;
+      if (API !== apiLocal && /^https?:$/i.test(window.location.protocol)) {
+        API = apiLocal;
+        localStorage.setItem("server_modo", "local");
+        comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
+        if (!comprobacion.ok) throw new Error(`La API local tampoco responde (${comprobacion.status})`);
+        estado.textContent = "✓ URL nube no disponible; usando servidor local conectado a la base de datos configurada...";
+      } else {
+        throw new Error(`La API no responde (${comprobacion.status})`);
+      }
+    }
     estado.textContent = "✓ Conectado...";
 
     // Clientes nuevos
@@ -2978,11 +3685,93 @@ async function sincronizar() {
   btn.disabled = false;
 }
 
+async function cargarDatosIniciales() {
+  const API = getServerUrl();
+  const optsTimeout = (ms) => {
+    try {
+      if (window.AbortSignal && typeof AbortSignal.timeout === "function") {
+        return { signal: AbortSignal.timeout(ms) };
+      }
+    } catch (e) {}
+    return {};
+  };
+  let faenasCargadas = false;
+
+  try {
+    const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
+    if (rFaenas.ok) {
+      const d = await rFaenas.json();
+      if (d.ok && Array.isArray(d.data)) {
+        state.faenas = d.data;
+        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        faenasCargadas = true;
+      }
+    }
+  } catch (e) {
+    console.warn("/sync/datos no disponible, probando /faenas", e);
+  }
+
+  // Fallback rapido para no dejar la app vacia si falla el endpoint de sync.
+  if (!faenasCargadas) {
+    try {
+      const rFaenasSimple = await fetch(`${API}/faenas`, optsTimeout(12000));
+      if (rFaenasSimple.ok) {
+        const d = await rFaenasSimple.json();
+        if (d.ok && Array.isArray(d.data)) {
+          state.faenas = d.data;
+          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+          faenasCargadas = true;
+        }
+      }
+    } catch (e) {
+      console.error("Error en fallback /faenas:", e);
+    }
+  }
+
+  const [matResult, cliResult] = await Promise.allSettled([
+    fetch(`${API}/materiales`, optsTimeout(20000)),
+    fetch(`${API}/clientes`, optsTimeout(20000))
+  ]);
+
+  try {
+    if (matResult.status === "fulfilled" && matResult.value.ok) {
+      const d = await matResult.value.json();
+      if (d.ok && Array.isArray(d.data)) {
+        state.materiales = d.data;
+        localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+      }
+    }
+    if (cliResult.status === "fulfilled" && cliResult.value.ok) {
+      const d = await cliResult.value.json();
+      if (d.ok && Array.isArray(d.data)) {
+        state.clientes = d.data;
+        localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+      }
+    }
+  } catch (e) {
+    console.error("Error procesando materiales/clientes:", e);
+  }
+
+  if (!faenasCargadas) {
+    toast("No se pudo cargar faenas del servidor", true);
+  }
+}
+
+async function recargarDatos() {
+  state._cargando = true;
+  renderFaenas();
+  await cargarDatosIniciales();
+  state._cargando = false;
+  renderFaenas();
+  renderMateriales();
+  toast("✓ Datos actualizados");
+}
+
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
 
-function init() {
+async function init() {
   // IP guardada
   const ip = localStorage.getItem("server_ip");
   if (ip) document.getElementById("ip-config").value = ip;
@@ -2990,13 +3779,16 @@ function init() {
   if (cloudCampo) cloudCampo.value = localStorage.getItem("server_cloud_url") || "";
   const modoSel = document.getElementById("server-modo-sel");
   if (modoSel) { modoSel.value = localStorage.getItem("server_modo") || "local"; actualizarPanelServidor(); }
-  // Última sync
-  const ultima = localStorage.getItem("ultima_sync");
-  if (ultima) document.getElementById("ultima-sync").textContent = ultima;
-  // Renders iniciales
+  actualizarPanelConsultaIA();
+  // Mostrar cargando y cargar desde la nube
+  state._cargando = true;
   renderFaenas();
   renderMateriales();
-  actualizarPendientesInfo();
+  await cargarDatosIniciales();
+  state._cargando = false;
+  renderFaenas();
+  renderMateriales();
+  actualizarPanelConsultaIA();
   // Service Worker
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("/static/sw.js").catch(() => {});
