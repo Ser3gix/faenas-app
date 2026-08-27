@@ -491,6 +491,45 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 }
 .dir-info span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+.camara-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  flex-direction: column;
+}
+.camara-overlay.open { display: flex; }
+.camara-overlay video {
+  flex: 1;
+  width: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.camara-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: #111;
+}
+.camara-disparo {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  background: #c8a96e;
+  cursor: pointer;
+}
+.camara-cancel {
+  color: #fff;
+  background: transparent;
+  border: 1px solid #666;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
 /* ──────── GASTOS/TICKETS ──────── */
 .ticket-item {
   background: white;
@@ -1029,6 +1068,15 @@ textarea { resize: vertical; min-height: 80px; }
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div id="camara-overlay" class="camara-overlay">
+  <video id="camara-video" autoplay playsinline muted></video>
+  <div class="camara-bar">
+    <button type="button" class="camara-cancel" onclick="cerrarCamara()">Cancelar</button>
+    <button type="button" class="camara-disparo" onclick="dispararCamara()" aria-label="Hacer foto"></button>
+    <span style="width:88px"></span>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -1812,41 +1860,80 @@ async function guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena) {
 }
 
 let fotoFaenaId = null;
+let camaraStream = null;
 
-function _crearInputFoto({ camara, multiple }) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  if (camara) input.setAttribute("capture", "environment");
-  if (multiple && !camara) input.multiple = true;
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  return input;
+function cerrarCamara() {
+  const overlay = document.getElementById("camara-overlay");
+  if (overlay) overlay.classList.remove("open");
+  if (camaraStream) {
+    camaraStream.getTracks().forEach(t => t.stop());
+    camaraStream = null;
+  }
+  const video = document.getElementById("camara-video");
+  if (video) video.srcObject = null;
 }
 
-function añadirFoto(faenaId) {
+async function añadirFoto(faenaId) {
   fotoFaenaId = String(faenaId);
-  const input = _crearInputFoto({ camara: true, multiple: false });
-  input.addEventListener("change", procesarFotos);
-  input.click();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("Este navegador no abre la cámara aquí. Usa Galería o Chrome.", true);
+    añadirFotoGaleria(faenaId);
+    return;
+  }
+  try {
+    camaraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById("camara-video");
+    video.srcObject = camaraStream;
+    await video.play();
+    document.getElementById("camara-overlay").classList.add("open");
+  } catch (e) {
+    toast("Activa el permiso de cámara o usa Galería", true);
+    añadirFotoGaleria(faenaId);
+  }
 }
 
 function añadirFotoGaleria(faenaId) {
   fotoFaenaId = String(faenaId);
-  const input = _crearInputFoto({ camara: false, multiple: true });
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  document.body.appendChild(input);
   input.addEventListener("change", procesarFotos);
   input.click();
 }
 
+async function dispararCamara() {
+  const video = document.getElementById("camara-video");
+  if (!video || !video.videoWidth) { toast("Espera a que cargue la cámara", true); return; }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  cerrarCamara();
+  const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
+  if (!blob) { toast("No se pudo hacer la foto", true); return; }
+  const file = new File([blob], "camara.jpg", { type: "image/jpeg" });
+  await procesarListaFotos([file]);
+}
+
 async function procesarFotos(event) {
-  const files = Array.from(event.target.files || []);
-  const inputEl = event.target;
-  inputEl.remove();
+  const files = Array.from((event && event.target && event.target.files) || []);
+  if (event && event.target && event.target.remove) event.target.remove();
+  await procesarListaFotos(files);
+}
+
+async function procesarListaFotos(files) {
   if (!files.length) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(fotoFaenaId));
   const numeroFaena = codigoFaenaSeguro(f || { numero: fotoFaenaId });
   toast(`Guardando ${files.length} foto${files.length>1?"s":""}...`);
   let guardadas = 0;
+  const nuevas = [];
   for (const file of files) {
     await new Promise(resolve => {
       const img = new Image();
@@ -1862,9 +1949,7 @@ async function procesarFotos(event) {
         const base64 = canvas.toDataURL("image/jpeg", 0.70);
         const nombre = `${numeroFaena}_foto_${Date.now()}_${guardadas}.jpg`;
         try {
-          // Guardar en carpeta real del móvil si está configurada
           await guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena);
-          // Encolar para sync con PC
           const cola = cargarCola();
           cola.fotos.push({ faena_id: fotoFaenaId, data: base64, nombre, fecha: new Date().toISOString() });
           guardarCola(cola);
@@ -1872,16 +1957,44 @@ async function procesarFotos(event) {
             f.fotosLocalMovil = f.fotosLocalMovil || [];
             f.fotosLocalMovil.push({ nombre, data: base64, _local: true });
           }
+          nuevas.push({ nombre, data: base64 });
           guardadas++;
-        } catch(e) { toast("Sin espacio — sincroniza para liberar", true); }
+        } catch(e) { toast("Sin espacio en el móvil", true); }
         resolve();
       };
       img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
       img.src = url;
     });
   }
-  toast(`✓ ${guardadas} foto${guardadas>1?"s":""} guardada${guardadas>1?"s":""} — se subirán al sincronizar`);
   if (f) renderPanelFotos(f);
+  if (guardadas) toast(`✓ ${guardadas} foto${guardadas>1?"s":""} guardada${guardadas>1?"s":""}`);
+  for (const foto of nuevas) {
+    await subirFotoAlServidor(fotoFaenaId, foto.nombre, foto.data);
+  }
+  if (f) renderPanelFotos(f);
+}
+
+async function subirFotoAlServidor(faenaId, nombre, data) {
+  if (!faenaId || String(faenaId).startsWith("temp")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/sync/fotos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ faena_id: faenaId, nombre, data }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (!d.ok) return;
+    const cola = cargarCola();
+    cola.fotos = cola.fotos.filter(x => !(String(x.faena_id) === String(faenaId) && x.nombre === nombre));
+    guardarCola(cola);
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (f) {
+      f.fotos = f.fotos || [];
+      f.fotos.push({ nombre: d.data.nombre || nombre, data, _local: false });
+      if (f.fotosLocalMovil) f.fotosLocalMovil = f.fotosLocalMovil.filter(x => x.nombre !== nombre);
+    }
+  } catch (e) {}
 }
 
 function eliminarFotoPendiente(faenaId, idx) {
