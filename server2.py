@@ -467,7 +467,7 @@ def static_files(filename):
 @app.route("/")
 @app.route("/index.html")
 def index():
-    return send_from_directory(os.path.join(APP_DIR, "templates"), "index.html")
+    return render_template("index.html", faenas_api_base=_url_api_publica())
 
 def _url_api_publica():
     base = (PUBLIC_BASE_URL or "").rstrip("/")

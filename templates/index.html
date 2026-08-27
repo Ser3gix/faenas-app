@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestión de Faenas</title>
+<script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap');
 
@@ -1276,7 +1277,14 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <div class="toast" id="toast"></div>
 
 <script>
-const API = `${window.location.origin}/api`;
+const API = (function () {
+  const inyectada = String(window.FAENAS_API_BASE || "").trim().replace(/\/$/, "");
+  if (inyectada) return inyectada.endsWith("/api") ? inyectada : `${inyectada}/api`;
+  if (/^https?:$/i.test(window.location.protocol) && window.location.origin && window.location.origin !== "null") {
+    return `${window.location.origin}/api`;
+  }
+  return "https://faenas-app.onrender.com/api";
+})();
 
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
