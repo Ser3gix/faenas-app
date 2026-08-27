@@ -29,6 +29,8 @@ Si prefieres Web Service a mano:
 - Build: `pip install -r requirements.txt`
 - Start: `gunicorn wsgi:app --bind 0.0.0.0:$PORT`
 
+Si el log dice `No module named 'app'`, en Render → Settings → Start Command pon exactamente esa línea, o pulsa **Manual Deploy** tras subir `app.py`.
+
 ## 3. Variables de entorno (Environment)
 
 Copia los valores desde tu `.env` local. No los subas a git.
