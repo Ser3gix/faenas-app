@@ -1766,7 +1766,8 @@ function renderPanelFotos(f) {
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-s btn-inline" onclick="setupCarpetaFotos('${faenaId}')" title="Carpeta en el móvil">📁</button>
-        <button class="btn btn-p btn-inline" onclick="añadirFoto('${faenaId}')">+ Foto</button>
+        <button class="btn btn-p btn-inline" onclick="añadirFoto('${faenaId}')">📷 Cámara</button>
+        <button class="btn btn-s btn-inline" onclick="añadirFotoGaleria('${faenaId}')">🖼️ Galería</button>
       </div>
     </div>
     ${dirNombre ? `<div class="dir-info">📁 <span>${escHtml(dirNombre)}</span></div>` : ""}
@@ -1812,12 +1813,27 @@ async function guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena) {
 
 let fotoFaenaId = null;
 
-function añadirFoto(faenaId) {
-  fotoFaenaId = String(faenaId);
+function _crearInputFoto({ camara, multiple }) {
   const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*"; input.multiple = true;
+  input.type = "file";
+  input.accept = "image/*";
+  if (camara) input.setAttribute("capture", "environment");
+  if (multiple && !camara) input.multiple = true;
   input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
   document.body.appendChild(input);
+  return input;
+}
+
+function añadirFoto(faenaId) {
+  fotoFaenaId = String(faenaId);
+  const input = _crearInputFoto({ camara: true, multiple: false });
+  input.addEventListener("change", procesarFotos);
+  input.click();
+}
+
+function añadirFotoGaleria(faenaId) {
+  fotoFaenaId = String(faenaId);
+  const input = _crearInputFoto({ camara: false, multiple: true });
   input.addEventListener("change", procesarFotos);
   input.click();
 }
@@ -3290,7 +3306,9 @@ async function añadirFotoBook(faenaId = null) {
     titulo = prompt("Título para la foto:", "") || "Sin título";
   }
   const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*";
+  input.type = "file";
+  input.accept = "image/*";
+  input.setAttribute("capture", "environment");
   input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
   document.body.appendChild(input);
   input.onchange = async e => {
