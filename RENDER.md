@@ -60,5 +60,5 @@ El certificado `isrgrootx1.pem` va en el repo para SSL de MySQL.
 ## 4. Tras el primer deploy
 
 - La web debe responder en `https://<servicio>.onrender.com`
-- Móvil: `https://<servicio>.onrender.com/movil`
+- Móvil: `https://<servicio>.onrender.com/movil2`
 - El disco de Render se borra al redeploy: fotos en `datos/` no persisten. La base tiene que ser MySQL.

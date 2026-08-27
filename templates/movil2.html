@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#5c3d0e">
 <link rel="manifest" href="/static/manifest.json">
+<script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <title>Faenas</title>
 <style>
 :root {
@@ -829,21 +830,10 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="slide" id="sl-sync">
     <div class="ip-box">
         <div class="form-title" style="margin-bottom:10px">⚙️ Conexión</div>
-        <div style="font-size:0.85rem;color:#888;margin-bottom:12px;line-height:1.6">El móvil consulta directamente la API del servidor. Ya no hace falta sincronizar manualmente.</div>
+        <div style="font-size:0.85rem;color:#888;margin-bottom:12px;line-height:1.6">El móvil habla con Render. Abre esta página en la URL de Render; no hace falta IP del PC.</div>
         <div class="field">
-          <label>Modo de conexión</label>
-          <select id="server-modo-sel" onchange="cambiarModoServidor()">
-            <option value="local">📶 API del PC (usa TiDB en segundo plano)</option>
-            <option value="nube">☁️ API remota desplegada</option>
-          </select>
-        </div>
-        <div id="panel-servidor-local">
-          <div class="field"><label>Dirección IP</label><input id="ip-config" placeholder="IP del PC" oninput="guardarIP()"></div>
-          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">Usa esta opción si abres la app desde tu PC. Aunque la base esté en TiDB Cloud, el móvil sigue entrando por esta API.</div>
-        </div>
-        <div id="panel-servidor-nube" style="display:none">
-          <div class="field"><label>URL del servidor en la nube</label><input id="cloud-url-config" placeholder="https://tu-api.railway.app/api" oninput="guardarCloudUrl()"></div>
-          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">Solo úsalo si has desplegado también Flask en Railway, Render u otro. TiDB por sí solo no sirve la app móvil.</div>
+          <label>API</label>
+          <div id="api-url-actual" style="font-size:0.82rem;word-break:break-all;color:var(--accent)"></div>
         </div>
     </div>
     <div style="margin-top:10px">
@@ -1193,45 +1183,12 @@ function construirContextoConsultaIA() {
 }
 
 function getServerUrl() {
-  const apiActual = `${window.location.origin}/api`;
-  const servidaPorServidor = /^https?:$/i.test(window.location.protocol);
-
-  // Si la página ya viene del servidor Flask, usa siempre esa misma API.
-  if (servidaPorServidor) {
-    const modo = localStorage.getItem("server_modo") || "local";
-    if (modo === "nube") {
-      const cloudUrl = (localStorage.getItem("server_cloud_url") || "").trim();
-      if (/^https?:\/\//i.test(cloudUrl)) return cloudUrl.replace(/\/$/, "");
-    }
-    return apiActual;
+  const inyectada = String(window.FAENAS_API_BASE || "").trim().replace(/\/$/, "");
+  if (inyectada) return inyectada.endsWith("/api") ? inyectada : `${inyectada}/api`;
+  if (/^https?:$/i.test(window.location.protocol) && window.location.origin && window.location.origin !== "null") {
+    return `${window.location.origin}/api`;
   }
-
-  const modo = localStorage.getItem("server_modo") || "local";
-  if (modo === "nube") {
-    const cloudUrl = (localStorage.getItem("server_cloud_url") || "").trim();
-    if (/^https?:\/\//i.test(cloudUrl)) return cloudUrl.replace(/\/$/, "");
-  }
-  let ip = (localStorage.getItem("server_ip") || "").replace(/:\d+$/, "").trim();
-  if (ip) return `http://${ip}:5000/api`;
-  return apiActual;
-}
-
-function guardarCloudUrl() {
-  localStorage.setItem("server_cloud_url", document.getElementById("cloud-url-config").value.trim());
-}
-
-function cambiarModoServidor() {
-  const modo = document.getElementById("server-modo-sel").value;
-  localStorage.setItem("server_modo", modo);
-  actualizarPanelServidor();
-}
-
-function actualizarPanelServidor() {
-  const modo = localStorage.getItem("server_modo") || "local";
-  const l = document.getElementById("panel-servidor-local");
-  const n = document.getElementById("panel-servidor-nube");
-  if (l) l.style.display = modo === "local" ? "block" : "none";
-  if (n) n.style.display = modo === "nube" ? "block" : "none";
+  return "/api";
 }
 
 function escHtml(s) {
@@ -3480,16 +3437,9 @@ function actualizarPendientesInfo() {
   el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>· ${lineas.join("<br>· ")}</div>`;
 }
 
-function guardarIP() {
-  const ip = document.getElementById("ip-config").value.trim();
-  localStorage.setItem("server_ip", ip.replace(/:\d+$/,""));
-}
-
 function limpiarCacheLocal() {
-  if (!confirm("¿Borrar todos los datos del móvil?\n\nLos registros del PC no se eliminan.\nSincroniza después para recargarlos.")) return;
-  const ip = localStorage.getItem("server_ip");
+  if (!confirm("¿Borrar todos los datos del móvil?\n\nLos registros del servidor no se eliminan.")) return;
   localStorage.clear();
-  if (ip) localStorage.setItem("server_ip", ip);
   location.reload();
 }
 
@@ -3504,16 +3454,7 @@ async function sincronizar() {
   try {
     let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
     if (!comprobacion.ok) {
-      const apiLocal = `${window.location.origin}/api`;
-      if (API !== apiLocal && /^https?:$/i.test(window.location.protocol)) {
-        API = apiLocal;
-        localStorage.setItem("server_modo", "local");
-        comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
-        if (!comprobacion.ok) throw new Error(`La API local tampoco responde (${comprobacion.status})`);
-        estado.textContent = "✓ URL nube no disponible; usando servidor local conectado a la base de datos configurada...";
-      } else {
-        throw new Error(`La API no responde (${comprobacion.status})`);
-      }
+      throw new Error(`La API no responde (${comprobacion.status})`);
     }
     estado.textContent = "✓ Conectado...";
 
@@ -3772,13 +3713,8 @@ async function recargarDatos() {
 // ═══════════════════════════════════════════════════════════
 
 async function init() {
-  // IP guardada
-  const ip = localStorage.getItem("server_ip");
-  if (ip) document.getElementById("ip-config").value = ip;
-  const cloudCampo = document.getElementById("cloud-url-config");
-  if (cloudCampo) cloudCampo.value = localStorage.getItem("server_cloud_url") || "";
-  const modoSel = document.getElementById("server-modo-sel");
-  if (modoSel) { modoSel.value = localStorage.getItem("server_modo") || "local"; actualizarPanelServidor(); }
+  const apiEl = document.getElementById("api-url-actual");
+  if (apiEl) apiEl.textContent = getServerUrl();
   actualizarPanelConsultaIA();
   // Mostrar cargando y cargar desde la nube
   state._cargando = true;

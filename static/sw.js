@@ -4,9 +4,8 @@
 // Versión 2 — cachea la app completa en la instalación
 // ============================================================
 
-const CACHE = "faenas-v4";
+const CACHE = "faenas-v5";
 const ARCHIVOS_CACHE = [
-  "/movil",
   "/movil2",
   "/static/manifest.json",
   "/static/sw.js"

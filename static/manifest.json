@@ -2,7 +2,7 @@
   "name": "Gestión de Faenas",
   "short_name": "Faenas",
   "description": "App de carpintería para gestión de faenas en obra",
-  "start_url": "/movil",
+  "start_url": "/movil2",
   "display": "standalone",
   "background_color": "#faf6ee",
   "theme_color": "#5c3d0e",

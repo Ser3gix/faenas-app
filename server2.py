@@ -8,7 +8,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
-from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect
 from flask_cors import CORS
 
 import shutil
@@ -469,17 +469,18 @@ def static_files(filename):
 def index():
     return send_from_directory(os.path.join(APP_DIR, "templates"), "index.html")
 
-@app.route("/movil")
-def movil():
-    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
+def _url_api_publica():
+    base = (PUBLIC_BASE_URL or "").rstrip("/")
+    return f"{base}/api" if base else ""
 
 @app.route("/movil2")
 def movil2():
-    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
+    return render_template("movil2.html", faenas_api_base=_url_api_publica())
 
+@app.route("/movil")
 @app.route("/movil4")
-def movil4():
-    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
+def movil_obsoleto():
+    return redirect("/movil2", code=301)
 
 @app.route("/api/info/ip", methods=["GET"])
 def get_ip():
@@ -504,8 +505,8 @@ def get_ip():
         except Exception:
             pass
     ip_final = ips[0] if ips else "127.0.0.1"
-    url_local = f"http://{ip_final}:{PORT}/movil"
-    url_publica = f"{PUBLIC_BASE_URL}/movil" if PUBLIC_BASE_URL else url_local
+    url_local = f"http://{ip_final}:{PORT}/movil2"
+    url_publica = f"{PUBLIC_BASE_URL}/movil2" if PUBLIC_BASE_URL else url_local
     return jsonify({"ok": True, "data": {"ip": ip_final, "url": url_publica, "url_local": url_local, "url_publica": PUBLIC_BASE_URL, "todas": ips}})
 
 @app.route("/api/info/db", methods=["GET"])
@@ -3233,9 +3234,9 @@ if __name__ == "__main__":
         ips_validas = ["127.0.0.1"]
     print(f"✓ Servidor en:  http://localhost:{PORT}")
     for ip in ips_validas:
-        print(f"✓ IP para móvil: http://{ip}:{PORT}/movil")
+        print(f"✓ IP para móvil: http://{ip}:{PORT}/movil2")
     if PUBLIC_BASE_URL:
-        print(f"✓ URL cloud para móvil: {PUBLIC_BASE_URL}/movil")
+        print(f"✓ URL cloud para móvil: {PUBLIC_BASE_URL}/movil2")
     print("=" * 50)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
