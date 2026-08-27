@@ -1673,7 +1673,6 @@ async function verDetalle(id) {
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">📷 Fotos (${fotos.length})</strong>
-      <button class="btn btn-s btn-sm" onclick="abrirCarpetaFotos(${f.id})">📂 Abrir carpeta</button>
     </div>
     ${fotos.length ? `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:8px">
@@ -1690,8 +1689,8 @@ async function verDetalle(id) {
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin fotos — súbelas desde el móvil</p>'}
     <hr>
     <div class="btn-row" style="margin:0;gap:6px">
-      <button class="btn btn-s btn-sm" onclick="subirDocumento(${f.id})">+ Añadir</button>
-      <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">📂 Abrir carpeta</button>
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('doc-upload-${f.id}').click()">+ Añadir</button>
+      <input id="doc-upload-${f.id}" type="file" multiple style="display:none" onchange="subirDocumento(${f.id}, this)">
     </div>
     ${docs.length ? `
       <div style="border:1px solid var(--sawdust);border-radius:6px;overflow:hidden;margin-bottom:8px">
@@ -1702,7 +1701,7 @@ async function verDetalle(id) {
               <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.nombre}</div>
               <div style="font-size:0.68rem;color:#aaa">${formatBytes(d.tamaño)}</div>
             </div>
-            <button class="btn btn-s btn-sm" onclick="abrirDocumento(${f.id},'${d.nombre}')">Abrir</button>
+            <button class="btn btn-s btn-sm" onclick="abrirDocumento(${f.id},'${d.nombre}')">Descargar</button>
             <button class="btn btn-d btn-sm" onclick="eliminarDocumento(${f.id},'${d.nombre}')">×</button>
           </div>
         `).join("")}
@@ -1796,10 +1795,22 @@ async function abrirCarpetaFotos(faenaId) {
 }
 
 // ===== DOCUMENTOS =====
-async function subirDocumento(faenaId) {
-  const r = await api("POST", `/faenas/${faenaId}/documentos`, {});
-  if (r.ok) { toast(`✓ ${r.data.copiados.length} archivo${r.data.copiados.length !== 1 ? "s" : ""} añadido${r.data.copiados.length !== 1 ? "s" : ""}`); verDetalle(faenaId); }
-  else toast(r.error || "No se añadieron archivos", r.ok ? false : true);
+async function subirDocumento(faenaId, input) {
+  const files = input && input.files;
+  if (!files || !files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("archivos", f);
+  try {
+    const r = await fetch(API + `/faenas/${faenaId}/documentos`, { method: "POST", body: fd, signal: AbortSignal.timeout(120000) });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`✓ ${d.data.copiados.length} archivo${d.data.copiados.length !== 1 ? "s" : ""} añadido${d.data.copiados.length !== 1 ? "s" : ""}`);
+      verDetalle(faenaId);
+    } else toast(d.error || "No se añadieron archivos", true);
+  } catch (e) {
+    toast("Error al subir archivos", true);
+  }
+  input.value = "";
 }
 async function eliminarDocumento(faenaId, nombre) {
   if (!confirm(`¿Eliminar "${nombre}"?`)) return;
@@ -1808,12 +1819,7 @@ async function eliminarDocumento(faenaId, nombre) {
   else toast(r.error, true);
 }
 async function abrirDocumento(faenaId, nombre) {
-  const r = await api("POST", `/faenas/${faenaId}/documentos/${nombre}/abrir`);
-  if (!r.ok) toast(r.error, true);
-}
-async function abrirCarpetaDocumentos(faenaId) {
-  const r = await api("POST", `/faenas/${faenaId}/documentos/carpeta`);
-  if (!r.ok) toast(r.error, true);
+  window.open(API + `/faenas/${faenaId}/documentos/${encodeURIComponent(nombre)}/descargar`, "_blank");
 }
 
 // ===== EDITAR FAENA =====
@@ -1876,9 +1882,17 @@ async function crearFaena() {
   else toast(r.error, true);
 }
 async function archivar(id) {
-  if (!confirm("¿Archivar esta faena? Dejará de aparecer en el móvil.")) return;
+  if (!confirm("¿Archivar esta faena? Se queda en la base y se descarga un ZIP al PC.")) return;
   const r = await api("POST", `/faenas/${id}/archivar`);
-  if (r.ok) { toast("Faena archivada"); await cargarFaenas(); renderFaenas(); }
+  if (!r.ok) { toast(r.error, true); return; }
+  const enlace = document.createElement("a");
+  enlace.href = API + `/faenas/${id}/archivo-zip`;
+  enlace.download = "";
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  toast("Faena archivada. Guarda el ZIP en el PC.");
+  await cargarFaenas(); renderFaenas();
 }
 async function toggleArchivadas() {
   state.verArchivadas = !state.verArchivadas;

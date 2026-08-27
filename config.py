@@ -57,6 +57,8 @@ MYSQL_CREATE_DATABASE = os.environ.get("MYSQL_CREATE_DATABASE", "0").strip() in 
 MYSQL_SSL = os.environ.get("MYSQL_SSL", "0").strip() in {"1", "true", "yes", "si", "sí"}
 
 DB_BACKEND = os.environ.get("DB_BACKEND", "").strip().lower()
+if DB_BACKEND in {"tidb", "tidbcloud"}:
+	DB_BACKEND = "mysql"
 if not DB_BACKEND:
 	if MYSQL_HOST and MYSQL_USER and MYSQL_DATABASE:
 		DB_BACKEND = "mysql"
@@ -82,7 +84,17 @@ OBJECT_STORAGE_BACKEND = os.environ.get("OBJECT_STORAGE_BACKEND", "local").strip
 OBJECT_STORAGE_BUCKET = os.environ.get("OBJECT_STORAGE_BUCKET", "").strip()
 OBJECT_STORAGE_PUBLIC_BASE_URL = os.environ.get("OBJECT_STORAGE_PUBLIC_BASE_URL", "").strip().rstrip("/")
 OBJECT_STORAGE_ENDPOINT = os.environ.get("OBJECT_STORAGE_ENDPOINT", "").strip().rstrip("/")
-OBJECT_STORAGE_REGION = os.environ.get("OBJECT_STORAGE_REGION", "").strip()
+OBJECT_STORAGE_REGION = os.environ.get("OBJECT_STORAGE_REGION", "auto").strip() or "auto"
+OBJECT_STORAGE_ACCESS_KEY = (
+	os.environ.get("OBJECT_STORAGE_ACCESS_KEY")
+	or os.environ.get("AWS_ACCESS_KEY_ID")
+	or ""
+).strip()
+OBJECT_STORAGE_SECRET_KEY = (
+	os.environ.get("OBJECT_STORAGE_SECRET_KEY")
+	or os.environ.get("AWS_SECRET_ACCESS_KEY")
+	or ""
+).strip()
 
 # --- CURSOR ---
 # Ruta al ejecutable de Cursor. Si está en el PATH del sistema déjalo así.

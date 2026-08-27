@@ -8,7 +8,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
-from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file
 from flask_cors import CORS
 
 import shutil
@@ -18,12 +18,13 @@ try:
 except Exception:
     pass
 
-from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR
+from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
+from object_storage import r2_activo, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
 
 try:
     import sys
@@ -89,6 +90,95 @@ def limpiar_data_b64(data_b64):
     if "," in data_b64:
         return data_b64.split(",", 1)[1]
     return data_b64
+
+
+_EXTS_FOTO = {".jpg", ".jpeg", ".png", ".webp"}
+_EXTS_PDF = {".pdf"}
+
+
+def _extension(nombre):
+    return os.path.splitext(nombre or "")[1].lower()
+
+
+def _mime_archivo(nombre):
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".pdf": "application/pdf",
+    }.get(_extension(nombre), "application/octet-stream")
+
+
+def _es_foto_nombre(nombre):
+    return _extension(nombre) in _EXTS_FOTO
+
+
+def _es_pdf_nombre(nombre):
+    return _extension(nombre) in _EXTS_PDF
+
+
+def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
+    numero = str(faena.get("numero") or faena.get("id") or "faena").strip()
+    if r2_activo():
+        key = clave_objeto(numero, carpeta_rel, nombre)
+        res = subir_bytes(key, data, content_type)
+        if not res.get("ok"):
+            raise RuntimeError(res.get("error") or "No se pudo subir a Cloudflare")
+        return res.get("url") or key, key, res.get("url") or "", "r2"
+    carpeta = faena.get("carpeta") or ""
+    if not carpeta:
+        raise RuntimeError("Configura Cloudflare R2; el disco de Render no guarda archivos")
+    destino_dir = os.path.join(carpeta, carpeta_rel)
+    os.makedirs(destino_dir, exist_ok=True)
+    ruta = os.path.join(destino_dir, nombre)
+    with open(ruta, "wb") as fh:
+        fh.write(data)
+    return ruta, "", "", "local"
+
+
+def _url_desde_ruta(ruta):
+    ruta = (ruta or "").strip()
+    if not ruta:
+        return ""
+    if ruta.startswith("http://") or ruta.startswith("https://"):
+        return ruta
+    if os.path.exists(ruta):
+        return ""
+    if r2_activo():
+        return url_publica(ruta)
+    return ""
+
+
+def _borrar_binario(ruta, object_key=""):
+    clave = (object_key or "").strip() or ((ruta or "").strip() if not os.path.exists(ruta or "") else "")
+    if clave and not os.path.exists(clave):
+        borrar_objeto(clave)
+    if ruta and os.path.exists(ruta):
+        try:
+            os.remove(ruta)
+        except Exception:
+            pass
+
+
+def _registrar_archivo(conn, faena_id, tipo, nombre, backend, object_key, public_url, mime, tamano):
+    conn.execute(
+        """INSERT INTO archivos_faena
+        (faena_id, tipo, nombre, storage_backend, bucket, object_key, public_url, mime_type, tamaño)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (
+            faena_id,
+            tipo,
+            nombre,
+            backend,
+            OBJECT_STORAGE_BUCKET if backend == "r2" else "",
+            object_key or "",
+            public_url or "",
+            mime or "",
+            int(tamano or 0),
+        ),
+    )
+
 
 
 def _ia_provider_activo():
@@ -637,7 +727,7 @@ def get_faenas():
 
 @app.route("/api/faenas/archivadas", methods=["GET"])
 def get_faenas_archivadas():
-    conn = get_sqlite_local()
+    conn = get_connection()
     filas = conn.execute("""
         SELECT f.*, c.nombre AS cliente_nombre, i.nombre AS intermediario_nombre
         FROM faenas f
@@ -735,66 +825,69 @@ def eliminar_faena(id):
 
 @app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
 def archivar_faena(id):
-    src = get_connection()
-    # Si ya estamos en SQLite local, solo marcar archivada.
-    if getattr(src, "_backend", "") == "sqlite":
-        src.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
-        src.commit()
-        src.close()
-        return jsonify({"ok": True})
-
-    faena = fila_a_dict(src.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone())
+    conn = get_connection()
+    faena = conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
-        src.close()
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip"}})
 
-    cliente = fila_a_dict(src.execute("SELECT * FROM clientes WHERE id=?", (faena["cliente_id"],)).fetchone())
-    intermediario = fila_a_dict(src.execute("SELECT * FROM intermediarios WHERE id=?", (faena.get("intermediario_id", 0),)).fetchone())
-    anotaciones = filas_a_lista(src.execute("SELECT * FROM anotaciones WHERE faena_id=?", (id,)).fetchall())
-    gastos = filas_a_lista(src.execute("SELECT * FROM gastos_faena WHERE faena_id=?", (id,)).fetchall())
-    presupuestos = filas_a_lista(src.execute("SELECT * FROM presupuestos_faena WHERE faena_id=?", (id,)).fetchall())
-    fotos = filas_a_lista(src.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (id,)).fetchall())
 
-    dst = get_sqlite_local()
+@app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
+def descargar_zip_faena(id):
+    import zipfile
+    conn = _conn_para_faena(id)
+    faena = fila_a_dict(conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone())
+    if not faena:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    fotos = filas_a_lista(conn.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (id,)).fetchall())
+    archivos = []
     try:
-        if intermediario:
-            dst.execute("INSERT OR IGNORE INTO intermediarios (id, nombre, telefono, email) VALUES (?,?,?,?)",
-                        (intermediario["id"], intermediario["nombre"], intermediario.get("telefono", ""), intermediario.get("email", "")))
-        if cliente:
-            dst.execute("INSERT OR IGNORE INTO clientes (id, nombre, telefono, direccion, email, intermediario_id, notas) VALUES (?,?,?,?,?,?,?)",
-                        (cliente["id"], cliente["nombre"], cliente.get("telefono", ""), cliente.get("direccion", ""),
-                         cliente.get("email", ""), cliente.get("intermediario_id", 0), cliente.get("notas", "")))
-        dst.execute("""INSERT OR REPLACE INTO faenas
-            (id, numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, archivada, carpeta)
-            VALUES (?,?,?,?,?,?,?,?,1,?)""",
-            (faena["id"], faena.get("numero"), faena["cliente_id"], faena.get("intermediario_id", 0),
-             faena.get("direccion", ""), faena.get("tipo_trabajo", ""), faena.get("importe", 0),
-             faena.get("fecha_inicio", ""), faena.get("carpeta", "")))
-        for a in anotaciones:
-            dst.execute("INSERT OR IGNORE INTO anotaciones (id, faena_id, tipo, contenido, fecha) VALUES (?,?,?,?,?)",
-                        (a["id"], a["faena_id"], a.get("tipo", "texto"), a.get("contenido", ""), a.get("fecha", "")))
-        for g in gastos:
-            dst.execute("INSERT OR IGNORE INTO gastos_faena (id, faena_id, tipo, descripcion, cantidad, precio_unitario, total, fecha, ticket_foto) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (g["id"], g["faena_id"], g.get("tipo", "otro"), g.get("descripcion", ""), g.get("cantidad", 1),
-                         g.get("precio_unitario", 0), g.get("total", 0), g.get("fecha", ""), g.get("ticket_foto", "")))
-        for p in presupuestos:
-            dst.execute("INSERT OR IGNORE INTO presupuestos_faena (id, faena_id, tipo, descripcion, cantidad, precio_unitario, total, fecha) VALUES (?,?,?,?,?,?,?,?)",
-                        (p["id"], p["faena_id"], p.get("tipo", "material"), p.get("descripcion", ""), p.get("cantidad", 1),
-                         p.get("precio_unitario", 0), p.get("total", 0), p.get("fecha", "")))
-        for f in fotos:
-            dst.execute("INSERT OR IGNORE INTO fotos_faena (id, faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?,?,?,?,?,?)",
-                        (f["id"], f["faena_id"], f.get("nombre", ""), f.get("ruta_foto", ""), f.get("data_base64", ""), f.get("fecha", "")))
-        dst.commit()
-    finally:
-        dst.close()
+        archivos = filas_a_lista(conn.execute("SELECT * FROM archivos_faena WHERE faena_id=?", (id,)).fetchall())
+    except Exception:
+        archivos = []
+    conn.close()
 
-    # Borrar de la nube respetando FK
-    for tabla in ("fotos_faena", "presupuestos_faena", "gastos_faena", "anotaciones"):
-        src.execute(f"DELETE FROM {tabla} WHERE faena_id=?", (id,))
-    src.execute("DELETE FROM faenas WHERE id=?", (id,))
-    src.commit()
-    src.close()
-    return jsonify({"ok": True})
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        lista_docs = []
+        for foto in fotos:
+            nombre = foto.get("nombre") or "foto.jpg"
+            contenido = None
+            ruta = foto.get("ruta_foto") or ""
+            if ruta and os.path.exists(ruta):
+                with open(ruta, "rb") as fh:
+                    contenido = fh.read()
+            elif foto.get("data_base64"):
+                contenido = base64.b64decode(limpiar_data_b64(foto["data_base64"]))
+            else:
+                contenido = descargar_bytes(ruta)
+            if contenido:
+                zf.writestr(f"fotos/{nombre}", contenido)
+        for arch in archivos:
+            nombre = arch.get("nombre") or "documento"
+            lista_docs.append(nombre)
+            if _es_pdf_nombre(nombre) or (arch.get("storage_backend") == "r2" and arch.get("object_key")):
+                contenido = descargar_bytes(arch.get("object_key") or "")
+                if contenido:
+                    carpeta = "pdf" if _es_pdf_nombre(nombre) else "documentos"
+                    zf.writestr(f"{carpeta}/{nombre}", contenido)
+            elif faena.get("carpeta"):
+                local = os.path.join(faena["carpeta"], "Documentos", nombre)
+                if os.path.exists(local):
+                    with open(local, "rb") as fh:
+                        zf.writestr(f"documentos/{nombre}", fh.read())
+        if lista_docs:
+            zf.writestr("documentos/lista.txt", "\n".join(lista_docs) + "\n")
+        zf.writestr("faena.txt", f"{faena.get('numero') or id}\n{faena.get('direccion') or ''}\n")
+    buf.seek(0)
+    numero = str(faena.get("numero") or id).replace("/", "-")
+    return send_file(buf, as_attachment=True, download_name=f"faena_{numero}.zip", mimetype="application/zip")
+
 
 # -------------------- ANOTACIONES --------------------
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["GET"])
@@ -2493,7 +2586,10 @@ def sync_fotos():
         return jsonify({"ok": False, "error": "Faltan datos"}), 400
     conn = get_connection()
     faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
-    if not faena or not faena["carpeta"]:
+    if not faena:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    if not faena["carpeta"] and not r2_activo():
         conn.close()
         return jsonify({"ok": False, "error": "Faena o carpeta no encontrada"}), 404
 
@@ -2507,20 +2603,19 @@ def sync_fotos():
     if "," in data_b64:
         data_b64 = data_b64.split(",")[1]
     img_bytes = base64.b64decode(data_b64)
-
-    carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
-    os.makedirs(carpeta_fotos, exist_ok=True)
-    ruta = os.path.join(carpeta_fotos, nombre)
-    with open(ruta, "wb") as f:
-        f.write(img_bytes)
+    try:
+        ruta, object_key, _url, _backend = _guardar_binario(fila_a_dict(faena), "fotos", nombre, img_bytes, _mime_archivo(nombre))
+    except Exception as exc:
+        conn.close()
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
     conn.execute(
         "INSERT INTO fotos_faena (faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
-        (faena_id, nombre, ruta, data_b64),
+        (faena_id, nombre, object_key or ruta, ""),
     )
     conn.commit()
     conn.close()
-    return jsonify({"ok": True, "data": {"ruta": ruta, "nombre": nombre}})
+    return jsonify({"ok": True, "data": {"ruta": object_key or ruta, "nombre": nombre}})
 
 @app.route("/api/sync/book", methods=["GET"])
 def sync_book():
@@ -2571,18 +2666,18 @@ def listar_fotos(id):
     fotos = []
     for fila in filas_a_lista(filas):
         contenido = (fila.get("data_base64") or "").strip()
+        ruta = fila.get("ruta_foto") or ""
         if contenido:
             data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
         else:
-            ruta = fila.get("ruta_foto") or ""
-            data = ""
-            if ruta and os.path.exists(ruta):
+            data = _url_desde_ruta(ruta)
+            if not data and ruta and os.path.exists(ruta):
                 try:
                     with open(ruta, "rb") as f:
                         data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
                 except Exception:
                     data = ""
-        fotos.append({"id": fila.get("id"), "nombre": fila.get("nombre"), "ruta": fila.get("ruta_foto"), "data": data})
+        fotos.append({"id": fila.get("id"), "nombre": fila.get("nombre"), "ruta": ruta, "data": data})
 
     # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
     if faena["carpeta"]:
@@ -2611,9 +2706,14 @@ def eliminar_foto(id, nombre):
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    fila_foto = conn.execute(
+        "SELECT ruta_foto FROM fotos_faena WHERE faena_id=? AND nombre=?", (id, nombre)
+    ).fetchone()
+    ruta_foto = fila_foto["ruta_foto"] if fila_foto else ""
     conn.execute("DELETE FROM fotos_faena WHERE faena_id=? AND nombre=?", (id, nombre))
     conn.commit()
     conn.close()
+    _borrar_binario(ruta_foto, ruta_foto)
     if faena["carpeta"]:
         ruta = os.path.join(faena["carpeta"], "fotos", nombre)
         if os.path.exists(ruta):
@@ -2625,8 +2725,10 @@ def abrir_carpeta_fotos(id):
     conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     conn.close()
-    if not faena or not faena["carpeta"]:
+    if not faena:
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    if os.name != "nt" or not faena["carpeta"]:
+        return jsonify({"ok": False, "error": "Las fotos están en Cloudflare. Ábrelas desde esta pantalla."}), 400
     carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
     os.makedirs(carpeta_fotos, exist_ok=True)
     subprocess.Popen(["explorer", carpeta_fotos])
@@ -2637,110 +2739,176 @@ def abrir_carpeta_fotos(id):
 def listar_documentos(id):
     conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
+    if not faena:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    carpeta_docs = os.path.join(faena["carpeta"], "Documentos")
-    os.makedirs(carpeta_docs, exist_ok=True)
+    vistos = set()
     archivos = []
-    for nombre in sorted(os.listdir(carpeta_docs)):
-        ruta = os.path.join(carpeta_docs, nombre)
-        if os.path.isfile(ruta):
-            stat = os.stat(ruta)
-            archivos.append({
-                "nombre": nombre,
-                "ruta": ruta,
-                "tamaño": stat.st_size,
-                "fecha": stat.st_mtime,
-                "extension": os.path.splitext(nombre)[1].lower()
-            })
+    try:
+        filas = filas_a_lista(conn.execute(
+            "SELECT * FROM archivos_faena WHERE faena_id=? ORDER BY id DESC", (id,)
+        ).fetchall())
+    except Exception:
+        filas = []
+    conn.close()
+    for fila in filas:
+        nombre = fila.get("nombre") or ""
+        if not nombre or nombre in vistos:
+            continue
+        vistos.add(nombre)
+        archivos.append({
+            "id": fila.get("id"),
+            "nombre": nombre,
+            "ruta": fila.get("public_url") or fila.get("object_key") or "",
+            "tamaño": fila.get("tamaño") or 0,
+            "fecha": fila.get("fecha") or "",
+            "extension": _extension(nombre),
+            "storage": fila.get("storage_backend") or "",
+            "descarga": f"/api/faenas/{id}/documentos/{nombre}/descargar",
+        })
+    carpeta = faena["carpeta"] if faena else ""
+    if carpeta:
+        carpeta_docs = os.path.join(carpeta, "Documentos")
+        if os.path.isdir(carpeta_docs):
+            for nombre in sorted(os.listdir(carpeta_docs)):
+                if nombre in vistos:
+                    continue
+                ruta = os.path.join(carpeta_docs, nombre)
+                if not os.path.isfile(ruta):
+                    continue
+                vistos.add(nombre)
+                stat = os.stat(ruta)
+                archivos.append({
+                    "nombre": nombre,
+                    "ruta": ruta,
+                    "tamaño": stat.st_size,
+                    "fecha": stat.st_mtime,
+                    "extension": _extension(nombre),
+                    "storage": "pc",
+                    "descarga": f"/api/faenas/{id}/documentos/{nombre}/descargar",
+                })
     return jsonify({"ok": True, "data": archivos})
 
 @app.route("/api/faenas/<int:id>/documentos", methods=["POST"])
 def subir_documento(id):
-    import shutil
-    import tkinter as tk
-    from tkinter import filedialog
+    ficheros = request.files.getlist("archivos") or request.files.getlist("file")
+    if not ficheros and request.files:
+        ficheros = list(request.files.values())
+    if not ficheros:
+        return jsonify({"ok": False, "error": "Selecciona archivos desde el navegador"}), 400
     conn = get_connection()
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
+    faena = conn.execute("SELECT id, numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    if not faena:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    carpeta_docs = os.path.join(faena["carpeta"], "Documentos")
-    os.makedirs(carpeta_docs, exist_ok=True)
-    root = tk.Tk()
-    root.withdraw()
-    rutas = filedialog.askopenfilenames(
-        initialdir=os.path.expanduser("~"),
-        title="Selecciona archivos para añadir a Documentos"
-    )
-    root.destroy()
-    if not rutas:
-        return jsonify({"ok": False, "error": "No se seleccionaron archivos"})
+    faena_d = fila_a_dict(faena)
     copiados = []
-    analisis = []
-    for ruta in rutas:
-        nombre = os.path.basename(ruta)
-        destino = os.path.join(carpeta_docs, nombre)
-        shutil.copy2(ruta, destino)
-        copiados.append(nombre)
-        ext = os.path.splitext(nombre)[1].lower()
-        if ext in [".txt", ".md", ".csv", ".log", ".pdf"]:
+    for fichero in ficheros:
+        nombre = os.path.basename(fichero.filename or "")
+        if not nombre:
+            continue
+        data = fichero.read()
+        mime = fichero.mimetype or _mime_archivo(nombre)
+        if _es_pdf_nombre(nombre) or _es_foto_nombre(nombre):
+            tipo = "pdf" if _es_pdf_nombre(nombre) else "foto"
+            carpeta_rel = "pdf" if tipo == "pdf" else "fotos"
             try:
-                texto_doc = _leer_texto_documento_para_ia(destino)
-                if texto_doc:
-                    prompt = f"Analiza el documento '{nombre}' y devuelve JSON con proveedor, fecha, total_ticket y articulos de compra."
-                    data = _extraer_materiales_json_con_ia(prompt, texto=texto_doc, tipo="documento")
-                    articulos = data.get("articulos") or []
-                    data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
-                    data["tipo_fuente"] = "documento"
-                    data["nombre_documento"] = nombre
-                    data["ruta"] = destino
-                    analisis.append(data)
-            except Exception as e:
-                analisis.append({"nombre_documento": nombre, "ruta": destino, "error": str(e)})
-    return jsonify({"ok": True, "data": {"copiados": copiados, "analisis": analisis}})
+                _url, object_key, public_url, backend = _guardar_binario(faena_d, carpeta_rel, nombre, data, mime)
+            except Exception as exc:
+                conn.close()
+                return jsonify({"ok": False, "error": str(exc)}), 500
+            _registrar_archivo(conn, id, tipo, nombre, backend, object_key, public_url, mime, len(data))
+        else:
+            backend = "pc"
+            object_key = ""
+            public_url = ""
+            if r2_activo():
+                try:
+                    _url, object_key, public_url, backend = _guardar_binario(faena_d, "documentos", nombre, data, mime)
+                except Exception:
+                    backend = "pc"
+                    object_key = ""
+                    public_url = ""
+            elif faena_d.get("carpeta"):
+                destino_dir = os.path.join(faena_d["carpeta"], "Documentos")
+                os.makedirs(destino_dir, exist_ok=True)
+                with open(os.path.join(destino_dir, nombre), "wb") as fh:
+                    fh.write(data)
+            _registrar_archivo(conn, id, "documento", nombre, backend, object_key, public_url, mime, len(data))
+        copiados.append(nombre)
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"copiados": copiados, "analisis": []}})
 
 @app.route("/api/faenas/<int:id>/documentos/<path:nombre>", methods=["DELETE"])
 def eliminar_documento(id, nombre):
     conn = get_connection()
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
+    if not faena:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    ruta = os.path.join(faena["carpeta"], "Documentos", nombre)
-    if not os.path.exists(ruta):
-        return jsonify({"ok": False, "error": "Archivo no encontrado"}), 404
-    os.remove(ruta)
+    fila = None
+    try:
+        fila = conn.execute(
+            "SELECT * FROM archivos_faena WHERE faena_id=? AND nombre=?", (id, nombre)
+        ).fetchone()
+    except Exception:
+        fila = None
+    if fila:
+        fila = fila_a_dict(fila)
+        _borrar_binario(fila.get("object_key") or "", fila.get("object_key") or "")
+        conn.execute("DELETE FROM archivos_faena WHERE faena_id=? AND nombre=?", (id, nombre))
+        conn.commit()
+    conn.close()
+    if faena["carpeta"]:
+        ruta = os.path.join(faena["carpeta"], "Documentos", nombre)
+        if os.path.exists(ruta):
+            os.remove(ruta)
     return jsonify({"ok": True})
+
+@app.route("/api/faenas/<int:id>/documentos/<path:nombre>/descargar", methods=["GET"])
+def descargar_documento(id, nombre):
+    conn = _conn_para_faena(id)
+    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    fila = None
+    try:
+        fila = conn.execute(
+            "SELECT * FROM archivos_faena WHERE faena_id=? AND nombre=?", (id, nombre)
+        ).fetchone()
+    except Exception:
+        fila = None
+    conn.close()
+    if fila:
+        fila = fila_a_dict(fila)
+        if fila.get("public_url"):
+            return redirect(fila["public_url"])
+        if fila.get("object_key"):
+            contenido = descargar_bytes(fila["object_key"])
+            if contenido:
+                buf = io.BytesIO(contenido)
+                return send_file(buf, as_attachment=True, download_name=nombre, mimetype=fila.get("mime_type") or _mime_archivo(nombre))
+    if faena and faena["carpeta"]:
+        ruta = os.path.join(faena["carpeta"], "Documentos", nombre)
+        if os.path.exists(ruta):
+            return send_file(ruta, as_attachment=True, download_name=nombre)
+    return jsonify({"ok": False, "error": "Archivo no encontrado. Si es un plano de PolyBoard, está en el PC."}), 404
 
 @app.route("/api/faenas/<int:id>/documentos/<path:nombre>/abrir", methods=["POST"])
 def abrir_documento(id, nombre):
-    conn = get_connection()
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
-        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    ruta = os.path.join(faena["carpeta"], "Documentos", nombre)
-    if not os.path.exists(ruta):
-        return jsonify({"ok": False, "error": "Archivo no encontrado"}), 404
-    try:
-        subprocess.Popen([CURSOR_PATH, ruta])
-    except FileNotFoundError:
-        os.startfile(ruta)
-    return jsonify({"ok": True})
+    return descargar_documento(id, nombre)
 
 @app.route("/api/faenas/<int:id>/documentos/carpeta", methods=["POST"])
 def abrir_carpeta_documentos(id):
     conn = get_connection()
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     conn.close()
-    if not faena or not faena["carpeta"]:
-        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    carpeta_docs = os.path.join(faena["carpeta"], "Documentos")
-    os.makedirs(carpeta_docs, exist_ok=True)
-    subprocess.Popen(["explorer", carpeta_docs])
-    return jsonify({"ok": True})
+    if faena and faena["carpeta"] and os.name == "nt":
+        carpeta_docs = os.path.join(faena["carpeta"], "Documentos")
+        os.makedirs(carpeta_docs, exist_ok=True)
+        subprocess.Popen(["explorer", carpeta_docs])
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Los planos se guardan en el PC. En la nube usa Añadir o Archivar (ZIP)."}), 400
+
 
 # -------------------- CURSOR --------------------
 @app.route("/api/cursor/abrir", methods=["POST"])

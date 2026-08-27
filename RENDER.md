@@ -35,17 +35,28 @@ Si el log dice `No module named 'app'`, en Render → Settings → Start Command
 
 Copia los valores desde tu `.env` local. No los subas a git.
 
-Obligatorias (MySQL / Hostinger):
+Obligatorias (TiDB; el conector es el mismo que MySQL):
 
 | Clave | Ejemplo |
 |---|---|
 | `DB_BACKEND` | `mysql` |
-| `MYSQL_HOST` | host de Hostinger |
-| `MYSQL_PORT` | `3306` |
-| `MYSQL_USER` | usuario MySQL |
+| `MYSQL_HOST` | host de TiDB Cloud |
+| `MYSQL_PORT` | `4000` |
+| `MYSQL_USER` | usuario TiDB |
 | `MYSQL_PASSWORD` | contraseña |
 | `MYSQL_DATABASE` | nombre de la base |
-| `MYSQL_SSL` | `1` si Hostinger exige SSL |
+| `MYSQL_SSL` | `1` |
+
+Fotos y PDF (Cloudflare R2):
+
+| Clave | Ejemplo |
+|---|---|
+| `OBJECT_STORAGE_BACKEND` | `r2` |
+| `OBJECT_STORAGE_BUCKET` | `faenas` |
+| `OBJECT_STORAGE_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `OBJECT_STORAGE_PUBLIC_BASE_URL` | URL pública del bucket |
+| `AWS_ACCESS_KEY_ID` | token R2 |
+| `AWS_SECRET_ACCESS_KEY` | secreto R2 |
 
 Opcionales:
 
@@ -63,4 +74,5 @@ El certificado `isrgrootx1.pem` va en el repo para SSL de MySQL.
 
 - La web debe responder en `https://<servicio>.onrender.com`
 - Móvil: `https://<servicio>.onrender.com/movil2`
-- El disco de Render se borra al redeploy: fotos en `datos/` no persisten. La base tiene que ser MySQL.
+- SQL en TiDB, fotos/PDF en Cloudflare R2.
+- Planos y PolyBoard se quedan en el PC; al archivar se descarga un ZIP.
