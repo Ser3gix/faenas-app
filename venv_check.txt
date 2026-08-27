@@ -1,2 +1,0 @@
-C:\Users\Ser3gix\Desktop\faenas-app\.venv\Scripts\python.exe
-3.1.3

@@ -1,0 +1,22 @@
+2 Altos 90x60  100
+1 Alto 90x110   70
+1 Alto 80x60    50
+1 Freg 80x90    80
+2 Baj  80x70   140
+1 Baj  80x45    55
+4 juegos patas  10
+20 bisagras     50
+3 caj 1 cc     240
+zocalo          30
+2 tableros mel 200
+45 m corte      90
+50 m pvc       100
+14 tiradores    70
+furgoneta      120
+ total        1405
+
+Presupueto  2400
+Desmontar    500
+
+
+

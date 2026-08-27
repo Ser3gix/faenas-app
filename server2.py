@@ -5,15 +5,22 @@ import time
 import re
 import json
 import base64
+import io
 import urllib.request
 import urllib.error
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
 import shutil
-from config import HOST, PORT, CURSOR_PATH, CARPETA_RAIZ, APP_DIR
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR
 from database import (
-    inicializar_db, get_connection,
+    inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
@@ -41,6 +48,14 @@ except Exception:
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "180"))
+IA_API_KEY = (os.environ.get("CLAVE_API") or os.environ.get("IA_API_KEY") or "").strip()
+TICKET_IA_API_KEY = (os.environ.get("TICKET_CLAVE_API") or "").strip()
+IA_PROVIDER = (os.environ.get("IA_PROVIDER") or "gemini").strip().lower()
+IA_API_URL = os.environ.get("IA_API_URL", "").strip()
+IA_MODEL = (os.environ.get("IA_MODEL") or "").strip()
+TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or "gemini-flash-latest").strip()
+IA_MODO = (os.environ.get("IA_MODO") or "local").strip().lower()
+_GEMINI_MODEL_CACHE = {}
 
 if pytesseract is not None:
     posibles_tesseract = [
@@ -74,6 +89,230 @@ def limpiar_data_b64(data_b64):
     if "," in data_b64:
         return data_b64.split(",", 1)[1]
     return data_b64
+
+
+def _ia_provider_activo():
+    if IA_PROVIDER in {"gemini", "google", "google_gemini"}:
+        return "gemini"
+    return "gemini" if "generativelanguage.googleapis.com" in (IA_API_URL or "") else "gemini"
+
+
+def _prompt_ticket_base():
+    return """Analiza la imagen del ticket o factura de compra que te adjunto.
+Extrae todos los artículos y devuelve ÚNICAMENTE el siguiente JSON, sin texto adicional antes ni después:
+
+Lee la imagen por zonas y revisa dos veces cada línea de artículos. No inventes artículos ni importes.
+Respeta la separación entre columnas: cantidad es el número de unidades, precio_unitario es el precio de una unidad y total es cantidad multiplicada por precio_unitario. No uses el subtotal, IVA o total del ticket como precio de un artículo.
+Si una línea tiene descuento, conserva el importe final pagado en total y calcula precio_unitario = total / cantidad cuando la cantidad sea conocida.
+Convierte los importes con coma decimal a números JSON usando punto decimal. Si una cifra o nombre no se lee con seguridad, usa null en ese campo, pero conserva la línea si el artículo se puede identificar.
+
+{
+    "proveedor": "Nombre del establecimiento",
+    "fecha": "YYYY-MM-DD",
+    "articulos": [
+        {
+            "nombre": "Nombre del artículo",
+            "cantidad": 1,
+            "precio_unitario": 0.00,
+            "total": 0.00,
+            "unidad": "ud"
+        }
+    ],
+    "total_ticket": 0.00
+}
+
+Si no puedes leer algún dato con claridad, usa null para ese campo.
+Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro."""
+
+
+def _prompt_documento_base(nombre="documento"):
+    return f"""Analiza el documento '{nombre}' y devuelve ÚNICAMENTE este JSON, sin texto adicional:
+
+El documento puede ser la impresión o exportación de un correo electrónico. Ignora cabeceras del correo (De, Para, CC, Asunto), fechas de envío, firmas, avisos legales, respuestas repetidas y texto de conversación que no sea una compra. Busca en todo el cuerpo del mensaje, incluido el contenido reenviado, las tablas de pedido o factura y las líneas de materiales.
+Si el correo describe una compra sin tabla formal, convierte cada material mencionado con cantidad y precio en un artículo. No conviertas teléfonos, fechas, números de pedido, códigos postales ni importes de transporte o IVA en materiales. Usa el remitente, la empresa o el vendedor como proveedor solo cuando esté claro.
+Separa cantidad, precio unitario y total. Si solo aparece un importe total de línea, úsalo como total y calcula el precio unitario cuando haya cantidad. Si un dato no aparece o no se lee con seguridad, usa null.
+
+{{
+    "proveedor": "Nombre del establecimiento",
+    "fecha": "YYYY-MM-DD",
+    "articulos": [
+        {{
+            "nombre": "Nombre del artículo",
+            "cantidad": 1,
+            "precio_unitario": 0.00,
+            "total": 0.00,
+            "unidad": "ud"
+        }}
+    ],
+    "total_ticket": 0.00
+}}
+
+Si no puedes leer algún dato con claridad, usa null para ese campo.
+Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro."""
+
+
+def _gemini_endpoint(model=None, api_key=None):
+    modelo = (model or _gemini_model_activo(api_key=api_key, modelo_preferido=IA_MODEL or None) or IA_MODEL or "gemini-flash-latest").strip()
+    clave = (api_key or IA_API_KEY).strip()
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={clave}"
+
+
+def _gemini_model_activo(api_key=None, modelo_preferido=None):
+    clave = (api_key or IA_API_KEY or "").strip()
+    cache_key = clave or "default"
+    if cache_key in _GEMINI_MODEL_CACHE:
+        return _GEMINI_MODEL_CACHE[cache_key]
+    if not clave:
+        return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
+    candidatos_prioritarios = [
+        modelo_preferido,
+        TICKET_IA_MODEL,
+        IA_MODEL,
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-pro-latest",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-pro",
+    ]
+    try:
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={clave}",
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = json.loads(resp.read().decode("utf-8", "ignore"))
+        modelos = raw.get("models") if isinstance(raw, dict) else []
+        disponibles = []
+        for modelo in modelos or []:
+            nombre = (modelo.get("name") or "").split("/")[-1]
+            metodos = modelo.get("supportedGenerationMethods") or []
+            if nombre and ("generateContent" in metodos or not metodos):
+                disponibles.append(nombre)
+        for candidato in candidatos_prioritarios:
+            if candidato and candidato in disponibles:
+                _GEMINI_MODEL_CACHE[cache_key] = candidato
+                return candidato
+        if disponibles:
+            _GEMINI_MODEL_CACHE[cache_key] = disponibles[0]
+            return disponibles[0]
+    except Exception:
+        pass
+    return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
+
+
+def _gemini_extraer_texto(raw):
+    candidates = raw.get("candidates") if isinstance(raw, dict) else None
+    if not candidates:
+        raise RuntimeError("Respuesta IA sin candidates")
+    content = (candidates[0] or {}).get("content") or {}
+    parts = content.get("parts") or []
+    texto = "".join((p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
+    if not texto:
+        raise RuntimeError("Respuesta IA vacia")
+    return texto
+
+
+def _gemini_imagen_part(data_url):
+    data = limpiar_data_b64(data_url)
+    if not data:
+        return None
+    mime_type = "image/jpeg"
+    if isinstance(data_url, str) and data_url.startswith("data:") and ";base64," in data_url:
+        mime_type = data_url[5:data_url.index(";base64,")] or "image/jpeg"
+    return {"inline_data": {"mime_type": mime_type, "data": data}}
+
+
+def _peticion_gemini(contents, system_instruction=None, response_mime_type=None, max_tokens=1200, temperature=0.2, api_key=None, model=None, timeout=90):
+    clave = (api_key or IA_API_KEY or "").strip()
+    if not clave:
+        raise RuntimeError("No hay API key configurada")
+    modelo_solicitado = (model or "").strip() or _gemini_model_activo(api_key=clave, modelo_preferido=IA_MODEL or None)
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+        },
+    }
+    if system_instruction:
+        payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+    if response_mime_type:
+        payload["generationConfig"]["responseMimeType"] = response_mime_type
+
+    def _enviar(modelo_en_uso):
+        req = urllib.request.Request(
+            _gemini_endpoint(model=modelo_en_uso, api_key=clave),
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "ignore"))
+
+    try:
+        raw = _enviar(modelo_solicitado)
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode("utf-8", "ignore") if hasattr(e, "read") else ""
+        if e.code == 401:
+            raise RuntimeError(f"La API key de .env fue rechazada por Gemini (401). Revisa TICKET_CLAVE_API. {detalle}".strip())
+        if e.code == 429:
+            retry_delay = 0
+            try:
+                payload_error = json.loads(detalle or "{}")
+                retry_info = (payload_error.get("error") or {}).get("details") or []
+                for item in retry_info:
+                    if isinstance(item, dict) and item.get("@type", "").endswith("RetryInfo"):
+                        retry_delay = item.get("retryDelay", "0s")
+                        break
+            except Exception:
+                pass
+            raise RuntimeError(f"Gemini sin cuota temporal (429). Reintenta en {retry_delay or 'unos segundos'}. {detalle}".strip())
+        if e.code == 404:
+            cache_key = clave or "default"
+            if cache_key in _GEMINI_MODEL_CACHE:
+                _GEMINI_MODEL_CACHE.pop(cache_key, None)
+            candidatos = []
+            modelo_descubierto = _gemini_model_activo(api_key=clave, modelo_preferido=None)
+            if modelo_descubierto:
+                candidatos.append(modelo_descubierto)
+            for m in ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]:
+                if m not in candidatos:
+                    candidatos.append(m)
+            for alt in candidatos:
+                if not alt or alt == modelo_solicitado:
+                    continue
+                try:
+                    return _enviar(alt)
+                except urllib.error.HTTPError as e_alt:
+                    if e_alt.code == 404:
+                        continue
+                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
+                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
+            raise RuntimeError(f"Error de Gemini: modelo no disponible ({modelo_solicitado}). {detalle}".strip())
+        if e.code == 503:
+            # Un modelo puede estar saturado aunque la API key sea valida.
+            candidatos = [
+                "gemini-2.5-flash-lite",
+                "gemini-2.5-flash",
+                "gemini-flash-lite-latest",
+            ]
+            for alt in candidatos:
+                if not alt or alt == modelo_solicitado:
+                    continue
+                try:
+                    return _enviar(alt)
+                except urllib.error.HTTPError as e_alt:
+                    if e_alt.code == 503:
+                        continue
+                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
+                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
+            raise RuntimeError(f"Gemini no disponible temporalmente (503). {detalle}".strip())
+        raise RuntimeError(f"Error de Gemini: {e.reason or str(e)} {detalle}".strip())
+    return raw
 
 
 def _parse_numero(texto):
@@ -232,10 +471,14 @@ def index():
 
 @app.route("/movil")
 def movil():
-    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil.html")
+    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
 
 @app.route("/movil2")
 def movil2():
+    return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
+
+@app.route("/movil4")
+def movil4():
     return send_from_directory(os.path.join(APP_DIR, "templates"), "movil2.html")
 
 @app.route("/api/info/ip", methods=["GET"])
@@ -261,7 +504,13 @@ def get_ip():
         except Exception:
             pass
     ip_final = ips[0] if ips else "127.0.0.1"
-    return jsonify({"ok": True, "data": {"ip": ip_final, "url": f"http://{ip_final}:5000/movil", "todas": ips}})
+    url_local = f"http://{ip_final}:{PORT}/movil"
+    url_publica = f"{PUBLIC_BASE_URL}/movil" if PUBLIC_BASE_URL else url_local
+    return jsonify({"ok": True, "data": {"ip": ip_final, "url": url_publica, "url_local": url_local, "url_publica": PUBLIC_BASE_URL, "todas": ips}})
+
+@app.route("/api/info/db", methods=["GET"])
+def get_db_info():
+    return jsonify({"ok": True, "data": get_db_status()})
 
 # -------------------- INTERMEDIARIOS --------------------
 @app.route("/api/intermediarios", methods=["GET"])
@@ -361,6 +610,16 @@ def editar_cliente(id):
     return jsonify({"ok": True})
 
 # -------------------- FAENAS --------------------
+
+def _conn_para_faena(faena_id):
+    """Devuelve la conexión donde vive la faena (nube activa o SQLite archivado)."""
+    conn = get_connection()
+    existe = conn.execute("SELECT id FROM faenas WHERE id=?", (faena_id,)).fetchone()
+    if existe:
+        return conn
+    conn.close()
+    return get_sqlite_local()
+
 @app.route("/api/faenas", methods=["GET"])
 def get_faenas():
     conn = get_connection()
@@ -377,7 +636,7 @@ def get_faenas():
 
 @app.route("/api/faenas/archivadas", methods=["GET"])
 def get_faenas_archivadas():
-    conn = get_connection()
+    conn = get_sqlite_local()
     filas = conn.execute("""
         SELECT f.*, c.nombre AS cliente_nombre, i.nombre AS intermediario_nombre
         FROM faenas f
@@ -391,15 +650,20 @@ def get_faenas_archivadas():
 
 @app.route("/api/faenas/<int:id>", methods=["GET"])
 def get_faena(id):
-    conn = get_connection()
-    fila = conn.execute("""
+    _SQL = """
         SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, i.nombre AS intermediario_nombre
         FROM faenas f
         LEFT JOIN clientes c ON f.cliente_id = c.id
         LEFT JOIN intermediarios i ON f.intermediario_id = i.id
         WHERE f.id = ?
-    """, (id,)).fetchone()
+    """
+    conn = get_connection()
+    fila = conn.execute(_SQL, (id,)).fetchone()
     conn.close()
+    if not fila:
+        conn2 = get_sqlite_local()
+        fila = conn2.execute(_SQL, (id,)).fetchone()
+        conn2.close()
     if not fila:
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
     return jsonify({"ok": True, "data": fila_a_dict(fila)})
@@ -470,16 +734,71 @@ def eliminar_faena(id):
 
 @app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
 def archivar_faena(id):
-    conn = get_connection()
-    conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
-    conn.commit()
-    conn.close()
+    src = get_connection()
+    # Si ya estamos en SQLite local, solo marcar archivada.
+    if getattr(src, "_backend", "") == "sqlite":
+        src.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
+        src.commit()
+        src.close()
+        return jsonify({"ok": True})
+
+    faena = fila_a_dict(src.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone())
+    if not faena:
+        src.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+
+    cliente = fila_a_dict(src.execute("SELECT * FROM clientes WHERE id=?", (faena["cliente_id"],)).fetchone())
+    intermediario = fila_a_dict(src.execute("SELECT * FROM intermediarios WHERE id=?", (faena.get("intermediario_id", 0),)).fetchone())
+    anotaciones = filas_a_lista(src.execute("SELECT * FROM anotaciones WHERE faena_id=?", (id,)).fetchall())
+    gastos = filas_a_lista(src.execute("SELECT * FROM gastos_faena WHERE faena_id=?", (id,)).fetchall())
+    presupuestos = filas_a_lista(src.execute("SELECT * FROM presupuestos_faena WHERE faena_id=?", (id,)).fetchall())
+    fotos = filas_a_lista(src.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (id,)).fetchall())
+
+    dst = get_sqlite_local()
+    try:
+        if intermediario:
+            dst.execute("INSERT OR IGNORE INTO intermediarios (id, nombre, telefono, email) VALUES (?,?,?,?)",
+                        (intermediario["id"], intermediario["nombre"], intermediario.get("telefono", ""), intermediario.get("email", "")))
+        if cliente:
+            dst.execute("INSERT OR IGNORE INTO clientes (id, nombre, telefono, direccion, email, intermediario_id, notas) VALUES (?,?,?,?,?,?,?)",
+                        (cliente["id"], cliente["nombre"], cliente.get("telefono", ""), cliente.get("direccion", ""),
+                         cliente.get("email", ""), cliente.get("intermediario_id", 0), cliente.get("notas", "")))
+        dst.execute("""INSERT OR REPLACE INTO faenas
+            (id, numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, archivada, carpeta)
+            VALUES (?,?,?,?,?,?,?,?,1,?)""",
+            (faena["id"], faena.get("numero"), faena["cliente_id"], faena.get("intermediario_id", 0),
+             faena.get("direccion", ""), faena.get("tipo_trabajo", ""), faena.get("importe", 0),
+             faena.get("fecha_inicio", ""), faena.get("carpeta", "")))
+        for a in anotaciones:
+            dst.execute("INSERT OR IGNORE INTO anotaciones (id, faena_id, tipo, contenido, fecha) VALUES (?,?,?,?,?)",
+                        (a["id"], a["faena_id"], a.get("tipo", "texto"), a.get("contenido", ""), a.get("fecha", "")))
+        for g in gastos:
+            dst.execute("INSERT OR IGNORE INTO gastos_faena (id, faena_id, tipo, descripcion, cantidad, precio_unitario, total, fecha, ticket_foto) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (g["id"], g["faena_id"], g.get("tipo", "otro"), g.get("descripcion", ""), g.get("cantidad", 1),
+                         g.get("precio_unitario", 0), g.get("total", 0), g.get("fecha", ""), g.get("ticket_foto", "")))
+        for p in presupuestos:
+            dst.execute("INSERT OR IGNORE INTO presupuestos_faena (id, faena_id, tipo, descripcion, cantidad, precio_unitario, total, fecha) VALUES (?,?,?,?,?,?,?,?)",
+                        (p["id"], p["faena_id"], p.get("tipo", "material"), p.get("descripcion", ""), p.get("cantidad", 1),
+                         p.get("precio_unitario", 0), p.get("total", 0), p.get("fecha", "")))
+        for f in fotos:
+            dst.execute("INSERT OR IGNORE INTO fotos_faena (id, faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?,?,?,?,?,?)",
+                        (f["id"], f["faena_id"], f.get("nombre", ""), f.get("ruta_foto", ""), f.get("data_base64", ""), f.get("fecha", "")))
+        dst.commit()
+    finally:
+        dst.close()
+
+    # Borrar de la nube respetando FK
+    for tabla in ("fotos_faena", "presupuestos_faena", "gastos_faena", "anotaciones"):
+        src.execute(f"DELETE FROM {tabla} WHERE faena_id=?", (id,))
+    src.execute("DELETE FROM faenas WHERE id=?", (id,))
+    src.commit()
+    src.close()
     return jsonify({"ok": True})
 
 # -------------------- ANOTACIONES --------------------
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["GET"])
 def get_anotaciones(id):
-    conn = get_connection()
+    conn = _conn_para_faena(id)
     filas = conn.execute(
         "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY fecha DESC", (id,)
     ).fetchall()
@@ -555,6 +874,56 @@ def crear_material():
     nuevo_id = cursor.lastrowid
     conn.close()
     return jsonify({"ok": True, "data": {"id": nuevo_id}})
+
+@app.route("/api/materiales/<int:id>", methods=["PUT"])
+def editar_material(id):
+    datos = request.json or {}
+    nombre = str(datos.get("nombre", "")).strip()
+    unidad = str(datos.get("unidad", "ud")).strip() or "ud"
+    categoria = str(datos.get("categoria", "Herraje")).strip() or "Herraje"
+    definicion = str(datos.get("definicion", "")).strip()
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+    conn = get_connection()
+    existente = conn.execute("SELECT id FROM materiales WHERE id=?", (id,)).fetchone()
+    if not existente:
+        conn.close()
+        return jsonify({"ok": False, "error": "Material no encontrado"}), 404
+    conn.execute(
+        "UPDATE materiales SET nombre=?, unidad=?, categoria=?, definicion=? WHERE id=?",
+        (nombre, unidad, categoria, definicion, id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/materiales/<int:id>", methods=["DELETE"])
+def eliminar_material(id):
+    conn = get_connection()
+    existente = conn.execute("SELECT id FROM materiales WHERE id=?", (id,)).fetchone()
+    if not existente:
+        conn.close()
+        return jsonify({"ok": False, "error": "Material no encontrado"}), 404
+    conn.execute("DELETE FROM precios WHERE material_id=?", (id,))
+    conn.execute("DELETE FROM materiales WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/materiales/<int:id>/definicion", methods=["PUT"])
+def editar_definicion_material(id):
+    datos = request.json or {}
+    definicion = str(datos.get("definicion", "")).strip()
+    conn = get_connection()
+    existente = conn.execute("SELECT id FROM materiales WHERE id=?", (id,)).fetchone()
+    if not existente:
+        conn.close()
+        return jsonify({"ok": False, "error": "Material no encontrado"}), 404
+    conn.execute("UPDATE materiales SET definicion=? WHERE id=?", (definicion, id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
 @app.route("/api/materiales/<int:id>/precio", methods=["POST"])
 def actualizar_precio(id):
     datos = request.json
@@ -574,6 +943,29 @@ def actualizar_precio(id):
     conn.close()
     return jsonify({"ok": True})
 
+@app.route("/api/materiales/<int:id>/precios", methods=["PUT"])
+def reemplazar_precios_material(id):
+    datos = request.json or {}
+    precios = datos.get("precios") if isinstance(datos.get("precios"), list) else []
+    conn = get_connection()
+    existente = conn.execute("SELECT id FROM materiales WHERE id=?", (id,)).fetchone()
+    if not existente:
+        conn.close()
+        return jsonify({"ok": False, "error": "Material no encontrado"}), 404
+    conn.execute("DELETE FROM precios WHERE material_id=?", (id,))
+    for precio in precios:
+        proveedor = str(precio.get("proveedor", "")).strip()
+        valor = precio.get("precio_unitario")
+        if not proveedor or valor is None:
+            continue
+        conn.execute(
+            "INSERT INTO precios (material_id, proveedor, precio_unitario, fecha_actualizacion) VALUES (?, ?, ?, datetime('now'))",
+            (id, proveedor, valor)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
 # -------------------- GASTOS --------------------
 def separar_conceptos_faena(filas):
     presupuesto = []
@@ -588,7 +980,7 @@ def separar_conceptos_faena(filas):
 
 @app.route("/api/faenas/<int:id>/gastos", methods=["GET"])
 def get_gastos(id):
-    conn = get_connection()
+    conn = _conn_para_faena(id)
     filas = conn.execute(
         "SELECT * FROM gastos_faena WHERE faena_id=? ORDER BY fecha DESC", (id,)
     ).fetchall()
@@ -744,27 +1136,7 @@ def eliminar_presupuesto_item(id):
 # -------------------- PROMPTS --------------------
 @app.route("/api/prompts/ticket", methods=["GET"])
 def prompt_ticket():
-    prompt = """Analiza la imagen del ticket o factura de compra que te adjunto.
-Extrae todos los artículos y devuelve ÚNICAMENTE el siguiente JSON, sin texto adicional antes ni después:
-
-{
-  "proveedor": "Nombre del establecimiento",
-  "fecha": "YYYY-MM-DD",
-  "articulos": [
-    {
-      "nombre": "Nombre del artículo",
-      "cantidad": 1,
-      "precio_unitario": 0.00,
-      "total": 0.00,
-      "unidad": "ud"
-    }
-  ],
-  "total_ticket": 0.00
-}
-
-Si no puedes leer algún dato con claridad, usa null para ese campo.
-Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro."""
-    return jsonify({"ok": True, "data": {"prompt": prompt}})
+        return jsonify({"ok": True, "data": {"prompt": _prompt_ticket_base()}})
 
 
 @app.route("/api/prompts/materiales", methods=["GET"])
@@ -791,8 +1163,8 @@ def prompt_materiales():
             f"- {fila['nombre']} | unidad: {fila['unidad']} | categoria: {fila['categoria']} | precio_min: {float(fila['precio_min'] or 0):.2f} | precio_max: {float(fila['precio_max'] or 0):.2f}"
         )
 
-        catalogo = "\n".join(lineas) or "Sin materiales guardados todavía."
-        prompt = f"""Actualiza los precios de estos materiales de carpintería usando el JSON que te pegue el usuario.
+    catalogo = "\n".join(lineas) or "Sin materiales guardados todavía."
+    prompt = f"""Actualiza los precios de estos materiales de carpintería usando el JSON que te pegue el usuario.
 Devuelve SOLO JSON válido con esta estructura:
 
 {{
@@ -860,42 +1232,1103 @@ def ollama_buscar_materiales():
     return jsonify({"ok": True, "data": {"materiales": resultados, "no_encontrados": no_encontrados}})
 
 
+def _extraer_json_de_texto(texto):
+    bruto = (texto or "").strip()
+    if not bruto:
+        return None
+
+    # Quita fences tipo ```json ... ``` si vienen en la respuesta.
+    bruto = re.sub(r"^```(?:json)?\s*", "", bruto, flags=re.IGNORECASE)
+    bruto = re.sub(r"\s*```$", "", bruto).strip()
+
+    try:
+        return json.loads(bruto)
+    except Exception:
+        pass
+
+    # A veces el modelo devuelve un JSON serializado como string.
+    if (bruto.startswith('"') and bruto.endswith('"')) or (bruto.startswith("'") and bruto.endswith("'")):
+        try:
+            desescapado = json.loads(bruto)
+            if isinstance(desescapado, str):
+                try:
+                    return json.loads(desescapado)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    m = re.search(r"\{[\s\S]*\}", bruto)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def _normalizar_json_materiales_con_ia(texto_crudo, tipo="ticket", api_key=None, model=None):
+    txt = (texto_crudo or "").strip()
+    if not txt:
+        return None
+    system = (
+        f"Convierte la salida de un extractor de {tipo} a JSON estricto. "
+        "Devuelve SOLO un objeto JSON con: proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad}]. "
+        "Si faltan campos, usa null. No añadas explicaciones."
+    )
+    raw = _peticion_gemini(
+        contents=[{"role": "user", "parts": [{"text": txt}]}],
+        system_instruction=system,
+        response_mime_type="application/json",
+        max_tokens=1200,
+        temperature=0,
+        api_key=api_key,
+        model=model,
+    )
+    salida = _gemini_extraer_texto(raw)
+    return _extraer_json_de_texto(salida)
+
+
+def _normalizar_articulo(art):
+    faena_item = _parse_faena_id_seguro(art.get("faena_id")) if isinstance(art, dict) else None
+    cantidad = _to_float_seguro(art.get("cantidad") if isinstance(art, dict) else 0)
+    precio = _to_float_seguro(art.get("precio_unitario") if isinstance(art, dict) else 0)
+    total = _to_float_seguro(art.get("total") if isinstance(art, dict) else 0)
+    if total <= 0:
+        total = cantidad * precio
+    return {
+        "nombre": str(art.get("nombre") or "").strip(),
+        "cantidad": cantidad if cantidad > 0 else 1.0,
+        "precio_unitario": precio,
+        "total": total,
+        "unidad": str(art.get("unidad") or "ud").strip() or "ud",
+        "categoria": str(art.get("categoria") or "").strip(),
+        "definicion": str(art.get("definicion") or "").strip(),
+        "faena_id": faena_item,
+    }
+
+
+def _parse_faena_id_seguro(valor):
+    try:
+        faena_id = int(valor or 0)
+        return faena_id if faena_id > 0 else None
+    except Exception:
+        return None
+
+
+def _parse_bool_seguro(valor, por_defecto=True):
+    if valor is None:
+        return por_defecto
+    if isinstance(valor, bool):
+        return valor
+    txt = str(valor).strip().lower()
+    if txt in ("1", "true", "si", "sí", "yes", "y", "on"):
+        return True
+    if txt in ("0", "false", "no", "n", "off"):
+        return False
+    return por_defecto
+
+
+def _persistir_resultado_ia_en_nube(faena_id, origen, data):
+    faena_id_ok = _parse_faena_id_seguro(faena_id)
+    proveedor_global = str((data or {}).get("proveedor") or "").strip()
+    articulos = (data or {}).get("articulos") or []
+    resumen = {
+        "origen": (origen or "ticket").strip().lower(),
+        "faena_id": faena_id_ok,
+        "materiales_creados": 0,
+        "materiales_actualizados": 0,
+        "precios_actualizados": 0,
+        "gastos_creados": 0,
+        "errores": [],
+    }
+    if not isinstance(articulos, list):
+        return resumen
+
+    conn = get_connection()
+    try:
+        mats = filas_a_lista(conn.execute("SELECT id, nombre, unidad, categoria, definicion FROM materiales").fetchall())
+        idx_mat = {}
+        for m in mats:
+            nombre = (m.get("nombre") or "").strip()
+            if nombre:
+                idx_mat[_normalizar_texto_busqueda(nombre)] = m
+
+        for i, art in enumerate(articulos):
+            if not isinstance(art, dict):
+                continue
+            try:
+                a = _normalizar_articulo(art)
+                nombre = (a.get("nombre") or "").strip()
+                if not nombre:
+                    continue
+
+                norm = _normalizar_texto_busqueda(nombre)
+                mat = idx_mat.get(norm)
+                mat_id = None
+                if mat:
+                    mat_id = mat.get("id")
+                    unidad = a.get("unidad") or mat.get("unidad") or "ud"
+                    categoria = a.get("categoria") or mat.get("categoria") or "Otro"
+                    definicion = a.get("definicion")
+                    if not definicion:
+                        definicion = mat.get("definicion") or ""
+                    conn.execute(
+                        "UPDATE materiales SET unidad=?, categoria=?, definicion=? WHERE id=?",
+                        (unidad, categoria, definicion, mat_id),
+                    )
+                    resumen["materiales_actualizados"] += 1
+                else:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO materiales (nombre, unidad, categoria, definicion) VALUES (?, ?, ?, ?)",
+                        (nombre, a.get("unidad") or "ud", a.get("categoria") or "Otro", a.get("definicion") or ""),
+                    )
+                    mat_id = cur.lastrowid
+                    idx_mat[norm] = {"id": mat_id, "nombre": nombre}
+                    resumen["materiales_creados"] += 1
+
+                precio = _to_float_seguro(a.get("precio_unitario"))
+                proveedor_linea = str(a.get("proveedor") or proveedor_global or "").strip()
+                if mat_id and proveedor_linea and precio > 0:
+                    ex = conn.execute(
+                        "SELECT id FROM precios WHERE material_id=? AND proveedor=?",
+                        (mat_id, proveedor_linea),
+                    ).fetchone()
+                    if ex:
+                        conn.execute(
+                            "UPDATE precios SET precio_unitario=?, fecha_actualizacion=datetime('now') WHERE id=?",
+                            (precio, ex["id"]),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO precios (material_id, proveedor, precio_unitario, fecha_actualizacion) VALUES (?, ?, ?, datetime('now'))",
+                            (mat_id, proveedor_linea, precio),
+                        )
+                    resumen["precios_actualizados"] += 1
+
+                faena_linea = _parse_faena_id_seguro(a.get("faena_id")) or faena_id_ok
+                if faena_linea:
+                    conn.execute(
+                        "INSERT INTO gastos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total, ticket_foto) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            faena_linea,
+                            resumen["origen"],
+                            nombre,
+                            _to_float_seguro(a.get("cantidad") or 1),
+                            _to_float_seguro(a.get("precio_unitario") or 0),
+                            _to_float_seguro(a.get("total") or 0),
+                            "",
+                        ),
+                    )
+                    resumen["gastos_creados"] += 1
+            except Exception as e:
+                resumen["errores"].append(f"articulo[{i}]: {str(e)}")
+
+        conn.commit()
+        return resumen
+    finally:
+        conn.close()
+
+
+def _to_float_seguro(valor):
+    try:
+        if isinstance(valor, str):
+            valor = valor.replace("€", "").replace(" ", "").replace(",", ".")
+        return float(valor or 0)
+    except Exception:
+        return 0.0
+
+
+def _normalizar_texto_busqueda(texto):
+    txt = (texto or "").lower()
+    txt = txt.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    txt = txt.replace("ü", "u").replace("ñ", "n")
+    txt = re.sub(r"[^a-z0-9\s]", " ", txt)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
+
+
+def _tokens_memoria(texto):
+    stop = {
+        "que", "quien", "cual", "cuales", "cuanto", "cuanta", "cuantos", "cuantas", "de", "del", "la", "el", "los", "las",
+        "es", "son", "tiene", "tienen", "hay", "para", "una", "un", "y", "o", "me", "dime", "quiero", "ver",
+        "por", "favor", "puedo", "podrias", "podrias", "podria", "ser", "al", "en", "con", "sin", "sobre"
+    }
+    return [t for t in _normalizar_texto_busqueda(texto).split() if len(t) > 1 and t not in stop]
+
+
+def _guardar_memoria_ia(pregunta, respuesta, contexto_tipo="general", alcance="general", faena_id=0, fuente="local"):
+    try:
+        conn = get_connection()
+        try:
+            tokens = " ".join(_tokens_memoria(pregunta))[:2000]
+            conn.execute(
+                """
+                INSERT INTO ia_memoria (pregunta, respuesta, contexto_tipo, alcance, faena_id, tokens, fuente)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (pregunta[:5000], respuesta[:15000], contexto_tipo or "general", alcance or "general", int(faena_id or 0), tokens, fuente or "local"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[AVISO] No se pudo guardar memoria IA: {e}")
+
+
+def _buscar_memoria_ia(pregunta, contexto_tipo="general", alcance="general", faena_id=0):
+    tokens = _tokens_memoria(pregunta)
+    if not tokens:
+        return None
+    pregunta_normalizada = _normalizar_texto_busqueda(pregunta)
+    conn = get_connection()
+    try:
+        filas = conn.execute(
+            """
+            SELECT pregunta, respuesta, contexto_tipo, alcance, faena_id, tokens
+            FROM ia_memoria
+            ORDER BY id DESC
+            LIMIT 200
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    mejor = None
+    for fila in filas_a_lista(filas):
+        misma_pregunta = _normalizar_texto_busqueda(fila.get("pregunta") or "") == pregunta_normalizada
+        mismo_contexto = str(fila.get("contexto_tipo") or "") == str(contexto_tipo or "")
+        mismo_alcance = str(fila.get("alcance") or "") == str(alcance or "")
+        misma_faena = int(fila.get("faena_id") or 0) == int(faena_id or 0)
+        if misma_pregunta and mismo_contexto and mismo_alcance and misma_faena:
+            return fila
+    return mejor
+
+
+def _tokens_pregunta(texto):
+    stop = {
+        "cual", "cuales", "cuanto", "cuanta", "cuantos", "cuantas", "de", "del", "la", "el", "los", "las",
+        "es", "son", "tiene", "hay", "para", "una", "un", "y", "o", "me", "dime", "quiero", "ver",
+        "presupuesto", "importe", "direccion", "cliente", "faena", "trabajo", "armario"
+    }
+    return [t for t in _normalizar_texto_busqueda(texto).split() if len(t) > 1 and t not in stop]
+
+
+def _buscar_faenas_db():
+    conn = get_connection()
+    try:
+        filas = conn.execute(
+            """
+            SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.archivada, f.direccion,
+                   c.nombre AS cliente_nombre
+            FROM faenas f
+            LEFT JOIN clientes c ON c.id = f.cliente_id
+            ORDER BY f.id DESC
+            """
+        ).fetchall()
+        return filas_a_lista(filas)
+    finally:
+        conn.close()
+
+
+def _mejor_faena_para_tokens(faenas, tokens, exigir_tipo=False):
+    mejor = None
+    mejor_score = -1
+    for faena in faenas:
+        cliente = _normalizar_texto_busqueda(faena.get("cliente_nombre") or "")
+        trabajo = _normalizar_texto_busqueda(faena.get("tipo_trabajo") or "")
+        score = 0
+        for tk in tokens:
+            if tk in cliente:
+                score += 3
+            if tk in trabajo:
+                score += 2
+        if exigir_tipo and not any(tk in trabajo for tk in tokens):
+            score -= 2
+        if score > mejor_score:
+            mejor = faena
+            mejor_score = score
+    return mejor if mejor_score > 0 else None
+
+
+def _respuesta_ia_local(pregunta, contexto, faena_id=None):
+    txt = (pregunta or "").strip().lower()
+    ctx = contexto if isinstance(contexto, dict) else {}
+    contexto_tipo = (ctx.get("contexto_tipo") or ctx.get("tipo") or "general") if isinstance(ctx, dict) else "general"
+    alcance = (ctx.get("alcance") or "general") if isinstance(ctx, dict) else "general"
+
+    faenas = ctx.get("faenas") if isinstance(ctx.get("faenas"), list) else []
+    materiales = ctx.get("materiales") if isinstance(ctx.get("materiales"), list) else []
+
+    memoria = _buscar_memoria_ia(pregunta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+    consulta_precio_material = any(k in txt for k in ["material", "materiales", "precio", "precios", "coste", "costo", "bisagra", "bisagras"])
+    respuesta_memoria = (memoria.get("respuesta") or "").strip() if memoria else ""
+    if memoria and respuesta_memoria and not (consulta_precio_material and respuesta_memoria.startswith("Puedo ayudarte")):
+        return memoria.get("respuesta")
+
+    if not faenas:
+        conn = get_connection()
+        try:
+            filas = conn.execute(
+                """
+                SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.archivada,
+                       c.nombre AS cliente_nombre
+                FROM faenas f
+                LEFT JOIN clientes c ON c.id = f.cliente_id
+                ORDER BY f.id DESC
+                """
+            ).fetchall()
+            faenas = filas_a_lista(filas)
+        finally:
+            conn.close()
+
+    if not materiales:
+        conn = get_connection()
+        try:
+            filas = conn.execute(
+                """
+                SELECT m.nombre, m.categoria, m.definicion, p.proveedor, p.precio_unitario
+                FROM materiales m
+                LEFT JOIN precios p ON p.material_id = m.id
+                """
+            ).fetchall()
+            tmp = {}
+            for fila in filas_a_lista(filas):
+                clave = (fila.get("nombre") or "").strip()
+                if not clave:
+                    continue
+                if clave not in tmp:
+                    tmp[clave] = {
+                        "nombre": clave,
+                        "categoria": fila.get("categoria") or "",
+                        "definicion": fila.get("definicion") or "",
+                        "precios": []
+                    }
+                if fila.get("precio_unitario") is not None:
+                    tmp[clave]["precios"].append({
+                        "proveedor": fila.get("proveedor") or "",
+                        "precio": _to_float_seguro(fila.get("precio_unitario")),
+                    })
+            materiales = list(tmp.values())
+        finally:
+            conn.close()
+
+    faenas_activas = [f for f in faenas if int(_to_float_seguro(f.get("archivada"))) == 0]
+    total_activas = sum(_to_float_seguro(f.get("importe")) for f in faenas_activas)
+    total_global = sum(_to_float_seguro(f.get("importe")) for f in faenas)
+    faena_seleccionada = next((f for f in faenas if str(f.get("id")) == str(faena_id)), None) if faena_id else None
+
+    if faena_seleccionada and any(k in txt for k in ["presupuesto", "importe", "cuanto cuesta", "cuanto es"]):
+        return (
+            f"El presupuesto de la faena {faena_seleccionada.get('numero', '')}"
+            f" de {faena_seleccionada.get('cliente_nombre', 'sin cliente')}"
+            f" ({faena_seleccionada.get('tipo_trabajo', faena_seleccionada.get('trabajo', 'sin tipo'))})"
+            f" es de {_to_float_seguro(faena_seleccionada.get('importe')):.2f} EUR."
+        )
+
+    if faena_seleccionada and any(k in txt for k in ["direccion", "dirección", "donde", "dónde"]):
+        direccion_sel = (faena_seleccionada.get("direccion") or "").strip()
+        if direccion_sel:
+            return f"La dirección de {faena_seleccionada.get('cliente_nombre', 'esa faena')} es: {direccion_sel}."
+        return f"No tengo dirección guardada para {faena_seleccionada.get('cliente_nombre', 'esa faena')}."
+
+    if any(k in txt for k in ["presupuesto", "importe", "cuanto cuesta", "cuanto es"]) and any(k in txt for k in ["puri", "armario", "maria", "jose", "susana"]):
+        faenas_db = _buscar_faenas_db()
+        tokens = _tokens_pregunta(pregunta)
+        match = _mejor_faena_para_tokens(faenas_db, tokens, exigir_tipo=("armario" in _normalizar_texto_busqueda(pregunta)))
+        if match:
+            return (
+                f"El presupuesto de la faena {match.get('numero', '')}"
+                f" de {match.get('cliente_nombre', 'sin cliente')}"
+                f" ({match.get('tipo_trabajo', 'sin tipo')}) es de {_to_float_seguro(match.get('importe')):.2f} EUR."
+            )
+
+    if any(k in txt for k in ["direccion", "dirección", "donde", "dónde"]):
+        faenas_db = _buscar_faenas_db()
+        tokens = _tokens_pregunta(pregunta)
+        match = _mejor_faena_para_tokens(faenas_db, tokens)
+        if match:
+            direccion = (match.get("direccion") or "").strip()
+            if direccion:
+                return f"La dirección de {match.get('cliente_nombre', 'ese cliente')} es: {direccion}."
+            return f"No tengo dirección guardada para {match.get('cliente_nombre', 'ese cliente')}."
+
+    if any(k in txt for k in ["cuánto he cobrado", "cuanto he cobrado", "total cobrado", "importe total", "he cobrado en total"]):
+        respuesta = (
+            f"Total cobrado en faenas activas: {total_activas:.2f} EUR.\n"
+            f"Total acumulado (activas + archivadas): {total_global:.2f} EUR.\n"
+            f"Faenas activas: {len(faenas_activas)} de {len(faenas)} en total."
+        )
+        _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+        return respuesta
+
+    if ("faena" in txt or "faenas" in txt) and any(k in txt for k in ["tiene", "tengo", "de", "del"]):
+        tokens = _tokens_pregunta(pregunta)
+        candidatas = []
+        for faena in faenas:
+            cliente = _normalizar_texto_busqueda(faena.get("cliente_nombre") or faena.get("cliente") or "")
+            trabajo = _normalizar_texto_busqueda(faena.get("tipo_trabajo") or faena.get("trabajo") or "")
+            numero = _normalizar_texto_busqueda(faena.get("numero") or "")
+            score = 0
+            for tk in tokens:
+                if tk in cliente:
+                    score += 3
+                if tk in trabajo:
+                    score += 1
+                if tk in numero:
+                    score += 1
+            if score > 0:
+                candidatas.append((score, faena))
+
+        if candidatas:
+            candidatas.sort(key=lambda item: (-item[0], -(item[1].get("id") or 0)))
+            mejor_score = candidatas[0][0]
+            faenas_cliente = [f for score, f in candidatas if score == mejor_score]
+            nombre_cliente = faenas_cliente[0].get("cliente_nombre") or faenas_cliente[0].get("cliente") or "ese cliente"
+            lineas = [
+                f"- {f.get('numero', '')} | {f.get('tipo_trabajo', f.get('trabajo', 'Sin descripción'))} | {_to_float_seguro(f.get('importe')):.2f} EUR"
+                for f in faenas_cliente[:10]
+            ]
+            extra = "" if len(faenas_cliente) <= 10 else f"\nY {len(faenas_cliente) - 10} más."
+            respuesta = f"{nombre_cliente} tiene {len(faenas_cliente)} faena(s):\n" + "\n".join(lineas) + extra
+            _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+            return respuesta
+
+    if ("faena" in txt or "faenas" in txt) and any(k in txt for k in ["activ", "pendient", "no archiv", "abierta"]):
+        if not faenas_activas:
+            return "No hay faenas activas ahora mismo."
+        top = faenas_activas[:8]
+        lineas = [f"- {f.get('numero', '')} | {f.get('cliente_nombre', '')} | {f.get('tipo_trabajo', '')}" for f in top]
+        extra = "" if len(faenas_activas) <= len(top) else f"\nY {len(faenas_activas) - len(top)} más."
+        respuesta = "Faenas activas:\n" + "\n".join(lineas) + extra
+        _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+        return respuesta
+
+    if any(k in txt for k in ["cliente con más faenas", "cliente con mas faenas", "mejor cliente", "cliente más activo", "cliente mas activo"]):
+        conteo = {}
+        for f in faenas_activas or faenas:
+            nombre = (f.get("cliente_nombre") or f.get("cliente") or "Sin cliente").strip() or "Sin cliente"
+            conteo[nombre] = conteo.get(nombre, 0) + 1
+        if not conteo:
+            return "No hay datos de clientes suficientes para calcularlo."
+        cliente, cantidad = sorted(conteo.items(), key=lambda x: x[1], reverse=True)[0]
+        respuesta = f"El cliente con más faenas es {cliente} con {cantidad} faena(s)."
+        _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+        return respuesta
+
+    tokens_material = [
+        tk for tk in _tokens_pregunta(pregunta)
+        if tk not in {"material", "materiales", "precio", "precios", "coste", "costo", "cuanto", "cuanta", "cuantos", "cuantas", "tiene", "tienen", "hay", "proveedor", "proveedores"}
+    ]
+    if (contexto_tipo == "materiales" or any(k in txt for k in ["material", "materiales", "precio", "precios", "proveedor", "proveedores"])) and tokens_material:
+        coincidencias = []
+        for material in materiales:
+            precios_material = material.get("precios") or []
+            campos = [material.get("nombre"), material.get("categoria"), material.get("definicion")]
+            for precio in precios_material:
+                campos.extend([precio.get("proveedor"), precio.get("precio"), precio.get("precio_unitario"), precio.get("fecha_actualizacion")])
+            texto_material = _normalizar_texto_busqueda(" ".join(str(c or "") for c in campos))
+            coincidencias_material = 0
+            for token in tokens_material:
+                variantes = [token]
+                if len(token) > 4 and token.endswith("s"):
+                    variantes.append(token[:-1])
+                if any(variante in texto_material for variante in variantes):
+                    coincidencias_material += 1
+            if coincidencias_material:
+                coincidencias.append((material, coincidencias_material))
+        if coincidencias:
+            coincidencias.sort(key=lambda item: (-item[1], str(item[0].get("nombre") or "").lower()))
+            lineas = []
+            for material, _ in coincidencias[:15]:
+                precios = material.get("precios") or []
+                detalle = ", ".join(
+                    f"{p.get('proveedor') or 'sin proveedor'}: {_to_float_seguro(p.get('precio') if 'precio' in p else p.get('precio_unitario')):.2f} EUR"
+                    for p in precios
+                ) or "sin precio registrado"
+                lineas.append(f"- {material.get('nombre') or 'Sin nombre'} | {material.get('categoria') or 'Sin categoría'} | {detalle}")
+            respuesta = "Materiales encontrados:\n" + "\n".join(lineas)
+            _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+            return respuesta
+
+    if any(k in txt for k in ["material", "materiales"]) and any(k in txt for k in ["caro", "caros", "más caro", "mas caro", "precio"]):
+        ranking = []
+        for m in materiales:
+            nombre = (m.get("nombre") or "").strip()
+            if not nombre:
+                continue
+            for p in (m.get("precios") or []):
+                precio = _to_float_seguro(p.get("precio") if "precio" in p else p.get("precio_unitario"))
+                if precio > 0:
+                    ranking.append((precio, nombre, p.get("proveedor") or ""))
+        if not ranking:
+            return "No hay precios registrados para calcular materiales más caros."
+        ranking.sort(reverse=True, key=lambda x: x[0])
+        top = ranking[:5]
+        lineas = [f"- {nombre}: {precio:.2f} EUR ({proveedor or 'sin proveedor'})" for precio, nombre, proveedor in top]
+        respuesta = "Materiales más caros registrados:\n" + "\n".join(lineas)
+        _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+        return respuesta
+
+    tokens_trabajo = [
+        tk for tk in _tokens_pregunta(pregunta)
+        if tk not in {"trabajo", "trabajos", "faena", "faenas", "datos", "general"}
+    ]
+    if contexto_tipo in {"general", "trabajos"} and tokens_trabajo:
+        coincidencias_trabajo = []
+        for faena in faenas:
+            texto_faena = _normalizar_texto_busqueda(json.dumps(faena, ensure_ascii=False))
+            coincidencias = sum(1 for token in tokens_trabajo if token in texto_faena or (token.endswith("s") and token[:-1] in texto_faena))
+            if coincidencias:
+                coincidencias_trabajo.append((faena, coincidencias))
+        if coincidencias_trabajo:
+            coincidencias_trabajo.sort(key=lambda item: (-item[1], -(int(item[0].get("id") or 0))))
+            lineas = []
+            for faena, _ in coincidencias_trabajo[:10]:
+                lineas.append(
+                    f"- {faena.get('numero') or faena.get('id') or ''} | "
+                    f"{faena.get('cliente_nombre') or 'Sin cliente'} | "
+                    f"{faena.get('tipo_trabajo') or faena.get('trabajo') or 'Sin trabajo'} | "
+                    f"Importe: {_to_float_seguro(faena.get('importe')):.2f} EUR"
+                )
+            respuesta = "Trabajos encontrados:\n" + "\n".join(lineas)
+            _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+            return respuesta
+
+    if faena_id:
+        faena = next((f for f in faenas if str(f.get("id")) == str(faena_id)), None)
+        if faena:
+            respuesta = (
+                "Resumen de la faena seleccionada:\n"
+                f"- Número: {faena.get('numero', '')}\n"
+                f"- Cliente: {faena.get('cliente_nombre', '')}\n"
+                f"- Trabajo: {faena.get('tipo_trabajo', '')}\n"
+                f"- Importe: {_to_float_seguro(faena.get('importe')):.2f} EUR"
+            )
+            _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+            return respuesta
+
+    respuesta = (
+        "Puedo ayudarte con estas consultas:\n"
+        "- Cuánto has cobrado (activas y total).\n"
+        "- Qué faenas siguen activas.\n"
+        "- Qué cliente tiene más faenas.\n"
+        "- Materiales más caros según precios registrados."
+    )
+    _guardar_memoria_ia(pregunta, respuesta, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+    return respuesta
+
+
+def _respuesta_ia_cloud(pregunta, contexto, faena_id=None):
+    if not IA_API_KEY:
+        raise RuntimeError("No hay API key configurada")
+    if _ia_provider_activo() == "gemini":
+        raw = _peticion_gemini(
+            contents=[
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                {
+                                    "pregunta": pregunta,
+                                    "faena_id": faena_id,
+                                    "contexto": contexto,
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    ],
+                }
+            ],
+            system_instruction=(
+                "Eres un asistente general para gestionar faenas de carpinteria. "
+                "Responde en espanol, de forma concreta pero flexible, entendiendo preguntas nuevas sin depender de frases prefijadas. "
+                "Usa SOLO los datos del contexto aportado. El contexto seleccionado puede ser general, materiales o trabajos. "
+                "Si preguntan por materiales o precios, cita material, proveedor y precio. Si preguntan por trabajos, cita faena, cliente, estado, importes y datos relevantes. "
+                "Si no hay datos suficientes, dilo claramente y no inventes información."
+            ),
+            max_tokens=500,
+            temperature=0.2,
+        )
+        return _gemini_extraer_texto(raw)
+
+    raise RuntimeError("Proveedor IA no soportado")
+
+
+def _leer_texto_documento_para_ia(ruta):
+    if not ruta or not os.path.exists(ruta):
+        return ""
+    ext = os.path.splitext(ruta)[1].lower()
+    try:
+        if ext in [".txt", ".md", ".csv", ".log"]:
+            with open(ruta, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read().strip()
+        if ext == ".pdf":
+            try:
+                import fitz
+            except Exception:
+                return ""
+            doc = fitz.open(ruta)
+            texto = []
+            for page in doc:
+                try:
+                    texto.append(page.get_text())
+                except Exception:
+                    pass
+            doc.close()
+            return "\n".join(texto).strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _leer_texto_documento_base64_para_ia(archivo_base64, nombre="", mime_type=""):
+    if not archivo_base64:
+        return ""
+    try:
+        bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
+    except Exception:
+        return ""
+
+    ext = os.path.splitext((nombre or "").strip())[1].lower()
+    mime = (mime_type or "").lower().strip()
+
+    if ext == ".pdf" or "pdf" in mime:
+        try:
+            import fitz
+            doc = fitz.open(stream=bruto, filetype="pdf")
+            texto = []
+            for page in doc:
+                try:
+                    texto.append(page.get_text())
+                except Exception:
+                    pass
+            doc.close()
+            texto_extraido = "\n".join(texto).strip()
+            if texto_extraido:
+                return texto_extraido
+
+            # Algunos tickets son PDFs escaneados y no tienen capa de texto.
+            # Renderizamos solo las primeras paginas para mantener el tiempo bajo control.
+            if pytesseract is None or Image is None:
+                return ""
+            doc = fitz.open(stream=bruto, filetype="pdf")
+            paginas_ocr = []
+            for indice, page in enumerate(doc):
+                if indice >= 3:
+                    break
+                try:
+                    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    imagen = Image.open(io.BytesIO(pixmap.tobytes("png")))
+                    ocr = _texto_ocr_desde_imagen_base64(
+                        "data:image/png;base64," + base64.b64encode(pixmap.tobytes("png")).decode("ascii")
+                    )
+                    if ocr:
+                        paginas_ocr.append(ocr)
+                except Exception:
+                    continue
+            doc.close()
+            return "\n\n".join(paginas_ocr).strip()
+        except Exception:
+            return ""
+
+    for enc in ("utf-8", "latin-1"):
+        try:
+            return bruto.decode(enc, errors="ignore").strip()
+        except Exception:
+            continue
+    return ""
+
+
+def _primera_pagina_pdf_base64(archivo_base64, nombre="", mime_type=""):
+    if not archivo_base64:
+        return ""
+    ext = os.path.splitext((nombre or "").strip())[1].lower()
+    if ext != ".pdf" and "pdf" not in (mime_type or "").lower():
+        return ""
+    try:
+        import fitz
+        bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
+        doc = fitz.open(stream=bruto, filetype="pdf")
+        if not len(doc):
+            return ""
+        pixmap = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        imagen = base64.b64encode(pixmap.tobytes("jpg")).decode("ascii")
+        doc.close()
+        return "data:image/jpeg;base64," + imagen
+    except Exception:
+        return ""
+
+
+def _texto_ocr_desde_imagen_base64(data_b64):
+    if not data_b64 or pytesseract is None or Image is None:
+        return ""
+    try:
+        bruto = limpiar_data_b64(data_b64)
+        img_bytes = base64.b64decode(bruto)
+        img = Image.open(io.BytesIO(img_bytes))
+        variantes = [img]
+        try:
+            gris = ImageOps.grayscale(img) if ImageOps is not None else img
+            if ImageEnhance is not None:
+                gris = ImageEnhance.Contrast(gris).enhance(1.8)
+            variantes.append(gris)
+        except Exception:
+            pass
+
+        mejor = ""
+        for v in variantes:
+            for lang in ["spa+eng", "eng"]:
+                try:
+                    txt = pytesseract.image_to_string(v, lang=lang, timeout=8)
+                    if txt and len(txt) > len(mejor):
+                        mejor = txt
+                except Exception:
+                    continue
+        return (mejor or "").strip()
+    except Exception:
+        return ""
+
+
+def _json_ticket_desde_ocr(texto):
+    if not texto:
+        return None
+    lineas = [re.sub(r"\s+", " ", l).strip() for l in (texto or "").splitlines()]
+    lineas = [l for l in lineas if l]
+    if not lineas:
+        return None
+
+    proveedor = None
+    for l in lineas[:8]:
+        if any(ch.isalpha() for ch in l) and not re.search(r"\d{2,}", l):
+            proveedor = l[:120]
+            break
+    if not proveedor:
+        proveedor = lineas[0][:120]
+
+    fecha = None
+    m_fecha = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", texto)
+    if m_fecha:
+        fecha = m_fecha.group(1)
+
+    total_ticket = None
+    for l in lineas:
+        if "total" in l.lower():
+            nums = re.findall(r"\d+[.,]\d{2}", l)
+            if nums:
+                total_ticket = _parse_numero(nums[-1])
+                break
+    if total_ticket is None:
+        todos = re.findall(r"\d+[.,]\d{2}", texto)
+        if todos:
+            total_ticket = _parse_numero(todos[-1])
+
+    articulos = []
+    for l in lineas:
+        if " x " not in l.lower() and not re.search(r"\bx\b", l.lower()):
+            continue
+        qty_m = re.search(r"(\d+(?:[.,]\d+)?)\s*x", l.lower())
+        if not qty_m:
+            continue
+        qty = _parse_numero(qty_m.group(1))
+        decs = re.findall(r"\d+[.,]\d{2}", l)
+        if not decs:
+            continue
+        precio_unitario = _parse_numero(decs[0])
+        total = _parse_numero(decs[-1]) if len(decs) > 1 else round(qty * precio_unitario, 2)
+        nombre = re.sub(r"\s+\d+(?:[.,]\d+)?\s*x.*$", "", l, flags=re.IGNORECASE).strip(" -:\t")
+        if not nombre or len(nombre) < 2:
+            continue
+        articulos.append({
+            "nombre": nombre,
+            "cantidad": qty or 1,
+            "precio_unitario": precio_unitario,
+            "total": total,
+            "unidad": "ud",
+        })
+
+    if not articulos:
+        return None
+    return {
+        "proveedor": proveedor,
+        "fecha": fecha,
+        "total_ticket": total_ticket,
+        "articulos": articulos,
+    }
+
+
+def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticket"):
+    instrucciones = prompt or ""
+    esquema = {
+        "type": "object",
+        "properties": {
+            "proveedor": {"type": ["string", "null"]},
+            "fecha": {"type": ["string", "null"]},
+            "total_ticket": {"type": ["number", "integer", "null"]},
+            "articulos": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "nombre": {"type": "string"},
+                        "cantidad": {"type": ["number", "integer", "null"]},
+                        "precio_unitario": {"type": ["number", "integer", "null"]},
+                        "total": {"type": ["number", "integer", "null"]},
+                        "unidad": {"type": ["string", "null"]},
+                    },
+                    "required": ["nombre"],
+                },
+            },
+        },
+        "required": ["articulos"],
+    }
+
+    system = (
+        f"Eres un extractor de materiales desde {tipo}. Devuelve SOLO JSON válido, sin texto extra. "
+        "Usa este formato: {proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad}]}. "
+        "Si un campo no existe, usa null. Normaliza nombres de artículos."
+    )
+    user_txt = instrucciones.strip()
+    if texto:
+        user_txt += "\n\nTEXTO:\n" + texto.strip()
+    if imagen:
+        user_content = [
+            {"type": "text", "text": user_txt or "Extrae los materiales del ticket."},
+            {"type": "image_url", "image_url": {"url": imagen, "detail": "high"}},
+        ]
+    else:
+        user_content = user_txt or "Extrae los materiales y devuelve JSON válido."
+
+    ticket_key = TICKET_IA_API_KEY or IA_API_KEY
+    ticket_model = TICKET_IA_MODEL or IA_MODEL
+    if ticket_key and _ia_provider_activo() == "gemini":
+        contents = [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": user_txt or "Extrae los materiales y devuelve JSON válido."},
+                ] + ([ _gemini_imagen_part(imagen) ] if imagen else []),
+            }
+        ]
+        contents[0]["parts"] = [p for p in contents[0]["parts"] if p]
+        try:
+            raw = _peticion_gemini(
+                contents=contents,
+                system_instruction=system,
+                response_mime_type="application/json",
+                max_tokens=1200,
+                temperature=0,
+                api_key=ticket_key,
+                model=ticket_model,
+                timeout=15 if tipo in {"ticket", "documento"} and imagen else 90,
+            )
+            contenido = _gemini_extraer_texto(raw)
+            data = _extraer_json_de_texto(contenido)
+            if not isinstance(data, dict) and tipo != "ticket":
+                data = _normalizar_json_materiales_con_ia(contenido, tipo=tipo, api_key=ticket_key, model=ticket_model)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            mensaje = str(e).lower()
+            is_timeout = any(k in mensaje for k in ["timeout", "timed out", "time out", "socket timeout", "read timed out"])
+            is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "rate", "too many requests"])
+            is_unavailable = any(k in mensaje for k in ["503", "service unavailable", "temporarily unavailable", "currently experiencing high demand"])
+            if not (is_timeout or is_quota or is_unavailable):
+                raise
+            # Fallback local cuando Gemini tarda demasiado o se queda sin cuota.
+            if imagen:
+                texto_ocr = _texto_ocr_desde_imagen_base64(imagen)
+                data = _json_ticket_desde_ocr(texto_ocr)
+                if isinstance(data, dict):
+                    return data
+            if texto:
+                data = _json_ticket_desde_ocr(texto)
+                if isinstance(data, dict):
+                    return data
+            data = _extraer_json_de_texto(texto or user_txt or "")
+            if isinstance(data, dict):
+                return data
+            if tipo in {"ticket", "documento"}:
+                return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
+            if is_timeout:
+                raise RuntimeError(f"La IA tardó demasiado en responder. Se intentó fallback local y no pudo extraer artículos. {e}")
+            raise RuntimeError(f"La IA no devolvió JSON válido. Fallback local insuficiente. {e}")
+        if imagen:
+            texto_ocr = _texto_ocr_desde_imagen_base64(imagen)
+            data = _json_ticket_desde_ocr(texto_ocr)
+            if isinstance(data, dict):
+                return data
+        if texto:
+            data = _json_ticket_desde_ocr(texto)
+            if isinstance(data, dict):
+                return data
+        if tipo in {"ticket", "documento"}:
+            return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
+        raise RuntimeError("La IA no devolvió JSON válido")
+
+    # Fallback local con Ollama
+    mensajes = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_txt or "Extrae los materiales y devuelve JSON válido."},
+    ]
+    if imagen:
+        mensajes[-1]["images"] = [imagen]
+    respuesta = ollama_chat(mensajes, format_schema=esquema)
+    contenido = ((respuesta.get("message") or {}).get("content") or "").strip()
+    data = _extraer_json_de_texto(contenido)
+    if not isinstance(data, dict):
+        raise RuntimeError("La IA no devolvió JSON válido")
+    return data
+
+
 @app.route("/api/ollama/consulta", methods=["POST"])
+@app.route("/api/ia/consulta", methods=["POST"])
 def ollama_consulta():
     datos = request.json or {}
     pregunta = (datos.get("pregunta") or "").strip()
     faena_id = datos.get("faena_id")
+    contexto = datos.get("contexto") if isinstance(datos.get("contexto"), dict) else {}
+    contexto_tipo = (datos.get("contexto_tipo") or contexto.get("contexto_tipo") or contexto.get("tipo") or "general")
+    alcance = (datos.get("alcance") or contexto.get("alcance") or "general")
     if not pregunta:
         return jsonify({"ok": False, "error": "Falta la pregunta"}), 400
 
-    contexto = prompt_contexto_faena(faena_id) if faena_id else None
-    mensajes = [
-        {
-            "role": "system",
-            "content": "Eres un asistente experto en gestión de faenas de carpintería. Responde en español, con respuestas útiles y concretas.",
-        }
-    ]
-    if contexto:
-        mensajes.append({
-            "role": "system",
-            "content": "Contexto de la faena: " + json.dumps(contexto, ensure_ascii=False),
-        })
-    mensajes.append({"role": "user", "content": pregunta})
-
-    if not ollama_disponible():
-        return jsonify({"ok": False, "error": "Ollama no está disponible en el equipo"}), 503
-
     try:
-        respuesta = ollama_chat(mensajes)
-        texto = ((respuesta.get("message") or {}).get("content") or "").strip()
-        if not texto:
-            texto = "Ollama respondió sin contenido."
-        return jsonify({"ok": True, "data": {"respuesta": texto}})
-    except urllib.error.HTTPError as e:
-        detalle = e.read().decode("utf-8", "ignore") if hasattr(e, "read") else ""
-        return jsonify({"ok": False, "error": f"Error de Ollama: {e.reason or str(e)}", "detalle": detalle}), 502
+        consulta_proveedor_material = (
+            str(contexto_tipo).lower() == "materiales"
+            and any(k in pregunta.lower() for k in ["material", "materiales"])
+            and any(k in pregunta.lower() for k in ["tiene", "tienen", "hay", "proveedor"])
+        )
+        if consulta_proveedor_material:
+            texto = _respuesta_ia_local(pregunta, contexto, faena_id=faena_id)
+            _guardar_memoria_ia(pregunta, texto, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0)
+            return jsonify({"ok": True, "data": {"respuesta": texto, "motor": "local_catalogo"}})
+
+        if IA_API_KEY and _ia_provider_activo() == "gemini":
+            try:
+                texto = _respuesta_ia_cloud(pregunta, contexto, faena_id=faena_id)
+                _guardar_memoria_ia(pregunta, texto, contexto_tipo=contexto_tipo, alcance=alcance, faena_id=faena_id or 0, fuente="api_key")
+                return jsonify({"ok": True, "data": {"respuesta": texto, "motor": "api_key"}})
+            except Exception as e_cloud:
+                # Fallback seguro para no cortar la funcionalidad de consulta.
+                texto = _respuesta_ia_local(pregunta, contexto, faena_id=faena_id)
+                return jsonify({"ok": True, "data": {"respuesta": texto, "motor": "local_fallback", "detalle": str(e_cloud)}})
+
+        texto = _respuesta_ia_local(pregunta, contexto, faena_id=faena_id)
+        return jsonify({"ok": True, "data": {"respuesta": texto, "motor": "local"}})
     except Exception as e:
-        return jsonify({"ok": False, "error": f"Error de Ollama: {str(e)}"}), 502
+        return jsonify({"ok": False, "error": f"Error en consulta IA: {str(e)}"}), 500
+
+
+@app.route("/api/ia/procesar-texto", methods=["POST"])
+def ia_procesar_texto():
+    datos = request.json or {}
+    texto = (datos.get("texto") or "").strip()
+    prompt = (datos.get("prompt") or "").strip()
+    tipo_fuente = (datos.get("tipo_fuente") or "texto").strip()
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    guardar = _parse_bool_seguro(datos.get("guardar"), True)
+    if not texto:
+        return jsonify({"ok": False, "error": "Falta el texto"}), 400
+    try:
+        prompt_base = prompt or _prompt_ticket_base()
+        data = _extraer_materiales_json_con_ia(prompt_base, texto=texto, tipo="texto")
+        articulos = data.get("articulos") or []
+        data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        data["tipo_fuente"] = tipo_fuente
+        data["guardado_en_nube"] = guardar
+        if guardar:
+            data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "texto", data)
+        return jsonify({"ok": True, "data": data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error procesando texto con IA: {str(e)}"}), 502
+
+
+@app.route("/api/ia/procesar-ticket", methods=["POST"])
+def ia_procesar_ticket():
+    datos = request.json or {}
+    imagen = datos.get("imagen") or datos.get("ticketFotoBase64") or datos.get("data")
+    imagen = limpiar_data_b64(imagen)
+    prompt = (datos.get("prompt") or "").strip()
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    guardar = _parse_bool_seguro(datos.get("guardar"), True)
+    if not imagen:
+        return jsonify({"ok": False, "error": "Falta la imagen del ticket"}), 400
+    try:
+        prompt_base = prompt or _prompt_ticket_base()
+        data = _extraer_materiales_json_con_ia(prompt_base, imagen=imagen, tipo="ticket")
+        articulos = data.get("articulos") or []
+        data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        data["tipo_fuente"] = "ticket"
+        data["guardado_en_nube"] = guardar
+        if guardar:
+            data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "ticket", data)
+        return jsonify({"ok": True, "data": data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error procesando ticket con IA: {str(e)}"}), 502
+
+
+@app.route("/api/ia/procesar-documento", methods=["POST"])
+def ia_procesar_documento():
+    datos = request.json or {}
+    texto = (datos.get("texto") or "").strip()
+    ruta = (datos.get("ruta") or "").strip()
+    nombre = (datos.get("nombre") or "documento").strip()
+    prompt = (datos.get("prompt") or "").strip()
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    guardar = _parse_bool_seguro(datos.get("guardar"), True)
+    archivo_base64 = (datos.get("archivo_base64") or datos.get("archivo") or datos.get("data") or "").strip()
+    mime_type = (datos.get("mime_type") or datos.get("mime") or "").strip()
+    if not texto and ruta:
+        texto = _leer_texto_documento_para_ia(ruta)
+    if not texto and archivo_base64:
+        texto = _leer_texto_documento_base64_para_ia(archivo_base64, nombre=nombre, mime_type=mime_type)
+    imagen_documento = ""
+    if not texto and archivo_base64:
+        imagen_documento = _primera_pagina_pdf_base64(archivo_base64, nombre=nombre, mime_type=mime_type)
+    if not texto and not imagen_documento:
+        return jsonify({"ok": False, "error": "No se pudo leer el PDF. Prueba con una foto del ticket o un PDF con OCR."}), 400
+    try:
+        prompt_base = prompt or _prompt_documento_base(nombre)
+        data = _extraer_materiales_json_con_ia(
+            prompt_base,
+            texto=texto,
+            imagen=imagen_documento or None,
+            tipo="documento",
+        )
+        articulos = data.get("articulos") or []
+        data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        data["tipo_fuente"] = "documento"
+        data["nombre_documento"] = nombre
+        data["guardado_en_nube"] = guardar
+        if guardar:
+            data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "pdf", data)
+        return jsonify({"ok": True, "data": data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
+
+
+@app.route("/api/ia/guardar-json", methods=["POST"])
+def ia_guardar_json():
+    try:
+        datos = request.json or {}
+        origen = (datos.get("origen") or "ticket").strip().lower()
+        faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+        payload = datos.get("data")
+        if isinstance(payload, str):
+            payload = _extraer_json_de_texto(payload)
+        if not isinstance(payload, dict):
+            return jsonify({"ok": False, "error": "Falta JSON válido en data"}), 400
+        articulos = payload.get("articulos") or []
+        payload["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        if not payload["articulos"]:
+            return jsonify({"ok": False, "error": "No hay artículos para guardar"}), 400
+        resumen = _persistir_resultado_ia_en_nube(faena_id, origen, payload)
+        return jsonify({"ok": True, "data": {"resumen_guardado": resumen}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error guardando en nube: {str(e)}"}), 502
 
 # -------------------- SINCRONIZACIÓN WiFi --------------------
 @app.route("/api/sync/estado", methods=["GET"])
@@ -1053,23 +2486,39 @@ def sync_fotos():
     import base64
     datos = request.json
     faena_id = datos.get("faena_id")
-    nombre   = datos.get("nombre") or f"foto_{int(time.time())}.jpg"
+    nombre_original = datos.get("nombre") or f"foto_{int(time.time())}.jpg"
     data_b64 = datos.get("data", "")
     if not faena_id or not data_b64:
         return jsonify({"ok": False, "error": "Faltan datos"}), 400
     conn = get_connection()
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
-    conn.close()
+    faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
     if not faena or not faena["carpeta"]:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena o carpeta no encontrada"}), 404
-    carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
-    os.makedirs(carpeta_fotos, exist_ok=True)
+
+    total_previas = conn.execute(
+        "SELECT COUNT(*) AS n FROM fotos_faena WHERE faena_id=?", (faena_id,)
+    ).fetchone()["n"]
+    ext = os.path.splitext(nombre_original)[1].lower() or ".jpg"
+    numero_faena = (faena["numero"] or str(faena_id)).strip()
+    nombre = f"{numero_faena}_{int(total_previas) + 1:03d}{ext}"
+
     if "," in data_b64:
         data_b64 = data_b64.split(",")[1]
     img_bytes = base64.b64decode(data_b64)
+
+    carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
+    os.makedirs(carpeta_fotos, exist_ok=True)
     ruta = os.path.join(carpeta_fotos, nombre)
     with open(ruta, "wb") as f:
         f.write(img_bytes)
+
+    conn.execute(
+        "INSERT INTO fotos_faena (faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
+        (faena_id, nombre, ruta, data_b64),
+    )
+    conn.commit()
+    conn.close()
     return jsonify({"ok": True, "data": {"ruta": ruta, "nombre": nombre}})
 
 @app.route("/api/sync/book", methods=["GET"])
@@ -1101,43 +2550,78 @@ def sync_book():
     return jsonify({"ok": True, "data": resultado})
 
 # -------------------- FOTOS DE FAENA (PC) --------------------
+def _mime_por_extension(nombre):
+    ext = os.path.splitext(nombre or "")[1].lower()
+    return {".png": "image/png", ".webp": "image/webp", ".jpeg": "image/jpeg"}.get(ext, "image/jpeg")
+
+
 @app.route("/api/faenas/<int:id>/fotos", methods=["GET"])
 def listar_fotos(id):
     import base64
-    conn = get_connection()
+    conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
+    if not faena:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
-    if not os.path.exists(carpeta_fotos):
-        return jsonify({"ok": True, "data": []})
+
+    filas = conn.execute(
+        "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
+    ).fetchall()
     fotos = []
-    extensiones = {".jpg", ".jpeg", ".png", ".webp"}
-    for nombre in sorted(os.listdir(carpeta_fotos)):
-        if os.path.splitext(nombre)[1].lower() in extensiones:
-            ruta = os.path.join(carpeta_fotos, nombre)
-            with open(ruta, "rb") as f:
-                data = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()
-            fotos.append({"nombre": nombre, "ruta": ruta, "data": data})
+    for fila in filas_a_lista(filas):
+        contenido = (fila.get("data_base64") or "").strip()
+        if contenido:
+            data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
+        else:
+            ruta = fila.get("ruta_foto") or ""
+            data = ""
+            if ruta and os.path.exists(ruta):
+                try:
+                    with open(ruta, "rb") as f:
+                        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
+                except Exception:
+                    data = ""
+        fotos.append({"id": fila.get("id"), "nombre": fila.get("nombre"), "ruta": fila.get("ruta_foto"), "data": data})
+
+    # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
+    if faena["carpeta"]:
+        carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
+        if os.path.exists(carpeta_fotos):
+            registrados = {f["nombre"] for f in fotos}
+            extensiones = {".jpg", ".jpeg", ".png", ".webp"}
+            for nombre in sorted(os.listdir(carpeta_fotos)):
+                if nombre in registrados or os.path.splitext(nombre)[1].lower() not in extensiones:
+                    continue
+                ruta = os.path.join(carpeta_fotos, nombre)
+                try:
+                    with open(ruta, "rb") as f:
+                        data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
+                except Exception:
+                    continue
+                fotos.append({"id": None, "nombre": nombre, "ruta": ruta, "data": data})
+
+    conn.close()
     return jsonify({"ok": True, "data": fotos})
 
 @app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["DELETE"])
 def eliminar_foto(id, nombre):
     conn = get_connection()
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
-    conn.close()
-    if not faena or not faena["carpeta"]:
+    if not faena:
+        conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    ruta = os.path.join(faena["carpeta"], "fotos", nombre)
-    if not os.path.exists(ruta):
-        return jsonify({"ok": False, "error": "Foto no encontrada"}), 404
-    os.remove(ruta)
+    conn.execute("DELETE FROM fotos_faena WHERE faena_id=? AND nombre=?", (id, nombre))
+    conn.commit()
+    conn.close()
+    if faena["carpeta"]:
+        ruta = os.path.join(faena["carpeta"], "fotos", nombre)
+        if os.path.exists(ruta):
+            os.remove(ruta)
     return jsonify({"ok": True})
 
 @app.route("/api/faenas/<int:id>/fotos/carpeta", methods=["POST"])
 def abrir_carpeta_fotos(id):
-    conn = get_connection()
+    conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     conn.close()
     if not faena or not faena["carpeta"]:
@@ -1150,7 +2634,7 @@ def abrir_carpeta_fotos(id):
 # -------------------- DOCUMENTOS --------------------
 @app.route("/api/faenas/<int:id>/documentos", methods=["GET"])
 def listar_documentos(id):
-    conn = get_connection()
+    conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     conn.close()
     if not faena or not faena["carpeta"]:
@@ -1193,12 +2677,28 @@ def subir_documento(id):
     if not rutas:
         return jsonify({"ok": False, "error": "No se seleccionaron archivos"})
     copiados = []
+    analisis = []
     for ruta in rutas:
         nombre = os.path.basename(ruta)
         destino = os.path.join(carpeta_docs, nombre)
         shutil.copy2(ruta, destino)
         copiados.append(nombre)
-    return jsonify({"ok": True, "data": {"copiados": copiados}})
+        ext = os.path.splitext(nombre)[1].lower()
+        if ext in [".txt", ".md", ".csv", ".log", ".pdf"]:
+            try:
+                texto_doc = _leer_texto_documento_para_ia(destino)
+                if texto_doc:
+                    prompt = f"Analiza el documento '{nombre}' y devuelve JSON con proveedor, fecha, total_ticket y articulos de compra."
+                    data = _extraer_materiales_json_con_ia(prompt, texto=texto_doc, tipo="documento")
+                    articulos = data.get("articulos") or []
+                    data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+                    data["tipo_fuente"] = "documento"
+                    data["nombre_documento"] = nombre
+                    data["ruta"] = destino
+                    analisis.append(data)
+            except Exception as e:
+                analisis.append({"nombre_documento": nombre, "ruta": destino, "error": str(e)})
+    return jsonify({"ok": True, "data": {"copiados": copiados, "analisis": analisis}})
 
 @app.route("/api/faenas/<int:id>/documentos/<path:nombre>", methods=["DELETE"])
 def eliminar_documento(id, nombre):
@@ -1554,7 +3054,7 @@ def guardar_presupuesto(id):
         return jsonify({"ok": False, "error": str(e)}), 500
      
     cursor = conn.cursor()
-    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) FROM book_fotos").fetchone()[0]
+    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()["max_orden"]
     cursor.execute(
         "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
         (faena_id, ruta_foto, titulo, descripcion, max_orden + 1)
@@ -1734,6 +3234,8 @@ if __name__ == "__main__":
     print(f"✓ Servidor en:  http://localhost:{PORT}")
     for ip in ips_validas:
         print(f"✓ IP para móvil: http://{ip}:{PORT}/movil")
+    if PUBLIC_BASE_URL:
+        print(f"✓ URL cloud para móvil: {PUBLIC_BASE_URL}/movil")
     print("=" * 50)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:

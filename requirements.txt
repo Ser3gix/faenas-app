@@ -1,6 +1,9 @@
 flask
 flask-cors
+gunicorn
 PyMuPDF
 reportlab
 pillow
 pytesseract
+mysql-connector-python
+python-dotenv

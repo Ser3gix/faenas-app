@@ -1,9 +1,0 @@
-==================================================
-  🪵 Gestión de Faenas — Arrancando...
-==================================================
-✓ Base de datos lista en: C:\Users\Ser3gix\Desktop\faenas-app\datos\faenas.db
-✓ Servidor en:  http://localhost:5000
-✓ IP para móvil: http://192.168.1.40:5000/movil
-==================================================
- * Serving Flask app 'server2'
- * Debug mode: off

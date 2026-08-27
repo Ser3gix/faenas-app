@@ -1,235 +1,155 @@
 #!/usr/bin/env python3
 """
-Script de migración de datos hacia la base de datos cloud (Supabase/PostgreSQL).
+Migración de datos desde una base SQLite local hacia MySQL/Hostinger.
 
-Modos de uso:
+Uso:
   python migrate.py sqlite <ruta/a/base.db>
-      Importa datos desde la base de datos SQLite del PC Windows.
 
-  python migrate.py json <ruta/a/datos.json>
-      Importa datos desde un archivo JSON exportado del localStorage del móvil.
-      El JSON debe tener claves: "clientes", "faenas", "materiales".
-
-Variables de entorno requeridas:
-  DATABASE_URL — cadena de conexión PostgreSQL (Supabase)
+Variables de entorno requeridas para MySQL:
+  MYSQL_HOST
+  MYSQL_PORT
+  MYSQL_USER
+  MYSQL_PASSWORD
+  MYSQL_DATABASE
 """
 
 import os
-import sys
-import json
 import sqlite3
-import psycopg2
-import psycopg2.extras
-from dotenv import load_dotenv
+import sys
 
-load_dotenv()
+from config import MYSQL_CHARSET, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_SSL, MYSQL_USER
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+try:
+    import mysql.connector
+except Exception:
+    mysql = None
+else:
+    mysql = mysql.connector
 
 
-def connect_pg():
-    if not DATABASE_URL:
-        print("ERROR: La variable DATABASE_URL no está configurada.")
+TABLAS = [
+    "intermediarios",
+    "clientes",
+    "faenas",
+    "anotaciones",
+    "materiales",
+    "precios",
+    "gastos_faena",
+    "presupuestos_faena",
+    "fotos_faena",
+    "book_fotos",
+]
+
+
+def connect_mysql(include_database=True):
+    if mysql is None:
+        print("ERROR: Falta la dependencia mysql-connector-python.")
         sys.exit(1)
-    return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    if not MYSQL_HOST or not MYSQL_USER or not MYSQL_DATABASE:
+        print("ERROR: Configura MYSQL_HOST, MYSQL_USER y MYSQL_DATABASE antes de migrar.")
+        sys.exit(1)
+    params = {
+        "host": MYSQL_HOST,
+        "port": MYSQL_PORT,
+        "user": MYSQL_USER,
+        "password": MYSQL_PASSWORD,
+        "charset": MYSQL_CHARSET,
+        "use_unicode": True,
+        "autocommit": False,
+    }
+    if include_database:
+        params["database"] = MYSQL_DATABASE
+    if MYSQL_SSL:
+        params["ssl_disabled"] = False
+        params["ssl_verify_cert"] = False
+        params["ssl_verify_identity"] = False
+    return mysql.connect(**params)
 
 
-# ─── Migración desde SQLite (PC Windows) ─────────────────────────────────────
-def migrate_from_sqlite(sqlite_path: str):
+def ensure_database_exists():
+    conexion = connect_mysql(include_database=False)
+    cursor = conexion.cursor()
+    cursor.execute(
+        f"CREATE DATABASE IF NOT EXISTS `{MYSQL_DATABASE}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    )
+    conexion.commit()
+    cursor.close()
+    conexion.close()
+
+
+def migrate_from_sqlite(sqlite_path):
+    if not os.path.exists(sqlite_path):
+        print(f"ERROR: No existe la base SQLite: {sqlite_path}")
+        sys.exit(1)
+
+    ensure_database_exists()
+
     print(f"Abriendo SQLite: {sqlite_path}")
     sq = sqlite3.connect(sqlite_path)
     sq.row_factory = sqlite3.Row
-    pg = connect_pg()
+    my = connect_mysql(include_database=True)
 
-    def copy_table(table, columns, pg_sql, transform=None):
-        try:
-            rows = sq.execute(f"SELECT {columns} FROM {table}").fetchall()
-        except sqlite3.OperationalError as e:
-            print(f"  ⚠ Tabla '{table}' no encontrada en SQLite: {e}")
-            return 0
-        ok_count = 0
-        with pg.cursor() as cur:
-            for row in rows:
-                values = tuple(row[c] for c in columns.split(", "))
-                if transform:
-                    values = transform(values)
-                try:
-                    cur.execute(pg_sql, values)
-                    ok_count += 1
-                except Exception as e:
-                    print(f"  ⚠ Fila ignorada: {e}")
-        pg.commit()
-        print(f"  ✓ {table}: {ok_count}/{len(rows)} registros importados")
-        return ok_count
+    total_insertados = 0
 
-    print("→ Clientes")
-    copy_table(
-        "clientes",
-        "id, nombre, telefono, email, intermediario_id",
-        "INSERT INTO clientes (id, nombre, telefono, email, intermediario_id) "
-        "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
-    )
-
-    print("→ Faenas")
-    copy_table(
-        "faenas",
-        "id, numero, cliente_id, intermediario_id, intermediario_nombre, "
-        "direccion, tipo_trabajo, importe, fecha_inicio, archivada",
-        "INSERT INTO faenas (id, numero, cliente_id, intermediario_id, intermediario_nombre, "
-        "direccion, tipo_trabajo, importe, fecha_inicio, archivada) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
-    )
-
-    print("→ Anotaciones")
-    copy_table(
-        "anotaciones",
-        "id, faena_id, tipo, contenido, fecha",
-        "INSERT INTO anotaciones (id, faena_id, tipo, contenido, fecha) "
-        "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
-    )
-
-    print("→ Materiales")
-    copy_table(
-        "materiales",
-        "id, nombre, unidad, categoria, definicion",
-        "INSERT INTO materiales (id, nombre, unidad, categoria, definicion) "
-        "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
-    )
-
-    print("→ Precios")
-    copy_table(
-        "precios_materiales",
-        "id, material_id, proveedor, precio_unitario",
-        "INSERT INTO precios_materiales (id, material_id, proveedor, precio_unitario) "
-        "VALUES (%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
-    )
-
-    # Resetear secuencias para evitar colisiones de IDs
-    print("→ Ajustando secuencias de IDs...")
-    with pg.cursor() as cur:
-        for table in ("clientes", "faenas", "anotaciones", "materiales", "precios_materiales"):
-            cur.execute(
-                f"SELECT setval('{table}_id_seq', COALESCE((SELECT MAX(id) FROM {table}), 1))"
-            )
-    pg.commit()
-
-    sq.close()
-    pg.close()
-    print("✓ Migración desde SQLite completada.")
-
-
-# ─── Importación desde JSON (localStorage del móvil) ─────────────────────────
-def migrate_from_json(json_path: str):
-    print(f"Cargando JSON: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    pg = connect_pg()
-
-    # Clientes
-    clientes = data.get("clientes", [])
-    print(f"→ Clientes ({len(clientes)})")
-    ok_count = 0
-    with pg.cursor() as cur:
-        for c in clientes:
-            if str(c.get("id", "")).startswith("TEMP"):
-                continue
+    try:
+        for table in TABLAS:
             try:
-                cur.execute(
-                    "INSERT INTO clientes (nombre, telefono, email) "
-                    "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-                    (c.get("nombre", ""), c.get("telefono", ""), c.get("email", "")),
-                )
-                ok_count += 1
-            except Exception as e:
-                print(f"  ⚠ {e}")
-    pg.commit()
-    print(f"  ✓ {ok_count} importados")
-
-    # Faenas
-    faenas = data.get("faenas", [])
-    print(f"→ Faenas ({len(faenas)})")
-    ok_count = 0
-    with pg.cursor() as cur:
-        for f in faenas:
-            if str(f.get("id", "")).startswith("TEMP") or f.get("_offline"):
-                print(f"  ⚠ Faena temporal ignorada: {f.get('numero')}")
+                columnas = [fila["name"] for fila in sq.execute(f"PRAGMA table_info({table})").fetchall()]
+            except sqlite3.OperationalError as exc:
+                print(f"  ⚠ Tabla '{table}' no encontrada en SQLite: {exc}")
                 continue
-            try:
-                cur.execute(
-                    "INSERT INTO faenas "
-                    "(numero, cliente_id, intermediario_id, intermediario_nombre, "
-                    " direccion, tipo_trabajo, importe, fecha_inicio, archivada) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-                    (
-                        f.get("numero"),
-                        f.get("cliente_id"),
-                        f.get("intermediario_id", 0),
-                        f.get("intermediario_nombre", "Cliente directo"),
-                        f.get("direccion", ""),
-                        f.get("tipo_trabajo", ""),
-                        f.get("importe", 0),
-                        f.get("fecha_inicio"),
-                        f.get("archivada", 0),
-                    ),
-                )
-                ok_count += 1
-            except Exception as e:
-                print(f"  ⚠ {e}")
-    pg.commit()
-    print(f"  ✓ {ok_count} importadas")
 
-    # Materiales
-    materiales = data.get("materiales", [])
-    print(f"→ Materiales ({len(materiales)})")
-    ok_count = 0
-    with pg.cursor() as cur:
-        for m in materiales:
-            if str(m.get("id", "")).startswith("temp_"):
+            if not columnas:
+                print(f"  ⚠ Tabla '{table}' vacía o inexistente.")
                 continue
+
+            columnas_sqlite = ", ".join(f'`{col}`' for col in columnas)
+            placeholders = ", ".join(["%s"] * len(columnas))
+            insert_sql = f"INSERT IGNORE INTO `{table}` ({columnas_sqlite}) VALUES ({placeholders})"
+
+            # Faenas archivadas se quedan en SQLite local; solo migrar activas
+            if table == "faenas":
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table} WHERE archivada = 0").fetchall()
+            elif table in ("anotaciones", "gastos_faena", "presupuestos_faena", "fotos_faena"):
+                ids_activas = [str(r[0]) for r in sq.execute("SELECT id FROM faenas WHERE archivada = 0").fetchall()]
+                if not ids_activas:
+                    print(f"  — {table}: sin faenas activas, omitida")
+                    continue
+                marcas = ",".join(ids_activas)
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table} WHERE faena_id IN ({marcas})").fetchall()
+            else:
+                filas = sq.execute(f"SELECT {columnas_sqlite} FROM {table}").fetchall()
+            insertados = 0
+
+            cursor = my.cursor()
+            for fila in filas:
+                valores = tuple(fila[col] for col in columnas)
+                cursor.execute(insert_sql, valores)
+                if cursor.rowcount and cursor.rowcount > 0:
+                    insertados += 1
+            my.commit()
+            cursor.close()
+
+            total_insertados += insertados
+            print(f"  ✓ {table}: {insertados}/{len(filas)} registros importados")
+
+        cursor = my.cursor()
+        for table in TABLAS:
             try:
-                cur.execute(
-                    "SELECT id FROM materiales WHERE LOWER(nombre)=LOWER(%s)",
-                    (m.get("nombre", ""),),
-                )
-                existing = cur.fetchone()
-                if not existing:
-                    cur.execute(
-                        "INSERT INTO materiales (nombre, unidad, categoria, definicion) "
-                        "VALUES (%s,%s,%s,%s) RETURNING id",
-                        (
-                            m.get("nombre", ""),
-                            m.get("unidad", "ud"),
-                            m.get("categoria", "Otros"),
-                            m.get("definicion", ""),
-                        ),
-                    )
-                    mat_id = cur.fetchone()["id"]
-                    ok_count += 1
-                    # Insertar precios del material si los hay
-                    for p in m.get("precios", []):
-                        if p.get("proveedor") and p.get("precio_unitario") is not None:
-                            cur.execute(
-                                "INSERT INTO precios_materiales "
-                                "(material_id, proveedor, precio_unitario) "
-                                "VALUES (%s,%s,%s) "
-                                "ON CONFLICT (material_id, proveedor) DO NOTHING",
-                                (mat_id, p["proveedor"], p["precio_unitario"]),
-                            )
-            except Exception as e:
-                print(f"  ⚠ {e}")
-    pg.commit()
-    print(f"  ✓ {ok_count} importados")
+                cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM `{table}`")
+                max_id = cursor.fetchone()[0]
+                cursor.execute(f"ALTER TABLE `{table}` AUTO_INCREMENT = {int(max_id) + 1}")
+            except Exception:
+                continue
+        my.commit()
+        cursor.close()
+    finally:
+        sq.close()
+        my.close()
 
-    pg.close()
-    print("✓ Importación desde JSON completada.")
-    print(
-        "\nNOTA: Las anotaciones y fotos que estaban en localStorage no se incluyen "
-        "en este JSON. Sincroniza el móvil con el servidor cloud para subirlas."
-    )
+    print(f"✓ Migración completada. Registros procesados: {total_insertados}")
 
 
-# ─── Entrada ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(__doc__)
@@ -238,10 +158,8 @@ if __name__ == "__main__":
     modo = sys.argv[1].lower()
     ruta = sys.argv[2]
 
-    if modo == "sqlite":
-        migrate_from_sqlite(ruta)
-    elif modo == "json":
-        migrate_from_json(ruta)
-    else:
-        print(f"Modo desconocido: '{modo}'. Usa 'sqlite' o 'json'.")
+    if modo != "sqlite":
+        print(f"Modo desconocido: '{modo}'. Usa 'sqlite'.")
         sys.exit(1)
+
+    migrate_from_sqlite(ruta)
