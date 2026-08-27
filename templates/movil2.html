@@ -496,35 +496,54 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: #000;
+  background: rgba(26,18,8,0.55);
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
-.camara-overlay.open { display: block; }
-.camara-overlay video {
-  position: absolute;
-  inset: 0;
+.camara-overlay.open { display: flex; align-items: center; justify-content: center; }
+.camara-caja {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
+  max-width: 420px;
+  height: min(78vh, 560px);
+  background: #1a1208;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
 }
-.camara-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
+.camara-caja-top {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-around;
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: #f0deb4;
+  font-size: 0.95rem;
+}
+.camara-overlay video {
+  flex: 1 1 auto;
+  min-height: 180px;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  background: #000;
+  pointer-events: none;
+}
+.camara-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 18px 12px calc(24px + env(safe-area-inset-bottom, 12px));
-  background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  padding: 12px;
+  background: #1a1208;
 }
 .camara-disparo {
-  min-width: 160px;
-  height: 56px;
-  border-radius: 28px;
-  border: 3px solid #fff;
+  min-width: 180px;
+  height: 52px;
+  border-radius: 26px;
+  border: 2px solid #f0deb4;
   background: #c8a96e;
   color: #1a1208;
   font-size: 1.05rem;
@@ -532,12 +551,12 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   cursor: pointer;
 }
 .camara-cancel {
-  color: #fff;
-  background: rgba(0,0,0,0.45);
-  border: 1px solid #fff;
+  color: #f0deb4;
+  background: transparent;
+  border: 1px solid #8b6914;
   border-radius: 8px;
-  padding: 12px 14px;
-  font-size: 0.95rem;
+  padding: 8px 12px;
+  font-size: 0.9rem;
 }
 
 /* ──────── GASTOS/TICKETS ──────── */
@@ -1080,10 +1099,15 @@ textarea { resize: vertical; min-height: 80px; }
 <div class="toast" id="toast"></div>
 
 <div id="camara-overlay" class="camara-overlay">
-  <video id="camara-video" autoplay playsinline muted webkit-playsinline></video>
-  <div class="camara-bar">
-    <button type="button" class="camara-cancel" onclick="cerrarCamara()">Cancelar</button>
-    <button type="button" class="camara-disparo" onclick="dispararCamara()">Hacer foto</button>
+  <div class="camara-caja">
+    <div class="camara-caja-top">
+      <span>Cámara</span>
+      <button type="button" class="camara-cancel" onclick="cerrarCamara()">Cerrar</button>
+    </div>
+    <video id="camara-video" autoplay playsinline muted webkit-playsinline></video>
+    <div class="camara-bar">
+      <button type="button" class="camara-disparo" onclick="dispararCamara()">Hacer foto</button>
+    </div>
   </div>
 </div>
 
@@ -1897,9 +1921,11 @@ async function añadirFoto(faenaId) {
     const video = document.getElementById("camara-video");
     video.setAttribute("playsinline", "true");
     video.setAttribute("webkit-playsinline", "true");
+    video.controls = false;
     video.muted = true;
+    video.disablePictureInPicture = true;
     video.srcObject = camaraStream;
-    await video.play();
+    try { await video.play(); } catch (e) {}
     document.getElementById("camara-overlay").classList.add("open");
   } catch (e) {
     toast("Activa el permiso de cámara o usa Galería", true);
