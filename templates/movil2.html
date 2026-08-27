@@ -717,6 +717,8 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="form-box" id="ticket-paso2" style="display:none">
       <div class="form-title">Paso 2 — Prompt para Claude.ai</div>
       <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Genera el prompt, cópialo, abre Claude.ai, adjunta la foto y pégalo.</p>
+      <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Procesar con IA</button>
+      <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
       <button class="btn btn-p" onclick="generarPromptTicketMovil()">Generar prompt</button>
       <div id="ticket-prompt-box" style="display:none;margin-top:10px">
         <div style="background:#1a1208;color:#f0deb4;border-radius:6px;padding:12px;font-size:0.88rem;line-height:1.5;max-height:180px;overflow-y:auto;white-space:pre-wrap;margin-bottom:8px" id="ticket-prompt-txt"></div>
@@ -757,6 +759,27 @@ textarea { resize: vertical; min-height: 80px; }
     <div id="book-movil-galeria"></div>
   </div>
 
+  <!-- Slide 4: IA -->
+  <div class="slide" id="sl-ia">
+    <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">🤖 Asistente IA</div>
+    <div class="form-box">
+      <div class="form-title">Consulta en lenguaje natural</div>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Pregunta sobre tus faenas, materiales o clientes en español normal. Requiere conexión al servidor.</p>
+      <div class="field"><textarea id="ia-pregunta" rows="3" placeholder="Ej: ¿Cuánto he cobrado este mes?&#10;¿Qué faenas están pendientes?&#10;¿Cuál es el material más caro?" style="font-size:0.95rem"></textarea></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuánto he cobrado en total en las faenas activas?')">💰 Total cobrado</button>
+        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Qué faenas no están archivadas?')">🔨 Faenas activas</button>
+        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuál es el cliente con más faenas?')">👤 Mejor cliente</button>
+        <button class="btn btn-s btn-inline" onclick="preguntaRapidaIA('¿Cuáles son los materiales más caros según los precios registrados?')">📦 Materiales caros</button>
+      </div>
+      <button class="btn btn-p" onclick="enviarConsultaIA()">🤖 Preguntar</button>
+    </div>
+    <div id="ia-respuesta-box" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:8px;padding:16px;margin-top:12px">
+      <div style="font-family:var(--font-serif);font-size:0.95rem;color:var(--accent);margin-bottom:8px">Respuesta:</div>
+      <div id="ia-respuesta" style="font-size:0.95rem;line-height:1.7;white-space:pre-wrap;color:var(--ink)"></div>
+    </div>
+  </div>
+
   <!-- Slide 4: SYNC -->
   <div class="slide" id="sl-sync">
     <div class="sync-box">
@@ -768,8 +791,22 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="sync-estado" id="sync-estado"></div>
     </div>
     <div class="ip-box">
-      <div class="form-title" style="margin-bottom:10px">⚙️ IP del PC</div>
-      <div class="field"><label>Dirección IP</label><input id="ip-config" placeholder="IP del PC" oninput="guardarIP()"></div>
+        <div class="form-title" style="margin-bottom:10px">⚙️ Servidor</div>
+        <div class="field">
+          <label>Modo de conexión</label>
+          <select id="server-modo-sel" onchange="cambiarModoServidor()">
+            <option value="local">📶 WiFi Local (PC en casa)</option>
+            <option value="nube">☁️ Nube (acceso remoto + IA)</option>
+          </select>
+        </div>
+        <div id="panel-servidor-local">
+          <div class="field"><label>Dirección IP</label><input id="ip-config" placeholder="IP del PC" oninput="guardarIP()"></div>
+          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">El móvil y el PC deben estar conectados al mismo WiFi.</div>
+        </div>
+        <div id="panel-servidor-nube" style="display:none">
+          <div class="field"><label>URL del servidor en la nube</label><input id="cloud-url-config" placeholder="https://tu-api.railway.app/api" oninput="guardarCloudUrl()"></div>
+          <div style="font-size:0.82rem;color:#aaa;line-height:1.6">URL completa de la API cloud (Railway, Render u otro). Incluye <em>/api</em> al final.</div>
+        </div>
     </div>
     <div style="margin-top:12px;padding:12px;background:var(--paper-dark);border-radius:8px;font-size:0.88rem;color:#888;line-height:1.6">
       <strong style="color:var(--accent)">Última sincronización:</strong><br>
@@ -788,7 +825,8 @@ textarea { resize: vertical; min-height: 80px; }
   <button id="nav-materiales"               onclick="navTo(1)"><span class="ni">📦</span>Materiales</button>
   <button id="nav-tickets"                  onclick="navTo(2)"><span class="ni">🎫</span>Tickets</button>
   <button id="nav-book"                     onclick="navTo(3)"><span class="ni">📸</span>Book</button>
-  <button id="nav-sync"                     onclick="navTo(4)"><span class="ni">⟳</span>Sync</button>
+  <button id="nav-ia"                       onclick="navTo(4)"><span class="ni">🤖</span>IA</button>
+  <button id="nav-sync"                     onclick="navTo(5)"><span class="ni">⟳</span>Sync</button>
 </nav>
 
 <!-- ═══════════ FAENA OVERLAY ═══════════ -->
@@ -1000,10 +1038,32 @@ const state = {
 };
 
 function getServerUrl() {
-  const hostPagina = location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1" ? location.hostname : "";
+  const modo = localStorage.getItem("server_modo") || "local";
+  if (modo === "nube") {
+    const cloudUrl = (localStorage.getItem("server_cloud_url") || "").trim();
+    if (cloudUrl) return cloudUrl.replace(/\/$/, "");
+  }
   let ip = (localStorage.getItem("server_ip") || "").replace(/:\d+$/, "").trim();
-  ip = hostPagina || ip || "127.0.0.1";
+  ip = ip || "127.0.0.1";
   return `http://${ip}:5000/api`;
+}
+
+function guardarCloudUrl() {
+  localStorage.setItem("server_cloud_url", document.getElementById("cloud-url-config").value.trim());
+}
+
+function cambiarModoServidor() {
+  const modo = document.getElementById("server-modo-sel").value;
+  localStorage.setItem("server_modo", modo);
+  actualizarPanelServidor();
+}
+
+function actualizarPanelServidor() {
+  const modo = localStorage.getItem("server_modo") || "local";
+  const l = document.getElementById("panel-servidor-local");
+  const n = document.getElementById("panel-servidor-nube");
+  if (l) l.style.display = modo === "local" ? "block" : "none";
+  if (n) n.style.display = modo === "nube" ? "block" : "none";
 }
 
 function escHtml(s) {
@@ -1041,7 +1101,7 @@ function fileToBase64(file) {
 // NAVEGACIÓN PRINCIPAL (carousel)
 // ═══════════════════════════════════════════════════════════
 
-const NAV_IDS = ["nav-faenas","nav-materiales","nav-tickets","nav-book","nav-sync"];
+const NAV_IDS = ["nav-faenas","nav-materiales","nav-tickets","nav-book","nav-ia","nav-sync"];
 
 function navTo(idx) {
   const c = document.getElementById("main-carousel");
@@ -1050,13 +1110,13 @@ function navTo(idx) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle("active", i === idx);
   });
-  if (idx === 4) actualizarPendientesInfo();
+  if (idx === 5) actualizarPendientesInfo();
   if (idx === 2) restaurarTicket();
   if (idx === 1) renderMateriales();
   if (idx === 3) renderBookMovil();
 }
 
-function irASync() { navTo(4); }
+function irASync() { navTo(5); }
 
 // Actualizar nav al hacer swipe manual
 document.getElementById("main-carousel").addEventListener("scroll", function() {
@@ -2418,6 +2478,51 @@ async function generarPromptTicketMovil() {
   document.getElementById("ticket-prompt-box").style.display = "block";
 }
 
+async function procesarTicketConIA() {
+  if (!ticketFotoBase64) { toast("Selecciona una foto primero", true); return; }
+  const btn = document.getElementById("btn-ai-ticket");
+  const estado = document.getElementById("ticket-ai-estado");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Procesando...'; }
+  if (estado) {
+    estado.style.display = "block";
+    estado.style.color = "#666";
+    estado.textContent = "🤖 La IA está analizando el ticket…";
+  }
+  try {
+    const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagen: ticketFotoBase64 }),
+      signal: AbortSignal.timeout(40000)
+    });
+    const data = await r.json();
+    if (data.ok && data.data) {
+      document.getElementById("ticket-json-movil").value = JSON.stringify(data.data, null, 2);
+      document.getElementById("ticket-paso3").style.display = "block";
+      const n = (data.data.articulos || []).length;
+      if (estado) {
+        estado.style.color = "var(--green)";
+        estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa y pulsa \"Cargar datos\".`;
+      }
+      toast(`✓ Ticket procesado — ${n} artículo${n !== 1 ? "s" : ""}`);
+    } else {
+      if (estado) {
+        estado.style.color = "var(--red)";
+        estado.textContent = data.error || "Error al procesar. Usa el método manual.";
+      }
+      toast(data.error || "Error al procesar con IA", true);
+    }
+  } catch (e) {
+    if (estado) {
+      estado.style.color = "var(--red)";
+      estado.textContent = "Sin conexión al servidor. Usa el método manual.";
+    }
+    toast("Error: " + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🤖 Procesar con IA"; }
+  }
+}
+
 function copiarTicketPrompt() {
   const txt = document.getElementById("ticket-prompt-txt").textContent;
   navigator.clipboard.writeText(txt).then(() => toast("✓ Prompt copiado")).catch(() => {
@@ -2466,6 +2571,55 @@ async function procesarTextoManual() {
     if (d.ok) { toast(`✓ ${d.data.articulos.length} artículos procesados`); await cargarMateriales(); renderMateriales(); document.getElementById("ticket-texto-manual").value = ""; document.getElementById("ticket-paso4").style.display = "none"; }
     else toast(d.error||"Error al procesar", true);
   } catch(e) { toast("Error de conexión con el PC", true); }
+}
+
+// ─── IA: consulta en lenguaje natural ────────────────────────────────────────
+async function enviarConsultaIA() {
+  const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
+  if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
+  const respBox = document.getElementById("ia-respuesta-box");
+  const respEl = document.getElementById("ia-respuesta");
+  respBox.style.display = "block";
+  respEl.textContent = "🤖 Pensando…";
+  try {
+    const contexto = {
+      faenas: state.faenas.map(f => ({
+        numero: f.numero,
+        cliente: f.cliente_nombre,
+        trabajo: f.tipo_trabajo,
+        importe: f.importe,
+        fecha: f.fecha_inicio,
+        archivada: f.archivada
+      })),
+      clientes: state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono })),
+      materiales: state.materiales.map(m => ({
+        nombre: m.nombre,
+        categoria: m.categoria,
+        precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario }))
+      }))
+    };
+    const r = await fetch(`${getServerUrl()}/ia/consulta`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pregunta, contexto }),
+      signal: AbortSignal.timeout(40000)
+    });
+    const data = await r.json();
+    if (data.ok && data.data) {
+      respEl.textContent = data.data.respuesta;
+    } else {
+      respEl.textContent = "Error: " + (data.error || "Sin respuesta del servidor.");
+      toast(data.error || "Error en la consulta IA", true);
+    }
+  } catch(e) {
+    respEl.textContent = "Error de conexión: " + e.message + "\n\nAsegúrate de que el servidor esté accesible.";
+    toast("Error al conectar con el servidor", true);
+  }
+}
+
+function preguntaRapidaIA(texto) {
+  document.getElementById("ia-pregunta").value = texto;
+  enviarConsultaIA();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2831,10 +2985,11 @@ async function sincronizar() {
 function init() {
   // IP guardada
   const ip = localStorage.getItem("server_ip");
-  const hostPagina = location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1" ? location.hostname : "";
-  if (hostPagina) localStorage.setItem("server_ip", hostPagina);
-  if (hostPagina) document.getElementById("ip-config").value = hostPagina;
-  else if (ip) document.getElementById("ip-config").value = ip;
+  if (ip) document.getElementById("ip-config").value = ip;
+  const cloudCampo = document.getElementById("cloud-url-config");
+  if (cloudCampo) cloudCampo.value = localStorage.getItem("server_cloud_url") || "";
+  const modoSel = document.getElementById("server-modo-sel");
+  if (modoSel) { modoSel.value = localStorage.getItem("server_modo") || "local"; actualizarPanelServidor(); }
   // Última sync
   const ultima = localStorage.getItem("ultima_sync");
   if (ultima) document.getElementById("ultima-sync").textContent = ultima;

@@ -1554,7 +1554,7 @@ def guardar_presupuesto(id):
         return jsonify({"ok": False, "error": str(e)}), 500
      
     cursor = conn.cursor()
-    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) FROM book_fotos").fetchone()[0]
+    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()["max_orden"]
     cursor.execute(
         "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
         (faena_id, ruta_foto, titulo, descripcion, max_orden + 1)

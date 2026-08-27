@@ -7,6 +7,12 @@
 import os
 import sys
 
+try:
+	from dotenv import load_dotenv
+	load_dotenv()
+except Exception:
+	pass
+
 # --- CARPETA RAÍZ DE LA APP ---
 # Todo vive dentro de la carpeta de la app.
 # La subcarpeta "datos" se crea automáticamente.
@@ -22,6 +28,24 @@ CARPETA_RAIZ = os.path.join(APP_DIR, "datos")
 
 # --- BASE DE DATOS ---
 DB_PATH = os.path.join(CARPETA_RAIZ, "faenas.db")
+
+# --- BACKEND DE BBDD ---
+# Por defecto la app sigue usando SQLite en local.
+# Si defines las variables de MySQL/Hostinger, puedes cambiar a MySQL con DB_BACKEND=mysql.
+MYSQL_HOST = os.environ.get("MYSQL_HOST", "").strip()
+MYSQL_PORT = int(os.environ.get("MYSQL_PORT", "3306") or 3306)
+MYSQL_USER = os.environ.get("MYSQL_USER", "").strip()
+MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "")
+MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "").strip()
+MYSQL_CHARSET = os.environ.get("MYSQL_CHARSET", "utf8mb4").strip()
+MYSQL_CREATE_DATABASE = os.environ.get("MYSQL_CREATE_DATABASE", "0").strip() in {"1", "true", "yes", "si", "sí"}
+
+DB_BACKEND = os.environ.get("DB_BACKEND", "").strip().lower()
+if not DB_BACKEND:
+	if MYSQL_HOST and MYSQL_USER and MYSQL_DATABASE:
+		DB_BACKEND = "mysql"
+	else:
+		DB_BACKEND = "sqlite"
 
 # --- SERVIDOR ---
 HOST = "0.0.0.0"       # Escucha en todas las interfaces (necesario para el móvil)
