@@ -282,6 +282,30 @@ def _url_desde_ruta(ruta):
     return ""
 
 
+def _bytes_desde_ruta_foto(ruta):
+    ruta = (ruta or "").strip()
+    if not ruta:
+        return None
+    if os.path.exists(ruta):
+        with open(ruta, "rb") as fh:
+            return fh.read()
+    nombre = os.path.basename(ruta.replace("\\", "/"))
+    local_book = os.path.join(CARPETA_RAIZ, "_book", nombre) if nombre else ""
+    if local_book and os.path.exists(local_book):
+        with open(local_book, "rb") as fh:
+            return fh.read()
+    clave = ruta.replace("\\", "/").lstrip("/")
+    if ruta.startswith("http://") or ruta.startswith("https://"):
+        from urllib.parse import urlparse
+        from config import OBJECT_STORAGE_PUBLIC_BASE_URL
+        base = (OBJECT_STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
+        if base and ruta.startswith(base):
+            clave = ruta[len(base):].lstrip("/")
+        else:
+            clave = urlparse(ruta).path.lstrip("/")
+    return descargar_bytes(clave) if clave else None
+
+
 def _borrar_binario(ruta, object_key=""):
     clave = (object_key or "").strip() or ((ruta or "").strip() if not os.path.exists(ruta or "") else "")
     if clave and not os.path.exists(clave):
@@ -2946,8 +2970,8 @@ def sync_fotos():
     return jsonify({"ok": True, "data": {"ruta": object_key or ruta, "nombre": nombre}})
 
 @app.route("/api/sync/book", methods=["GET"])
+@app.route("/api/book", methods=["GET"])
 def sync_book():
-    import base64
     conn = get_connection()
     filas = conn.execute("""
         SELECT b.*, f.numero AS faena_numero, c.nombre AS cliente_nombre
@@ -2959,19 +2983,26 @@ def sync_book():
     resultado = []
     for fila in filas:
         item = fila_a_dict(fila)
-        ruta = item.get("ruta_foto", "")
-        if ruta and os.path.exists(ruta):
-            try:
-                with open(ruta, "rb") as f:
-                    item["data"] = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()
-            except Exception as e:
-                item["data"] = ""
-                print(f"Error leyendo foto {ruta}: {e}")
-        else:
-            item["data"] = _url_desde_ruta(ruta)
+        item["data"] = f"/api/book/{item['id']}/imagen"
         resultado.append(item)
     conn.close()
     return jsonify({"ok": True, "data": resultado})
+
+
+@app.route("/api/book/<int:id>/imagen", methods=["GET"])
+def imagen_book(id):
+    conn = get_connection()
+    fila = conn.execute("SELECT ruta_foto FROM book_fotos WHERE id=?", (id,)).fetchone()
+    conn.close()
+    if not fila:
+        return Response("No encontrada", status=404)
+    fila = fila_a_dict(fila)
+    raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"))
+    if not raw:
+        return Response("No encontrada", status=404)
+    resp = send_file(io.BytesIO(raw), mimetype="image/jpeg", download_name=f"book_{id}.jpg")
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
 
 # -------------------- FOTOS DE FAENA (PC) --------------------
 def _mime_por_extension(nombre):
@@ -3521,8 +3552,15 @@ def crear_book():
     titulo = datos.get("titulo", "")
     descripcion = datos.get("descripcion", "")
     foto_b64 = datos.get("data", "")
-    if not foto_b64:
-        return jsonify({"ok": False, "error": "Se requiere data"}), 400
+    ruta_origen = (datos.get("ruta_foto") or "").strip()
+    img_bytes = None
+    if foto_b64:
+        raw = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
+        img_bytes = b64mod.b64decode(raw)
+    elif ruta_origen:
+        img_bytes = _bytes_desde_ruta_foto(ruta_origen)
+    if not img_bytes:
+        return jsonify({"ok": False, "error": "Se requiere una foto"}), 400
     conn = get_connection()
     numero_faena = "generico"
     if faena_id and faena_id != 0:
@@ -3533,8 +3571,6 @@ def crear_book():
         numero_faena = faena["numero"]
     nombre_foto = f"book_{numero_faena}_{int(time.time() * 1000)}.jpg"
     try:
-        raw = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
-        img_bytes = b64mod.b64decode(raw)
         if r2_activo():
             key = clave_objeto("_book", nombre_foto)
             res = subir_bytes(key, img_bytes, "image/jpeg")

@@ -2554,7 +2554,7 @@ async function renderBook() {
   const fotos = r.data;
   const el = document.getElementById("book-galeria");
   if (!fotos.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>No hay fotos en el book aún.<br><small>Añade las mejores fotos de tus faenas</small></div>`; return; }
-  el.innerHTML = `<div class="book-grid">${fotos.map(f => `<div class="book-card"><img src="${f.data}" alt="${f.titulo || f.tipo_trabajo || ""}" loading="lazy"><div class="book-card-info"><div class="book-card-titulo">${f.titulo || f.tipo_trabajo || "Sin título"}</div><div class="book-card-meta">${f.faena_numero} · ${f.cliente_nombre || "—"}</div>${f.descripcion ? `<div class="book-card-desc">${f.descripcion}</div>` : ""}<div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div></div></div>`).join("")}</div>`;
+  el.innerHTML = `<div class="book-grid">${fotos.map(f => `<div class="book-card"><img src="${f.id ? (API + "/book/" + f.id + "/imagen") : (f.data || "")}" alt="${f.titulo || f.tipo_trabajo || ""}" loading="lazy"><div class="book-card-info"><div class="book-card-titulo">${f.titulo || f.tipo_trabajo || "Sin título"}</div><div class="book-card-meta">${f.faena_numero} · ${f.cliente_nombre || "—"}</div>${f.descripcion ? `<div class="book-card-desc">${f.descripcion}</div>` : ""}<div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div></div></div>`).join("")}</div>`;
 }
 function abrirModalAñadirBook() {
   const sel = document.getElementById("book-faena-sel"); sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
