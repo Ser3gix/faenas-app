@@ -63,7 +63,7 @@ Opcionales:
 | Clave | Uso |
 |---|---|
 | `PUBLIC_BASE_URL` | URL pública; si no, se usa `RENDER_EXTERNAL_URL` |
-| `CLAVE_API` / `IA_API_KEY` | IA |
+| `CLAVE_API` / `IA_API_KEY` | Jimmi (Gemini) |
 | `IA_MODO` | `local` o el modo cloud que uses |
 | `IA_PROVIDER` | p. ej. `gemini` |
 | `TICKET_CLAVE_API` | tickets |

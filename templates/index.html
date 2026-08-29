@@ -517,7 +517,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <button onclick="nav('polyboard')">🪵 PolyBoard</button>
   <button onclick="nav('presupuesto')">📋 Presupuesto</button>
   <button onclick="nav('book')">📸 Book</button>
-  <button onclick="nav('asistente')">🤖 Copilot</button>
+  <button onclick="nav('asistente')">Jimmi</button>
 </nav>
 
 <main>
@@ -867,7 +867,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <!-- ===== ASISTENTE IA ===== -->
 <div id="s-asistente" class="section">
   <div class="sec-header">
-    <h2>🤖 Asistente</h2>
+    <h2>Jimmi</h2>
     <div class="btn-row" style="margin:0">
       <select id="asistente-faena-sel"></select>
       <button class="btn btn-p" onclick="generarPromptCopilot()" style="height:32px;padding:0 14px">
@@ -877,8 +877,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <p style="font-size:0.78rem;color:#888;margin-top:8px">
-    Si seleccionas una faena, el asistente responde sobre esa faena en detalle.
-    Si no, responde sobre todo tu negocio.
+    Jimmi, tu secretario. Pregunta por faenas, presupuestos o precios. Si propone un cambio, confirma antes de guardar.
   </p>
 
   <div id="copilot-box" style="display:none;margin-top:12px">
@@ -907,7 +906,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     margin-bottom:12px;display:flex;flex-direction:column;gap:12px;
   ">
     <div style="text-align:center;color:#ccc;font-size:0.82rem;padding:20px 0">
-      🪵 Pregúntame lo que quieras sobre tus faenas
+      🪵 Pregunta a Jimmi sobre tus faenas
     </div>
   </div>
 
@@ -2496,9 +2495,12 @@ async function enviarConsulta() {
   const btn = document.getElementById("btn-consulta");
   añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
   try {
-    const r = await fetch(API + "/ia/consulta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, contexto, contexto_tipo: contextoTipo, alcance: faenaId ? "manual" : "general", faena_id: faenaId ? parseInt(faenaId) : null }) });
+    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial }) });
     quitarTyping(); const data = await r.json();
-    if (data.ok) añadirMensaje(data.data.respuesta, "asistente"); else añadirMensaje("⚠️ " + (data.error || "Error al consultar Ollama"), "asistente");
+    const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
+    chatHistorial.push({ rol: "usuario", texto: pregunta });
+    chatHistorial.push({ rol: "jimmi", texto });
+    if (data.ok) añadirMensaje(data.data.respuesta, "asistente"); else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
   } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente"); }
   btn.disabled = false; btn.textContent = "Enviar";
 }

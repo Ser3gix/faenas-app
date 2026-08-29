@@ -25,6 +25,7 @@ from database import (
     fila_a_dict, filas_a_lista
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
+from secretario import chat_jimmi, cruzar_articulos, anotar_contexto
 
 try:
     import sys
@@ -337,7 +338,7 @@ def _gemini_imagen_part(data_url):
     return {"inline_data": {"mime_type": mime_type, "data": data}}
 
 
-def _peticion_gemini(contents, system_instruction=None, response_mime_type=None, max_tokens=1200, temperature=0.2, api_key=None, model=None, timeout=90):
+def _peticion_gemini(contents, system_instruction=None, response_mime_type=None, max_tokens=1200, temperature=0.2, api_key=None, model=None, timeout=90, tools=None):
     clave = (api_key or IA_API_KEY or "").strip()
     if not clave:
         raise RuntimeError("No hay API key configurada")
@@ -353,6 +354,8 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
     if response_mime_type:
         payload["generationConfig"]["responseMimeType"] = response_mime_type
+    if tools:
+        payload["tools"] = tools
 
     def _enviar(modelo_en_uso):
         req = urllib.request.Request(
@@ -2298,6 +2301,73 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
     return data
 
 
+# -------------------- JIMMI --------------------
+@app.route("/api/secretario/chat", methods=["POST"])
+def secretario_chat():
+    datos = request.json or {}
+    pregunta = (datos.get("pregunta") or datos.get("mensaje") or "").strip()
+    historial = datos.get("historial") if isinstance(datos.get("historial"), list) else []
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    try:
+        res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id)
+        if not res.get("ok"):
+            return jsonify(res), 400
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
+
+
+@app.route("/api/secretario/cruzar", methods=["POST"])
+def secretario_cruzar():
+    datos = request.json or {}
+    articulos = datos.get("articulos") or []
+    try:
+        return jsonify({"ok": True, "data": cruzar_articulos(articulos)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/secretario/aplicar", methods=["POST"])
+def secretario_aplicar():
+    datos = request.json or {}
+    tipo = (datos.get("tipo") or "ticket").strip().lower()
+    try:
+        if tipo in {"ticket", "almacen", "gastos"}:
+            faena_id = _parse_faena_id_seguro(datos.get("faena_id")) if tipo != "almacen" else None
+            payload = datos.get("data") or datos
+            if isinstance(payload, str):
+                payload = _extraer_json_de_texto(payload)
+            articulos = payload.get("articulos") if isinstance(payload, dict) else []
+            if not articulos and isinstance(datos.get("articulos"), list):
+                articulos = datos.get("articulos")
+                payload = {"articulos": articulos, "proveedor": datos.get("proveedor") or ""}
+            origen = "ticket" if tipo != "almacen" else "almacen"
+            resumen = _persistir_resultado_ia_en_nube(faena_id, origen, payload if isinstance(payload, dict) else {"articulos": articulos})
+            destino = f"faena {faena_id}" if faena_id else "almacén"
+            anotar_contexto(f"Aceptó ticket → {destino}: {resumen.get('gastos_creados', 0)} gastos, {resumen.get('materiales_creados', 0)} materiales nuevos, {resumen.get('precios_actualizados', 0)} precios")
+            return jsonify({"ok": True, "data": resumen})
+        if tipo == "presupuesto":
+            faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+            if not faena_id:
+                return jsonify({"ok": False, "error": "Falta la faena"}), 400
+            desc = str(datos.get("descripcion") or "").strip()
+            cantidad = _to_float_seguro(datos.get("cantidad") or 1)
+            precio = _to_float_seguro(datos.get("precio_unitario") or 0)
+            total = cantidad * precio
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO presupuestos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total) VALUES (?, ?, ?, ?, ?, ?)",
+                (faena_id, "presupuesto", desc, cantidad, precio, total),
+            )
+            conn.commit()
+            conn.close()
+            anotar_contexto(f"Aceptó partida de presupuesto en faena {faena_id}: {desc} {total:.2f} €")
+            return jsonify({"ok": True, "data": {"faena_id": faena_id}})
+        return jsonify({"ok": False, "error": "Tipo no reconocido"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/ollama/consulta", methods=["POST"])
 @app.route("/api/ia/consulta", methods=["POST"])
 def ollama_consulta():
@@ -2681,7 +2751,7 @@ def sync_book():
                 item["data"] = ""
                 print(f"Error leyendo foto {ruta}: {e}")
         else:
-            item["data"] = ""
+            item["data"] = _url_desde_ruta(ruta)
         resultado.append(item)
     conn.close()
     return jsonify({"ok": True, "data": resultado})
@@ -3217,43 +3287,50 @@ def guardar_presupuesto(id):
         "contenido": contenido
     }})
 
+
+@app.route("/api/book", methods=["POST"])
+def crear_book():
     import base64 as b64mod
-    datos = request.json
-    faena_id = datos.get("faena_id") or 0  # Permitir null/0 para book genérico
+    datos = request.json or {}
+    faena_id = datos.get("faena_id") or 0
     titulo = datos.get("titulo", "")
     descripcion = datos.get("descripcion", "")
     foto_b64 = datos.get("data", "")
     if not foto_b64:
         return jsonify({"ok": False, "error": "Se requiere data"}), 400
-     
     conn = get_connection()
-    # Validar que si faena_id != 0, la faena exista
+    numero_faena = "generico"
     if faena_id and faena_id != 0:
         faena = conn.execute("SELECT numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
         if not faena:
             conn.close()
             return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
         numero_faena = faena["numero"]
-    else:
-        numero_faena = "generico"
-     
-    carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
-    os.makedirs(carpeta_book, exist_ok=True)
     nombre_foto = f"book_{numero_faena}_{int(time.time() * 1000)}.jpg"
-    ruta_foto = os.path.join(carpeta_book, nombre_foto)
     try:
-        data = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
-        with open(ruta_foto, "wb") as f:
-            f.write(b64mod.b64decode(data))
+        raw = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
+        img_bytes = b64mod.b64decode(raw)
+        if r2_activo():
+            key = clave_objeto("_book", nombre_foto)
+            res = subir_bytes(key, img_bytes, "image/jpeg")
+            if not res.get("ok"):
+                conn.close()
+                return jsonify({"ok": False, "error": res.get("error") or "No se pudo subir al book"}), 500
+            ruta_foto = res.get("url") or key
+        else:
+            carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
+            os.makedirs(carpeta_book, exist_ok=True)
+            ruta_foto = os.path.join(carpeta_book, nombre_foto)
+            with open(ruta_foto, "wb") as f:
+                f.write(img_bytes)
     except Exception as e:
         conn.close()
         return jsonify({"ok": False, "error": str(e)}), 500
-     
     cursor = conn.cursor()
     max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()["max_orden"]
     cursor.execute(
         "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
-        (faena_id, ruta_foto, titulo, descripcion, max_orden + 1)
+        (faena_id or None, ruta_foto, titulo, descripcion, max_orden + 1)
     )
     conn.commit()
     nuevo_id = cursor.lastrowid

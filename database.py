@@ -450,6 +450,14 @@ def _crear_esquema_sqlite(cursor):
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS secretario_contexto (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            resumen TEXT NOT NULL DEFAULT '',
+            actualizado_en TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
 
 def _crear_esquema_mysql(cursor):
     sentencias = [
@@ -630,6 +638,13 @@ def _crear_esquema_mysql(cursor):
             creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             KEY idx_ia_memoria_tokens (tokens(255)),
             KEY idx_ia_memoria_faena (faena_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS secretario_contexto (
+            id INT NOT NULL PRIMARY KEY,
+            resumen LONGTEXT NOT NULL,
+            actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
     ]

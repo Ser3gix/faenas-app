@@ -761,13 +761,7 @@ textarea { resize: vertical; min-height: 80px; }
     <div id="lista-faenas"></div>
   </div>
 
-  <!-- Slide 1: MATERIALES -->
-  <div class="slide" id="sl-materiales">
-    <div style="margin-bottom:12px"><input id="q-mat" placeholder="🔍 Buscar material..." oninput="renderMateriales()" style="margin:0;font-size:0.9rem"></div>
-    <div id="lista-materiales"></div>
-  </div>
-
-  <!-- Slide 2: TICKETS -->
+  <!-- Slide: TICKETS -->
   <div class="slide" id="sl-tickets">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">🎫 Tickets</div>
@@ -775,13 +769,11 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div class="form-box">
       <div class="form-title">Paso 1 — Foto del ticket</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Selecciona una foto o un archivo (PDF/TXT) del ticket o lista de compra.</p>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Una foto cada vez. Jimmi la lee y tú revisas la lista antes de guardar.</p>
       <input type="file" id="ticket-foto-movil" accept="image/*" onchange="ticketPreview(event)" style="display:none">
-      <input type="file" id="ticket-doc-movil" accept=".pdf,.txt,text/plain,application/pdf" onchange="ticketDocumentoPreview(event)" style="display:none">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-p btn-inline" onclick="document.getElementById('ticket-foto-movil').click()">🖼️ Galería</button>
         <button class="btn btn-p btn-inline" onclick="tomarFotoDirecta()">📷 Cámara</button>
-        <button class="btn btn-s btn-inline" onclick="document.getElementById('ticket-doc-movil').click()">📄 PDF/TXT</button>
       </div>
       <div id="ticket-preview-movil" style="display:none;margin-top:10px">
         <img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:260px;object-fit:contain">
@@ -791,18 +783,30 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div class="form-box" id="ticket-paso2" style="display:none">
       <div class="form-title">Paso 2 — Procesar ticket</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Pulsa para analizar. Después podrás editar en tabla antes de guardar.</p>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Jimmi analiza el ticket. Después revisas la lista y eliges faena o almacén.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Procesar con IA</button>
+        <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Pedir a Jimmi</button>
         <button class="btn btn-s btn-inline" type="button" onclick="cancelarTicket()">↺ Resetear ticket</button>
       </div>
       <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
     </div>
     <div class="form-box" id="ticket-paso3" style="display:none">
-      <div class="form-title">Paso 3 — Revisar y editar</div>
+      <div class="form-title">Paso 3 — Revisar y asignar</div>
+      <div id="ticket-cruzar-notas" style="font-size:0.82rem;color:#555;margin-bottom:8px;line-height:1.5"></div>
+      <div class="field">
+        <label>Destino</label>
+        <select id="ticket-destino" onchange="actualizarDestinoTicket()">
+          <option value="almacen">Almacén de materiales</option>
+          <option value="faena">Gastos de una faena</option>
+        </select>
+      </div>
+      <div class="field" id="ticket-destino-faena-wrap" style="display:none">
+        <label>Faena</label>
+        <select id="ticket-destino-faena"></select>
+      </div>
       <div id="ticket-tabla-wrap"></div>
       <textarea id="ticket-json-movil" style="display:none"></textarea>
-      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Guardar en nube</button>
+      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Aceptar y borrar ticket</button>
     </div>
     <div class="btn-row">
       <button class="btn btn-s" onclick="mostrarTextoManual()">✍️ Texto manual</button>
@@ -852,47 +856,18 @@ textarea { resize: vertical; min-height: 80px; }
     <div id="book-movil-galeria"></div>
   </div>
 
-  <!-- Slide 4: IA -->
+  <!-- Slide: JIMMI -->
   <div class="slide" id="sl-ia">
-    <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">🤖 Asistente IA</div>
-    <div class="form-box">
-      <div class="form-title">Haz una pregunta</div>
-      <div class="field"><textarea id="ia-pregunta" rows="3" placeholder="Ej: presupuesto de Puri, dirección de María José, materiales más caros..." style="font-size:0.95rem"></textarea></div>
-      <details style="margin-bottom:10px;background:var(--paper-dark);border:1px solid var(--sawdust);border-radius:8px;padding:10px 12px">
-        <summary style="cursor:pointer;font-size:0.88rem;color:var(--accent)">Filtrar consulta</summary>
-        <div style="margin-top:10px">
-          <div class="field">
-            <label>Alcance</label>
-            <select id="ia-scope" onchange="actualizarPanelConsultaIA()">
-              <option value="general">General</option>
-              <option value="actual">Faena abierta</option>
-              <option value="manual">Elegir faena</option>
-            </select>
-          </div>
-          <div class="field" id="ia-faena-wrap" style="display:none">
-            <label>Faena</label>
-            <input id="ia-faena-buscar" placeholder="Buscar faena" oninput="actualizarSelectorFaenasIA()" style="margin-bottom:8px">
-            <select id="ia-faena-id"><option value="">— Selecciona —</option></select>
-          </div>
-          <div class="field">
-            <label>Contexto</label>
-            <select id="ia-contexto">
-              <option value="general">General</option>
-              <option value="materiales">Materiales</option>
-              <option value="trabajos">Trabajos</option>
-            </select>
-          </div>
-          <div id="ia-ayuda-contexto" style="font-size:0.8rem;color:#777;line-height:1.5">Consulta general sobre todas las faenas.</div>
-        </div>
-      </details>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-p" onclick="enviarConsultaIA()">🤖 Preguntar</button>
-        <button class="btn btn-s" onclick="resetearConsultaIA()">↺ Reset</button>
-      </div>
+    <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">Jimmi</div>
+    <div class="field" style="margin-bottom:8px">
+      <label>Faena (opcional)</label>
+      <select id="ia-faena-id"><option value="">— Todo el negocio —</option></select>
     </div>
-    <div id="ia-respuesta-box" style="display:none;background:white;border:1px solid var(--sawdust);border-radius:8px;padding:16px;margin-top:12px">
-      <div style="font-family:var(--font-serif);font-size:0.95rem;color:var(--accent);margin-bottom:8px">Respuesta:</div>
-      <div id="ia-respuesta" style="font-size:0.95rem;line-height:1.7;white-space:pre-wrap;color:var(--ink)"></div>
+    <div id="jimmi-mensajes" style="background:white;border:1px solid var(--sawdust);border-radius:8px;padding:12px;min-height:180px;max-height:42vh;overflow-y:auto;margin-bottom:10px;font-size:0.9rem;line-height:1.6"></div>
+    <textarea id="ia-pregunta" rows="3" placeholder="Pregunta a Jimmi: presupuestos, precios, faenas..." style="font-size:0.95rem;margin-bottom:8px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" onclick="enviarConsultaIA()">Enviar</button>
+      <button class="btn btn-s" onclick="resetearConsultaIA()">Limpiar</button>
     </div>
   </div>
 
@@ -915,12 +890,11 @@ textarea { resize: vertical; min-height: 80px; }
 
 <!-- ═══════════ BOTTOM NAV ═══════════ -->
 <nav class="bottom-nav">
-  <button class="active" id="nav-faenas"    onclick="navTo(0)"><span class="ni">🔨</span>Faenas</button>
-  <button id="nav-materiales"               onclick="navTo(1)"><span class="ni">📦</span>Materiales</button>
-  <button id="nav-tickets"                  onclick="navTo(2)"><span class="ni">🎫</span>Tickets</button>
-  <button id="nav-book"                     onclick="navTo(3)"><span class="ni">📸</span>Book</button>
-  <button id="nav-ia"                       onclick="navTo(4)"><span class="ni">🤖</span>IA</button>
-  <button id="nav-sync"                     onclick="navTo(5)"><span class="ni">⚙️</span>Conexión</button>
+  <button class="active" id="nav-faenas" onclick="navTo(0)"><span class="ni">🔨</span>Faenas</button>
+  <button id="nav-tickets" onclick="navTo(1)"><span class="ni">🎫</span>Tickets</button>
+  <button id="nav-book" onclick="navTo(2)"><span class="ni">📸</span>Book</button>
+  <button id="nav-ia" onclick="navTo(3)"><span class="ni">🧑‍💼</span>Jimmi</button>
+  <button id="nav-sync" onclick="navTo(4)"><span class="ni">⚙️</span>Conexión</button>
 </nav>
 
 <!-- ═══════════ FAENA OVERLAY ═══════════ -->
@@ -1113,6 +1087,22 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<div id="foto-destino-overlay" class="camara-overlay">
+  <div class="camara-caja" style="height:auto;padding-bottom:16px">
+    <div class="camara-caja-top">
+      <span>¿Dónde guardo la foto?</span>
+      <button type="button" class="camara-cancel" onclick="cerrarDestinoFoto()">Cerrar</button>
+    </div>
+    <div style="padding:12px 14px">
+      <div class="field"><label>Faena (si va a una faena)</label><select id="foto-destino-faena"></select></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-p" onclick="confirmarDestinoFoto('faena')">Faena</button>
+        <button class="btn btn-s" onclick="confirmarDestinoFoto('book')">Book</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════════
 // ESTADO Y UTILIDADES
@@ -1164,59 +1154,26 @@ function actualizarSelectorFaenasIA() {
   const sel = document.getElementById("ia-faena-id");
   if (!sel) return;
   const valorActual = sel.value;
-  const filtro = (document.getElementById("ia-faena-buscar")?.value || "").trim().toLowerCase();
-  const opciones = state.faenas
-    .filter(f => {
-      if (!filtro) return true;
-      const base = `${f.numero || ""} ${f.cliente_nombre || ""} ${f.tipo_trabajo || ""}`.toLowerCase();
-      return base.includes(filtro);
-    })
-    .map(f => `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")} · ${escHtml(f.tipo_trabajo||"")}</option>`)
-    .join("");
-  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + opciones;
+  const opciones = state.faenas.map(f =>
+    `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")} · ${escHtml(f.tipo_trabajo||"")}</option>`
+  ).join("");
+  sel.innerHTML = '<option value="">— Todo el negocio —</option>' + opciones;
   if ([...sel.options].some(o => String(o.value) === String(valorActual))) sel.value = valorActual;
-  else if (state.faenaActualId && [...sel.options].some(o => String(o.value) === String(state.faenaActualId))) sel.value = String(state.faenaActualId);
-}
-
-function actualizarPanelConsultaIA() {
-  const scope = document.getElementById("ia-scope")?.value || "general";
-  const tipo = document.getElementById("ia-contexto")?.value || "general";
-  const wrap = document.getElementById("ia-faena-wrap");
-  const ayuda = document.getElementById("ia-ayuda-contexto");
-  if (wrap) wrap.style.display = scope === "manual" ? "block" : "none";
-  if (scope === "manual") actualizarSelectorFaenasIA();
-  if (!ayuda) return;
-  const alcanceTxt = scope === "general"
-    ? "todas las faenas"
-    : (scope === "actual" ? "la faena que tienes abierta" : "solo la faena seleccionada");
-  const contextoTxt = {
-    general: "todos los datos disponibles",
-    materiales: "materiales y sus precios",
-    trabajos: "trabajos, faenas, clientes, estados e importes"
-  }[tipo] || "todos los datos disponibles";
-  ayuda.textContent = `La respuesta se centrará en ${alcanceTxt}, usando ${contextoTxt}.`;
 }
 
 function resetearConsultaIA() {
   const pregunta = document.getElementById("ia-pregunta");
-  const scope = document.getElementById("ia-scope");
-  const contexto = document.getElementById("ia-contexto");
-  const buscar = document.getElementById("ia-faena-buscar");
   const faena = document.getElementById("ia-faena-id");
-  const respuestaBox = document.getElementById("ia-respuesta-box");
-  const respuesta = document.getElementById("ia-respuesta");
-  const details = document.querySelector("#sl-ia details");
-
+  const box = document.getElementById("jimmi-mensajes");
   if (pregunta) pregunta.value = "";
-  if (scope) scope.value = "general";
-  if (contexto) contexto.value = "general";
-  if (buscar) buscar.value = "";
   if (faena) faena.value = "";
-  if (respuesta) respuesta.textContent = "";
-  if (respuestaBox) respuestaBox.style.display = "none";
-  if (details) details.open = false;
+  if (box) box.innerHTML = '<div style="color:#999;font-size:0.85rem">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div>';
+  window._jimmiHistorial = [];
   actualizarSelectorFaenasIA();
-  actualizarPanelConsultaIA();
+}
+
+function actualizarPanelConsultaIA() {
+  actualizarSelectorFaenasIA();
 }
 
 function construirContextoConsultaIA() {
@@ -1335,7 +1292,7 @@ async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.7
 // NAVEGACIÓN PRINCIPAL (carousel)
 // ═══════════════════════════════════════════════════════════
 
-const NAV_IDS = ["nav-faenas","nav-materiales","nav-tickets","nav-book","nav-ia","nav-sync"];
+const NAV_IDS = ["nav-faenas","nav-tickets","nav-book","nav-ia","nav-sync"];
 
 function navTo(idx) {
   const c = document.getElementById("main-carousel");
@@ -1344,12 +1301,12 @@ function navTo(idx) {
     const b = document.getElementById(id);
     if (b) b.classList.toggle("active", i === idx);
   });
-  if (idx === 2) restaurarTicket();
-  if (idx === 1) renderMateriales();
-  if (idx === 3) renderBookMovil();
+  if (idx === 1) restaurarTicket();
+  if (idx === 2) renderBookMovil();
+  if (idx === 3) actualizarSelectorFaenasIA();
 }
 
-function irASync() { navTo(5); }
+function irASync() { navTo(4); }
 
 // Actualizar nav al hacer swipe manual
 document.getElementById("main-carousel").addEventListener("scroll", function() {
@@ -1866,6 +1823,7 @@ function renderPanelFotos(f) {
         <button class="btn btn-s btn-inline" onclick="setupCarpetaFotos('${faenaId}')" title="Carpeta en el móvil">📁</button>
         <button class="btn btn-p btn-inline" onclick="añadirFoto('${faenaId}')">📷 Cámara</button>
         <button class="btn btn-s btn-inline" onclick="añadirFotoGaleria('${faenaId}')">🖼️ Galería</button>
+        <button class="btn btn-s btn-inline" onclick="añadirFoto('elegir')">Faena/Book</button>
       </div>
     </div>
     ${dirNombre ? `<div class="dir-info">📁 <span>${escHtml(dirNombre)}</span></div>` : ""}
@@ -2022,11 +1980,64 @@ async function procesarListaFotos(files) {
     });
   }
   if (f) renderPanelFotos(f);
-  if (guardadas) toast(`✓ ${guardadas} foto${guardadas>1?"s":""} guardada${guardadas>1?"s":""}`);
+  if (guardadas) toast(`✓ ${guardadas} foto${guardadas>1?"s":""} hecha${guardadas>1?"s":""}`);
+  if (String(fotoFaenaId) === "elegir") {
+    window._fotosDestinoPendientes = nuevas;
+    abrirDestinoFoto();
+    return;
+  }
   for (const foto of nuevas) {
     await subirFotoAlServidor(fotoFaenaId, foto.nombre, foto.data);
   }
   if (f) renderPanelFotos(f);
+}
+
+function abrirDestinoFoto() {
+  const sel = document.getElementById("foto-destino-faena");
+  if (sel) {
+    sel.innerHTML = '<option value="">— Elige faena —</option>' + state.faenas.map(f =>
+      `<option value="${f.id}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")}</option>`
+    ).join("");
+  }
+  document.getElementById("foto-destino-overlay")?.classList.add("open");
+}
+
+function cerrarDestinoFoto() {
+  document.getElementById("foto-destino-overlay")?.classList.remove("open");
+}
+
+async function confirmarDestinoFoto(tipo) {
+  const fotos = window._fotosDestinoPendientes || [];
+  if (!fotos.length) { cerrarDestinoFoto(); return; }
+  if (tipo === "faena") {
+    const faenaId = document.getElementById("foto-destino-faena")?.value;
+    if (!faenaId) { toast("Elige una faena", true); return; }
+    fotoFaenaId = faenaId;
+    for (const foto of fotos) {
+      await subirFotoAlServidor(faenaId, foto.nombre, foto.data);
+    }
+    toast("Foto guardada en la faena");
+  } else {
+    const faenaId = document.getElementById("foto-destino-faena")?.value || 0;
+    for (const foto of fotos) {
+      try {
+        const r = await fetch(`${getServerUrl()}/book`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ faena_id: faenaId || 0, titulo: "Foto", data: foto.data }),
+          signal: AbortSignal.timeout(30000)
+        });
+        const d = await r.json();
+        if (!d.ok) toast(d.error || "No se pudo guardar en el book", true);
+      } catch (e) {
+        toast("No se pudo guardar en el book", true);
+      }
+    }
+    toast("Foto guardada en el book");
+    renderBookMovil();
+  }
+  window._fotosDestinoPendientes = [];
+  cerrarDestinoFoto();
 }
 
 async function subirFotoAlServidor(faenaId, nombre, data) {
@@ -2889,6 +2900,7 @@ function renderMateriales() {
     return campos.some(valor => String(valor || "").toLowerCase().includes(q));
   });
   const el = document.getElementById("lista-materiales");
+  if (!el) return;
   if (!lista.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${state.materiales.length === 0 ? "Sincroniza para ver materiales" : "Sin resultados"}</div>`; return; }
   const rows = lista.map(m => {
     const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
@@ -3319,60 +3331,88 @@ function restaurarTicket() {
 }
 
 async function procesarTicketConIA() {
-  if (!ticketFotoBase64 && !ticketDocumentoBase64) { toast("Selecciona una foto o PDF/TXT primero", true); return; }
+  if (!ticketFotoBase64) { toast("Haz una foto del ticket primero", true); return; }
   const btn = document.getElementById("btn-ai-ticket");
   const estado = document.getElementById("ticket-ai-estado");
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Procesando...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Jimmi leyendo...'; }
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "#666";
-    estado.textContent = "🤖 La IA está analizando…";
+    estado.textContent = "Jimmi está leyendo el ticket…";
   }
   try {
-    const endpoint = ticketFotoBase64 ? "/ia/procesar-ticket" : "/ia/procesar-documento";
-    const bodyPayload = ticketFotoBase64
-      ? { imagen: ticketFotoBase64, guardar: false }
-      : {
-          archivo_base64: ticketDocumentoBase64,
-          nombre: ticketDocumentoNombre || "documento",
-          mime_type: ticketDocumentoMime || "",
-          prompt: localStorage.getItem("ticket_prompt_temp") || "",
-          guardar: false
-        };
-    const r = await fetch(`${getServerUrl()}${endpoint}`, {
+    const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(bodyPayload),
+      body: JSON.stringify({ imagen: ticketFotoBase64, guardar: false }),
       signal: AbortSignal.timeout(50000)
     });
     const data = await r.json();
     if (data.ok && data.data) {
-      ticketOrigenAnalisis = ticketFotoBase64 ? "ticket" : "pdf";
+      ticketOrigenAnalisis = "ticket";
       ticketAnalisisActual = data.data;
       document.getElementById("ticket-json-movil").value = JSON.stringify(data.data, null, 2);
       _renderTablaAnalisisTicket(data.data);
       document.getElementById("ticket-paso3").style.display = "block";
+      rellenarFaenasTicketDestino();
+      await mostrarCruceTicket(data.data.articulos || []);
       const n = (data.data.articulos || []).length;
       if (estado) {
         estado.style.color = "var(--green)";
-        estado.textContent = `✓ IA encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa/edita en la tabla y guarda.`;
+        estado.textContent = `Jimmi encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa, elige destino y acepta.`;
       }
-      toast(`✓ Análisis completado — edita tabla y guarda`);
+      toast("Revisa la lista y acepta");
     } else {
       if (estado) {
         estado.style.color = "var(--red)";
-        estado.textContent = data.error || "Error al procesar. Usa el guardado manual JSON.";
+        estado.textContent = data.error || "Jimmi no pudo leer el ticket";
       }
-      toast(data.error || "Error al procesar con IA", true);
+      toast(data.error || "Error al procesar con Jimmi", true);
     }
   } catch (e) {
     if (estado) {
       estado.style.color = "var(--red)";
-      estado.textContent = `Error al conectar o procesar: ${e.message || "desconocido"}`;
+      estado.textContent = `Error: ${e.message || "desconocido"}`;
     }
     toast("Error: " + (e.message || "desconocido"), true);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "🤖 Procesar con IA"; }
+    if (btn) { btn.disabled = false; btn.textContent = "🤖 Pedir a Jimmi"; }
+  }
+}
+
+function rellenarFaenasTicketDestino() {
+  const sel = document.getElementById("ticket-destino-faena");
+  if (!sel) return;
+  sel.innerHTML = state.faenas.map(f =>
+    `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")}</option>`
+  ).join("");
+}
+
+function actualizarDestinoTicket() {
+  const dest = document.getElementById("ticket-destino")?.value || "almacen";
+  const wrap = document.getElementById("ticket-destino-faena-wrap");
+  if (wrap) wrap.style.display = dest === "faena" ? "block" : "none";
+}
+
+async function mostrarCruceTicket(articulos) {
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (!notas) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/secretario/cruzar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articulos }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const d = await r.json();
+    if (!d.ok) { notas.textContent = ""; return; }
+    const lineas = (d.data || []).map(a => {
+      const acc = a.accion_almacen === "crear" ? "nuevo" : (a.accion_almacen === "mantener" ? "ya está" : "actualizar");
+      return `· ${a.nombre}: ${acc}${a.nota_almacen ? " — " + a.nota_almacen : ""}`;
+    });
+    notas.innerHTML = lineas.length ? ("Jimmi comparado con tu almacén:<br>" + lineas.map(x => escHtml(x)).join("<br>")) : "";
+  } catch (e) {
+    notas.textContent = "";
   }
 }
 
@@ -3381,26 +3421,30 @@ async function cargarJsonTicketMovil() {
   if (!datos) { toast("No hay análisis para guardar", true); return; }
   const articulos = datos.articulos || [];
   if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+  const dest = document.getElementById("ticket-destino")?.value || "almacen";
+  let faenaId = null;
+  if (dest === "faena") {
+    faenaId = document.getElementById("ticket-destino-faena")?.value || "";
+    if (!faenaId) { toast("Elige una faena", true); return; }
+    articulos.forEach(a => { if (!a.faena_id) a.faena_id = faenaId; });
+    datos.articulos = articulos;
+  } else {
+    articulos.forEach(a => { a.faena_id = null; });
+    datos.articulos = articulos;
+  }
   try {
-    const r = await fetch(`${getServerUrl()}/ia/guardar-json`, {
+    const r = await fetch(`${getServerUrl()}/secretario/aplicar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ origen: ticketOrigenAnalisis || "ticket", data: datos })
+      body: JSON.stringify({ tipo: dest === "faena" ? "ticket" : "almacen", faena_id: faenaId, data: datos })
     });
-    const txt = await r.text();
-    let d = null;
-    try { d = JSON.parse(txt); } catch(_) { d = null; }
-    if (!d) {
-      throw new Error(`Respuesta no JSON del servidor (${r.status})`);
-    }
-    if (!d.ok) throw new Error(d.error || "No se pudo guardar en nube");
-    const resumen = (d.data || {}).resumen_guardado || {};
-    await cargarMateriales();
-    renderMateriales();
-    toast(`✓ Guardado nube: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales nuevos`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "No se pudo guardar");
+    const resumen = d.data || {};
+    toast(`Guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales, ${resumen.precios_actualizados || 0} precios`);
     cancelarTicket(false);
   } catch (e) {
-    toast(e.message || "Error al guardar JSON en nube", true);
+    toast(e.message || "Error al guardar", true);
   }
 }
 
@@ -3476,35 +3520,30 @@ async function procesarTextoManual() {
 async function enviarConsultaIA() {
   const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
   if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
-  const respBox = document.getElementById("ia-respuesta-box");
-  const respEl = document.getElementById("ia-respuesta");
-  respBox.style.display = "block";
-  respEl.textContent = "🤖 Pensando…";
+  const box = document.getElementById("jimmi-mensajes");
+  window._jimmiHistorial = window._jimmiHistorial || [];
+  window._jimmiHistorial.push({ rol: "usuario", texto: pregunta });
+  const faenaId = document.getElementById("ia-faena-id")?.value || "";
+  if (box) box.innerHTML += `<div style="margin:8px 0"><strong>Tú:</strong> ${escHtml(pregunta)}</div><div style="color:#888">Jimmi está pensando…</div>`;
+  document.getElementById("ia-pregunta").value = "";
   try {
-    const { contexto, faenaId, scope, tipo } = construirContextoConsultaIA();
-    if (scope !== "general" && !faenaId && scope !== "actual") {
-      respEl.textContent = "Selecciona una faena para esa consulta.";
-      toast("Selecciona una faena", true);
-      return;
-    }
-    let preguntaFinal = pregunta;
-    if (tipo === "materiales") preguntaFinal = `Contexto seleccionado: materiales. Pregunta: ${pregunta}`;
-    if (tipo === "trabajos") preguntaFinal = `Contexto seleccionado: trabajos y faenas. Pregunta: ${pregunta}`;
-    const r = await fetch(`${getServerUrl()}/ia/consulta`, {
+    const r = await fetch(`${getServerUrl()}/secretario/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta: preguntaFinal, contexto, faena_id: faenaId || null, alcance: scope, contexto_tipo: tipo })
+      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial })
     });
     const data = await r.json();
-    if (data.ok && data.data) {
-      respEl.textContent = data.data.respuesta;
-    } else {
-      respEl.textContent = "Error: " + (data.error || "Sin respuesta del servidor.");
-      toast(data.error || "Error en la consulta IA", true);
+    const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
+    window._jimmiHistorial.push({ rol: "jimmi", texto });
+    if (box) {
+      box.innerHTML = window._jimmiHistorial.map(m =>
+        `<div style="margin:8px 0"><strong>${m.rol === "usuario" ? "Tú" : "Jimmi"}:</strong> ${escHtml(m.texto)}</div>`
+      ).join("");
+      box.scrollTop = box.scrollHeight;
     }
-  } catch(e) {
-    respEl.textContent = "Error de conexión: " + e.message + "\n\nAsegúrate de que el servidor esté accesible.";
-    toast("Error al conectar con el servidor", true);
+    if (!data.ok) toast(data.error || "Jimmi no ha podido responder", true);
+  } catch (e) {
+    toast("Error al conectar con Jimmi", true);
   }
 }
 
@@ -3521,41 +3560,8 @@ let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
 let bookDirHandle = null;
 
 async function añadirFotoBook(faenaId = null) {
-  let titulo = "";
-  if (faenaId) {
-    const f = state.faenas.find(x => String(x.id||x._tempId) === String(faenaId));
-    titulo = f?.tipo_trabajo || "";
-  } else {
-    titulo = prompt("Título para la foto:", "") || "Sin título";
-  }
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.setAttribute("capture", "environment");
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  input.onchange = async e => {
-    const file = e.target.files[0]; input.remove();
-    if (!file) return;
-    toast("Procesando imagen...");
-    const img = new Image(); const url = URL.createObjectURL(file);
-    img.onload = async () => {
-      const MAX = 800; const ratio = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * ratio); canvas.height = Math.round(img.height * ratio);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      const base64 = canvas.toDataURL("image/jpeg", 0.65);
-      const cola = cargarCola();
-      if (!cola.bookPendiente) cola.bookPendiente = [];
-      const fotoBook = { id: `book_${Date.now()}`, data: base64, titulo: titulo||"Sin título", fecha: new Date().toISOString() };
-      cola.bookPendiente.push(fotoBook); guardarCola(cola);
-      bookCache.push(fotoBook); localStorage.setItem("book_cache", JSON.stringify(bookCache));
-      renderBookMovil(); toast("✓ Foto añadida al book");
-    };
-    img.src = url;
-  };
-  input.click();
+  window._elegirDestinoFoto = true;
+  await añadirFoto("elegir");
 }
 
 async function configurarCarpetaBook() {
@@ -3980,6 +3986,7 @@ async function init() {
   const apiEl = document.getElementById("api-url-actual");
   if (apiEl) apiEl.textContent = getServerUrl();
   actualizarPanelConsultaIA();
+  resetearConsultaIA();
   // Mostrar cargando y cargar desde la nube
   state._cargando = true;
   renderFaenas();
