@@ -506,6 +506,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div id="ip-banner" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:6px 12px;font-size:0.72rem;color:var(--wood-light);cursor:pointer" onclick="copiarIP()" title="Pulsa para copiar">
     📱 IP móvil: <span id="ip-valor" style="font-weight:500">cargando...</span>
   </div>
+  <div id="r2-banner" style="margin-left:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:6px 12px;font-size:0.72rem;color:var(--wood-light);cursor:pointer" onclick="abrirConfigR2()" title="Cloudflare R2">
+    ☁ <span id="r2-valor">Cloudflare...</span>
+  </div>
 </header>
 
 <nav>
@@ -1285,6 +1288,25 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
+<!-- Modal Cloudflare R2 -->
+<div class="overlay" id="m-r2">
+  <div class="modal">
+    <div class="modal-title">☁ Cloudflare R2</div>
+    <p style="font-size:0.82rem;color:#666;margin-bottom:12px;line-height:1.6">
+      En el PC se guarda en <code>.env</code> (junto a la app). Así el ordenador sube fotos y documentos a Cloudflare.
+    </p>
+    <div class="form-grid g1"><div><label>Endpoint</label><input id="r2-endpoint" placeholder="https://xxxxx.r2.cloudflarestorage.com"></div></div>
+    <div class="form-grid g1"><div><label>Bucket</label><input id="r2-bucket" placeholder="faenas"></div></div>
+    <div class="form-grid g1"><div><label>URL pública (opcional)</label><input id="r2-public" placeholder="https://pub-xxxxx.r2.dev"></div></div>
+    <div class="form-grid g1"><div><label>Access key</label><input id="r2-access" placeholder="Token R2"></div></div>
+    <div class="form-grid g1"><div><label>Secret key</label><input id="r2-secret" type="password" placeholder="Se conserva si lo dejas vacío"></div></div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarConfigR2()">Probar y guardar</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-r2')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Añadir Precio -->
 <div class="overlay" id="m-precio">
   <div class="modal">
@@ -1339,6 +1361,7 @@ async function init() {
   poblarSelectPolyboard();
   poblarSelectPresupuesto();
   cargarIP();
+  cargarEstadoR2();
 }
 
 async function cargarEstadoDb() {
@@ -1377,6 +1400,46 @@ function copiarIP() {
   navigator.clipboard.writeText(ip)
     .then(() => toast("✓ IP copiada: " + ip))
     .catch(() => toast("IP: " + ip));
+}
+
+async function cargarEstadoR2() {
+  try {
+    const r = await api("GET", "/info/storage");
+    const el = document.getElementById("r2-valor");
+    if (!r.ok || !el) return;
+    const d = r.data || {};
+    window._r2info = d;
+    if (d.r2_conectado) el.textContent = "Cloudflare OK";
+    else if (d.r2_activo) el.textContent = "Cloudflare error";
+    else el.textContent = "Cloudflare off";
+    document.getElementById("r2-endpoint").value = d.endpoint || "";
+    document.getElementById("r2-bucket").value = d.bucket || "";
+    document.getElementById("r2-public").value = d.public_url || "";
+  } catch (e) {}
+}
+
+function abrirConfigR2() {
+  const d = window._r2info || {};
+  if (d.configurable === false) {
+    toast("En Render las claves van en Environment. Arranca el PC con Arrancar_Faenas.bat", true);
+    return;
+  }
+  abrirModal("m-r2");
+}
+
+async function guardarConfigR2() {
+  const r = await api("POST", "/config/r2", {
+    endpoint: document.getElementById("r2-endpoint").value,
+    bucket: document.getElementById("r2-bucket").value,
+    public_url: document.getElementById("r2-public").value,
+    access_key: document.getElementById("r2-access").value,
+    secret_key: document.getElementById("r2-secret").value
+  });
+  if (!r.ok) { toast(r.error || "No se pudo conectar a Cloudflare", true); return; }
+  toast("✓ PC conectado a Cloudflare R2");
+  document.getElementById("r2-secret").value = "";
+  cerrarModal("m-r2");
+  await cargarEstadoR2();
 }
 
 // ===== API CALLS =====

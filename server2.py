@@ -18,13 +18,13 @@ try:
 except Exception:
     pass
 
-from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET, raices_datos
+from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET, raices_datos, en_servidor_nube, escribir_env_r2
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
-from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
+from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
 from secretario import chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle, escribir_contexto, borrar_linea_contexto
 
 try:
@@ -736,6 +736,74 @@ def get_ip():
 @app.route("/api/info/db", methods=["GET"])
 def get_db_info():
     return jsonify({"ok": True, "data": get_db_status()})
+
+@app.route("/api/info/storage", methods=["GET"])
+def get_storage_info():
+    from config import OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_PUBLIC_BASE_URL
+    ok, err = (False, r2_error())
+    if r2_activo():
+        ok, err = probar_conexion()
+    return jsonify({"ok": True, "data": {
+        "r2_activo": r2_activo(),
+        "r2_conectado": ok,
+        "error": err,
+        "bucket": OBJECT_STORAGE_BUCKET or "",
+        "endpoint": OBJECT_STORAGE_ENDPOINT or "",
+        "public_url": OBJECT_STORAGE_PUBLIC_BASE_URL or "",
+        "configurable": not en_servidor_nube(),
+    }})
+
+@app.route("/api/config/r2", methods=["POST"])
+def guardar_config_r2():
+    if en_servidor_nube():
+        return jsonify({"ok": False, "error": "En Render las claves van en Environment. En el PC abre http://127.0.0.1:5000"}), 400
+    datos = request.json or {}
+    endpoint = (datos.get("endpoint") or "").strip().rstrip("/")
+    bucket = (datos.get("bucket") or "").strip()
+    access = (datos.get("access_key") or "").strip()
+    secret = (datos.get("secret_key") or "").strip()
+    public_url = (datos.get("public_url") or "").strip().rstrip("/")
+    if not endpoint or not bucket:
+        return jsonify({"ok": False, "error": "Faltan endpoint y bucket"}), 400
+    if not access or not secret:
+        from config import OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY
+        access = access or OBJECT_STORAGE_ACCESS_KEY
+        secret = secret or OBJECT_STORAGE_SECRET_KEY
+    if not access or not secret:
+        return jsonify({"ok": False, "error": "Faltan access key y secret key"}), 400
+    claves = [
+        "OBJECT_STORAGE_BACKEND", "OBJECT_STORAGE_ENDPOINT", "OBJECT_STORAGE_BUCKET",
+        "OBJECT_STORAGE_PUBLIC_BASE_URL", "OBJECT_STORAGE_ACCESS_KEY", "OBJECT_STORAGE_SECRET_KEY",
+    ]
+    anteriores = {k: os.environ.get(k) for k in claves}
+    os.environ["OBJECT_STORAGE_BACKEND"] = "r2"
+    os.environ["OBJECT_STORAGE_ENDPOINT"] = endpoint
+    os.environ["OBJECT_STORAGE_BUCKET"] = bucket
+    os.environ["OBJECT_STORAGE_PUBLIC_BASE_URL"] = public_url
+    os.environ["OBJECT_STORAGE_ACCESS_KEY"] = access
+    os.environ["OBJECT_STORAGE_SECRET_KEY"] = secret
+    from config import recargar_almacenamiento
+    recargar_almacenamiento()
+    reiniciar_cliente()
+    ok, err = probar_conexion()
+    if not ok:
+        for k, v in anteriores.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        recargar_almacenamiento()
+        reiniciar_cliente()
+        return jsonify({"ok": False, "error": err or "No se pudo conectar a Cloudflare"}), 400
+    escribir_env_r2({
+        "OBJECT_STORAGE_BACKEND": "r2",
+        "OBJECT_STORAGE_ENDPOINT": endpoint,
+        "OBJECT_STORAGE_BUCKET": bucket,
+        "OBJECT_STORAGE_PUBLIC_BASE_URL": public_url,
+        "OBJECT_STORAGE_ACCESS_KEY": access,
+        "OBJECT_STORAGE_SECRET_KEY": secret,
+    })
+    return jsonify({"ok": True, "data": {"r2_conectado": True, "bucket": bucket}})
 
 # -------------------- INTERMEDIARIOS --------------------
 @app.route("/api/intermediarios", methods=["GET"])

@@ -126,6 +126,73 @@ OBJECT_STORAGE_SECRET_KEY = (
 	or ""
 ).strip()
 
+def recargar_almacenamiento():
+	"""Vuelve a leer .env y actualiza las variables de Cloudflare R2."""
+	global OBJECT_STORAGE_BACKEND, OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_PUBLIC_BASE_URL
+	global OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_REGION, OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY
+	try:
+		from dotenv import load_dotenv
+		load_dotenv(os.path.join(APP_DIR, ".env"), override=True)
+	except Exception:
+		pass
+	OBJECT_STORAGE_BACKEND = os.environ.get("OBJECT_STORAGE_BACKEND", "local").strip().lower()
+	OBJECT_STORAGE_BUCKET = os.environ.get("OBJECT_STORAGE_BUCKET", "").strip()
+	OBJECT_STORAGE_PUBLIC_BASE_URL = (
+		os.environ.get("OBJECT_STORAGE_PUBLIC_BASE_URL")
+		or os.environ.get("OBJECT_STORAGE_PUBLIC_URL")
+		or ""
+	).strip().rstrip("/")
+	OBJECT_STORAGE_ENDPOINT = os.environ.get("OBJECT_STORAGE_ENDPOINT", "").strip().rstrip("/")
+	OBJECT_STORAGE_REGION = os.environ.get("OBJECT_STORAGE_REGION", "auto").strip() or "auto"
+	OBJECT_STORAGE_ACCESS_KEY = (
+		os.environ.get("OBJECT_STORAGE_ACCESS_KEY")
+		or os.environ.get("AWS_ACCESS_KEY_ID")
+		or ""
+	).strip()
+	OBJECT_STORAGE_SECRET_KEY = (
+		os.environ.get("OBJECT_STORAGE_SECRET_KEY")
+		or os.environ.get("AWS_SECRET_ACCESS_KEY")
+		or ""
+	).strip()
+
+
+def en_servidor_nube():
+	return bool(
+		os.environ.get("RENDER")
+		or os.environ.get("RENDER_EXTERNAL_URL")
+		or os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+	)
+
+
+def ruta_env():
+	return os.path.join(APP_DIR, ".env")
+
+
+def escribir_env_r2(valores):
+	"""Guarda claves R2 en .env del PC sin borrar el resto de variables."""
+	ruta = ruta_env()
+	actuales = {}
+	if os.path.exists(ruta):
+		with open(ruta, "r", encoding="utf-8") as fh:
+			for linea in fh:
+				linea = linea.strip()
+				if not linea or linea.startswith("#") or "=" not in linea:
+					continue
+				nombre, valor = linea.split("=", 1)
+				actuales[nombre.strip()] = valor.strip().strip("\"'")
+	for nombre, valor in valores.items():
+		if valor is None:
+			continue
+		if valor == "" and nombre in actuales:
+			continue
+		actuales[nombre] = str(valor)
+		os.environ[nombre] = str(valor)
+	lineas = [f"{k}={v}" for k, v in actuales.items()]
+	with open(ruta, "w", encoding="utf-8") as fh:
+		fh.write("\n".join(lineas) + ("\n" if lineas else ""))
+	recargar_almacenamiento()
+
+
 # --- CURSOR ---
 # Ruta al ejecutable de Cursor. Si está en el PATH del sistema déjalo así.
 # Si no funciona, pon la ruta completa, por ejemplo:
