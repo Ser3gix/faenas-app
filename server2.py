@@ -119,6 +119,104 @@ def _es_pdf_nombre(nombre):
     return _extension(nombre) in _EXTS_PDF
 
 
+def _resolver_carpeta_local(faena):
+    carpeta = (faena.get("carpeta") or "").strip() if faena else ""
+    if carpeta and os.path.isdir(carpeta):
+        return carpeta
+    numero = str((faena or {}).get("numero") or "").strip()
+    if not numero or not os.path.isdir(CARPETA_RAIZ):
+        return ""
+    try:
+        for nombre in os.listdir(CARPETA_RAIZ):
+            ruta = os.path.join(CARPETA_RAIZ, nombre)
+            if os.path.isdir(ruta) and (nombre == numero or nombre.startswith(numero + "_")):
+                return ruta
+    except Exception:
+        pass
+    return ""
+
+
+def _nombres_ya_registrados(conn, faena_id):
+    nombres = set()
+    for fila in filas_a_lista(conn.execute("SELECT nombre FROM fotos_faena WHERE faena_id=?", (faena_id,)).fetchall()):
+        if fila.get("nombre"):
+            nombres.add(fila["nombre"])
+    try:
+        for fila in filas_a_lista(conn.execute("SELECT nombre FROM archivos_faena WHERE faena_id=?", (faena_id,)).fetchall()):
+            if fila.get("nombre"):
+                nombres.add(fila["nombre"])
+    except Exception:
+        pass
+    return nombres
+
+
+def sincronizar_archivos_desde_pc():
+    """Registra (y sube a R2 si está configurado) fotos, PDFs y documentos que hay en las carpetas del PC."""
+    conn = get_connection()
+    faenas = filas_a_lista(conn.execute("SELECT id, numero, carpeta FROM faenas").fetchall())
+    subidos = 0
+    omitidos = 0
+    errores = []
+    for faena in faenas:
+        carpeta = _resolver_carpeta_local(faena)
+        if not carpeta:
+            continue
+        if carpeta != (faena.get("carpeta") or ""):
+            conn.execute("UPDATE faenas SET carpeta=? WHERE id=?", (carpeta, faena["id"]))
+            faena["carpeta"] = carpeta
+        registrados = _nombres_ya_registrados(conn, faena["id"])
+        recorridos = [
+            ("fotos", "fotos", "foto"),
+            ("Documentos", "documentos", "documento"),
+            ("tickets", "tickets", "ticket"),
+        ]
+        for subcarpeta, carpeta_rel, tipo in recorridos:
+            origen = os.path.join(carpeta, subcarpeta)
+            if not os.path.isdir(origen):
+                continue
+            for nombre in sorted(os.listdir(origen)):
+                ruta = os.path.join(origen, nombre)
+                if not os.path.isfile(ruta):
+                    continue
+                if nombre in registrados:
+                    omitidos += 1
+                    continue
+                try:
+                    with open(ruta, "rb") as fh:
+                        data = fh.read()
+                except Exception as exc:
+                    errores.append(f"{nombre}: {exc}")
+                    continue
+                mime = _mime_archivo(nombre)
+                tipo_fila = tipo
+                rel = carpeta_rel
+                if _es_foto_nombre(nombre):
+                    tipo_fila = "foto"
+                    rel = "fotos"
+                elif _es_pdf_nombre(nombre):
+                    tipo_fila = "pdf"
+                    rel = "pdf"
+                try:
+                    if r2_activo():
+                        _url, object_key, public_url, backend = _guardar_binario(faena, rel, nombre, data, mime)
+                    else:
+                        object_key, public_url, backend = "", "", "pc"
+                except Exception as exc:
+                    errores.append(f"{nombre}: {exc}")
+                    continue
+                if tipo_fila == "foto":
+                    conn.execute(
+                        "INSERT INTO fotos_faena (faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
+                        (faena["id"], nombre, object_key or ruta, ""),
+                    )
+                _registrar_archivo(conn, faena["id"], tipo_fila, nombre, backend, object_key or ruta, public_url, mime, len(data))
+                registrados.add(nombre)
+                subidos += 1
+    conn.commit()
+    conn.close()
+    return {"subidos": subidos, "omitidos": omitidos, "errores": errores}
+
+
 def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
     numero = str(faena.get("numero") or faena.get("id") or "faena").strip()
     if r2_activo():
@@ -2801,10 +2899,11 @@ def _mime_por_extension(nombre):
 def listar_fotos(id):
     import base64
     conn = _conn_para_faena(id)
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    faena = fila_a_dict(faena)
 
     filas = conn.execute(
         "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
@@ -2812,8 +2911,9 @@ def listar_fotos(id):
     fotos = [_payload_foto(fila) for fila in filas_a_lista(filas)]
 
     # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
-    if faena["carpeta"]:
-        carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
+    carpeta_local = _resolver_carpeta_local(faena)
+    if carpeta_local:
+        carpeta_fotos = os.path.join(carpeta_local, "fotos")
         if os.path.exists(carpeta_fotos):
             registrados = {f["nombre"] for f in fotos}
             extensiones = {".jpg", ".jpeg", ".png", ".webp"}
@@ -2867,13 +2967,19 @@ def abrir_carpeta_fotos(id):
     return jsonify({"ok": True})
 
 # -------------------- DOCUMENTOS --------------------
+@app.route("/api/faenas/sincronizar-pc", methods=["POST"])
+def api_sincronizar_archivos_pc():
+    resultado = sincronizar_archivos_desde_pc()
+    return jsonify({"ok": True, "data": resultado})
+
 @app.route("/api/faenas/<int:id>/documentos", methods=["GET"])
 def listar_documentos(id):
     conn = _conn_para_faena(id)
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    faena = fila_a_dict(faena)
     vistos = set()
     archivos = []
     try:
@@ -2898,7 +3004,7 @@ def listar_documentos(id):
             "storage": fila.get("storage_backend") or "",
             "descarga": f"/api/faenas/{id}/documentos/{nombre}/descargar",
         })
-    carpeta = faena["carpeta"] if faena else ""
+    carpeta = _resolver_carpeta_local(faena)
     if carpeta:
         carpeta_docs = os.path.join(carpeta, "Documentos")
         if os.path.isdir(carpeta_docs):
