@@ -926,6 +926,32 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
   <div style="font-size:0.7rem;color:#aaa;margin-top:6px">Ctrl+Enter para enviar</div>
 
+  <div class="form-box" style="margin-top:18px;padding:12px 14px">
+    <div class="form-title">Memoria de Jimmi (TiDB)</div>
+    <p style="font-size:0.78rem;color:#888;margin-bottom:10px">Esto es lo que Jimmi recuerda. Puedes verlo, añadir una nota o borrar.</p>
+    <div style="font-size:0.75rem;color:#888;margin-bottom:8px" id="jimmi-ctx-fecha"></div>
+    <div style="overflow:auto;border:1px solid var(--sawdust);border-radius:6px;background:#fff;max-height:280px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.78rem;width:40px">#</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.78rem">Contexto</th>
+            <th style="width:80px"></th>
+          </tr>
+        </thead>
+        <tbody id="jimmi-ctx-filas"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-start">
+      <textarea id="jimmi-ctx-nuevo" rows="2" placeholder="Añadir un dato para Jimmi..." style="flex:1;font-size:0.85rem"></textarea>
+      <button class="btn btn-p btn-sm" onclick="añadirContextoJimmi()">Añadir</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-s btn-sm" onclick="cargarContextoJimmi()">⟳ Recargar</button>
+      <button class="btn btn-d btn-sm" onclick="vaciarContextoJimmi()">Vaciar todo</button>
+    </div>
+  </div>
+
   <!-- SUGERENCIAS -->
   <div style="margin-top:16px">
     <div style="font-size:0.72rem;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">
@@ -1391,7 +1417,7 @@ function nav(id) {
   if (id === "polyboard") poblarSelectPolyboard();
   if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
-  if (id === "asistente") { poblarSelectAsistente(); }
+  if (id === "asistente") { poblarSelectAsistente(); cargarContextoJimmi(); }
 }
 
 // ===== MODALES =====
@@ -2500,12 +2526,61 @@ async function enviarConsulta() {
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
-    if (data.ok) añadirMensaje(data.data.respuesta, "asistente"); else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
+    if (data.ok) { añadirMensaje(data.data.respuesta, "asistente"); cargarContextoJimmi(); } else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
   } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente"); }
   btn.disabled = false; btn.textContent = "Enviar";
 }
 function usarSugerencia(texto) { document.getElementById("chat-input").value = texto; document.getElementById("chat-input").focus(); }
-function limpiarChat() { const contenedor = document.getElementById("chat-mensajes"); contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:20px 0">🪵 Pregúntame lo que quieras sobre tus faenas</div>`; chatHistorial = []; }
+function limpiarChat() { const contenedor = document.getElementById("chat-mensajes"); contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:20px 0">🪵 Pregunta a Jimmi sobre tus faenas</div>`; chatHistorial = []; }
+
+async function cargarContextoJimmi() {
+  const tbody = document.getElementById("jimmi-ctx-filas");
+  const fechaEl = document.getElementById("jimmi-ctx-fecha");
+  if (!tbody) return;
+  const r = await api("GET", "/secretario/contexto");
+  if (!r.ok) {
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:10px;color:#a33">${esc(r.error || "No se pudo leer")}</td></tr>`;
+    return;
+  }
+  const lineas = (r.data && r.data.lineas) || [];
+  if (fechaEl) fechaEl.textContent = r.data.actualizado_en ? ("Actualizado: " + r.data.actualizado_en) : "";
+  if (!lineas.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="padding:12px;color:#aaa">Aún no hay contexto. Añade una nota o habla con Jimmi.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lineas.map((ln, i) => `<tr>
+    <td style="padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.78rem;color:#888">${i + 1}</td>
+    <td style="padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.85rem">${esc(ln)}</td>
+    <td style="padding:8px;border-bottom:1px solid var(--sawdust)"><button class="btn btn-d btn-sm" onclick="borrarLineaContextoJimmi(${i})">Eliminar</button></td>
+  </tr>`).join("");
+}
+
+async function añadirContextoJimmi() {
+  const el = document.getElementById("jimmi-ctx-nuevo");
+  const texto = ((el && el.value) || "").trim();
+  if (!texto) { toast("Escribe una nota", true); return; }
+  const r = await api("POST", "/secretario/contexto", { texto });
+  if (!r.ok) { toast(r.error || "No se pudo añadir", true); return; }
+  if (el) el.value = "";
+  toast("Nota añadida");
+  cargarContextoJimmi();
+}
+
+async function borrarLineaContextoJimmi(idx) {
+  if (!confirm("¿Eliminar esta línea de contexto?")) return;
+  const r = await api("DELETE", "/secretario/contexto/" + idx);
+  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  toast("Línea eliminada");
+  cargarContextoJimmi();
+}
+
+async function vaciarContextoJimmi() {
+  if (!confirm("¿Borrar toda la memoria de Jimmi?")) return;
+  const r = await api("DELETE", "/secretario/contexto");
+  if (!r.ok) { toast(r.error || "No se pudo vaciar", true); return; }
+  toast("Memoria vaciada");
+  cargarContextoJimmi();
+}
 
  init();
 </script>

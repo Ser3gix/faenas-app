@@ -25,7 +25,7 @@ from database import (
     fila_a_dict, filas_a_lista
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
-from secretario import chat_jimmi, cruzar_articulos, anotar_contexto
+from secretario import chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle, escribir_contexto, borrar_linea_contexto
 
 try:
     import sys
@@ -2302,6 +2302,41 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
 
 
 # -------------------- JIMMI --------------------
+@app.route("/api/secretario/contexto", methods=["GET"])
+def secretario_contexto_get():
+    return jsonify({"ok": True, "data": leer_contexto_detalle()})
+
+
+@app.route("/api/secretario/contexto", methods=["PUT"])
+def secretario_contexto_put():
+    datos = request.json or {}
+    escribir_contexto(datos.get("resumen") or "")
+    return jsonify({"ok": True, "data": leer_contexto_detalle()})
+
+
+@app.route("/api/secretario/contexto", methods=["POST"])
+def secretario_contexto_post():
+    datos = request.json or {}
+    texto = (datos.get("texto") or datos.get("nota") or "").strip()
+    if not texto:
+        return jsonify({"ok": False, "error": "Escribe el contexto a añadir"}), 400
+    anotar_contexto(texto)
+    return jsonify({"ok": True, "data": leer_contexto_detalle()})
+
+
+@app.route("/api/secretario/contexto", methods=["DELETE"])
+def secretario_contexto_borrar_todo():
+    escribir_contexto("")
+    return jsonify({"ok": True, "data": leer_contexto_detalle()})
+
+
+@app.route("/api/secretario/contexto/<int:idx>", methods=["DELETE"])
+def secretario_contexto_borrar_linea(idx):
+    if not borrar_linea_contexto(idx):
+        return jsonify({"ok": False, "error": "No se encontró esa línea"}), 404
+    return jsonify({"ok": True, "data": leer_contexto_detalle()})
+
+
 @app.route("/api/secretario/chat", methods=["POST"])
 def secretario_chat():
     datos = request.json or {}

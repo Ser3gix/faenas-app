@@ -17,6 +17,43 @@ def leer_contexto():
         conn.close()
 
 
+def leer_contexto_detalle():
+    conn = get_connection()
+    try:
+        fila = conn.execute("SELECT resumen FROM secretario_contexto WHERE id=1").fetchone()
+        if not fila:
+            return {"resumen": "", "lineas": [], "actualizado_en": ""}
+        resumen = (fila["resumen"] if isinstance(fila, dict) else fila[0]) or ""
+        actualizado = ""
+        try:
+            fila2 = conn.execute("SELECT actualizado_en FROM secretario_contexto WHERE id=1").fetchone()
+            if fila2:
+                actualizado = str(fila2["actualizado_en"] if isinstance(fila2, dict) else fila2[0] or "")
+        except Exception:
+            actualizado = ""
+        lineas = [ln.strip().lstrip("- ").strip() for ln in resumen.splitlines() if ln.strip()]
+        return {"resumen": resumen, "lineas": lineas, "actualizado_en": actualizado}
+    except Exception:
+        return {"resumen": "", "lineas": [], "actualizado_en": ""}
+    finally:
+        conn.close()
+
+
+def borrar_linea_contexto(indice):
+    detalle = leer_contexto_detalle()
+    lineas = detalle.get("lineas") or []
+    try:
+        idx = int(indice)
+    except Exception:
+        return False
+    if idx < 0 or idx >= len(lineas):
+        return False
+    lineas.pop(idx)
+    texto = "\n".join(f"- {ln}" for ln in lineas)
+    escribir_contexto(texto)
+    return True
+
+
 def escribir_contexto(resumen):
     texto = (resumen or "").strip()[:MAX_RESUMEN]
     conn = get_connection()
