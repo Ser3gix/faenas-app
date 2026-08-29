@@ -1293,13 +1293,15 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div class="modal">
     <div class="modal-title">☁ Cloudflare R2</div>
     <p style="font-size:0.82rem;color:#666;margin-bottom:12px;line-height:1.6">
-      En el PC se guarda en <code>.env</code> (junto a la app). Así el ordenador sube fotos y documentos a Cloudflare.
+      Tiene que ser la app del PC (<code>http://127.0.0.1:5000</code>), no Render.
+      El endpoint es el de <b>API S3</b> (<code>….r2.cloudflarestorage.com</code>), no la URL pública <code>r2.dev</code>.
     </p>
-    <div class="form-grid g1"><div><label>Endpoint</label><input id="r2-endpoint" placeholder="https://xxxxx.r2.cloudflarestorage.com"></div></div>
-    <div class="form-grid g1"><div><label>Bucket</label><input id="r2-bucket" placeholder="faenas"></div></div>
-    <div class="form-grid g1"><div><label>URL pública (opcional)</label><input id="r2-public" placeholder="https://pub-xxxxx.r2.dev"></div></div>
-    <div class="form-grid g1"><div><label>Access key</label><input id="r2-access" placeholder="Token R2"></div></div>
+    <div class="form-grid g1"><div><label>Endpoint (API S3)</label><input id="r2-endpoint" placeholder="https://abcd1234….r2.cloudflarestorage.com"></div></div>
+    <div class="form-grid g1"><div><label>Bucket</label><input id="r2-bucket" placeholder="nombre-del-bucket"></div></div>
+    <div class="form-grid g1"><div><label>URL pública (opcional, r2.dev)</label><input id="r2-public" placeholder="https://pub-xxxxx.r2.dev"></div></div>
+    <div class="form-grid g1"><div><label>Access key</label><input id="r2-access" placeholder="Access Key ID del token R2"></div></div>
     <div class="form-grid g1"><div><label>Secret key</label><input id="r2-secret" type="password" placeholder="Se conserva si lo dejas vacío"></div></div>
+    <p id="r2-msg" style="display:none;font-size:0.8rem;line-height:1.5;margin:8px 0 4px;color:#8b2020"></p>
     <div class="btn-row">
       <button class="btn btn-p" onclick="guardarConfigR2()">Probar y guardar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-r2')">Cerrar</button>
@@ -1326,6 +1328,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
 <script>
 const API = (function () {
+  const host = window.location.hostname || "";
+  const origenLocal = /^https?:$/i.test(window.location.protocol) && /^(localhost|127\.0\.0\.1)$/i.test(host);
+  if (origenLocal) return `${window.location.origin}/api`;
   const inyectada = String(window.FAENAS_API_BASE || "").trim().replace(/\/$/, "");
   if (inyectada) return inyectada.endsWith("/api") ? inyectada : `${inyectada}/api`;
   if (/^https?:$/i.test(window.location.protocol) && window.location.origin && window.location.origin !== "null") {
@@ -1412,34 +1417,62 @@ async function cargarEstadoR2() {
     if (d.r2_conectado) el.textContent = "Cloudflare OK";
     else if (d.r2_activo) el.textContent = "Cloudflare error";
     else el.textContent = "Cloudflare off";
+    document.getElementById("r2-banner").title = d.error || "Cloudflare R2";
     document.getElementById("r2-endpoint").value = d.endpoint || "";
     document.getElementById("r2-bucket").value = d.bucket || "";
     document.getElementById("r2-public").value = d.public_url || "";
+    if (d.error && !d.r2_conectado) {
+      const caja = document.getElementById("r2-msg");
+      if (caja) { caja.style.display = "block"; caja.textContent = d.error; }
+    }
   } catch (e) {}
 }
 
 function abrirConfigR2() {
+  if (/\.onrender\.com$/i.test(window.location.hostname || "")) {
+    toast("Estás en Render. En el PC abre http://127.0.0.1:5000 y pulsa ☁ Cloudflare", true);
+    return;
+  }
   const d = window._r2info || {};
   if (d.configurable === false) {
-    toast("En Render las claves van en Environment. Arranca el PC con Arrancar_Faenas.bat", true);
+    toast("En Render las claves van en Environment. En el PC abre http://127.0.0.1:5000", true);
     return;
   }
   abrirModal("m-r2");
 }
 
 async function guardarConfigR2() {
-  const r = await api("POST", "/config/r2", {
-    endpoint: document.getElementById("r2-endpoint").value,
-    bucket: document.getElementById("r2-bucket").value,
-    public_url: document.getElementById("r2-public").value,
-    access_key: document.getElementById("r2-access").value,
-    secret_key: document.getElementById("r2-secret").value
-  });
-  if (!r.ok) { toast(r.error || "No se pudo conectar a Cloudflare", true); return; }
-  toast("✓ PC conectado a Cloudflare R2");
-  document.getElementById("r2-secret").value = "";
-  cerrarModal("m-r2");
-  await cargarEstadoR2();
+  const caja = document.getElementById("r2-msg");
+  if (caja) { caja.style.display = "block"; caja.style.color = "#5c3d0e"; caja.textContent = "Probando conexión con Cloudflare…"; }
+  try {
+    const r = await fetch(API + "/config/r2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: document.getElementById("r2-endpoint").value,
+        bucket: document.getElementById("r2-bucket").value,
+        public_url: document.getElementById("r2-public").value,
+        access_key: document.getElementById("r2-access").value,
+        secret_key: document.getElementById("r2-secret").value
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (caja) { caja.style.color = "#8b2020"; caja.textContent = d.error || "No se pudo conectar a Cloudflare"; }
+      toast(d.error || "No se pudo conectar a Cloudflare", true);
+      return;
+    }
+    if (caja) { caja.style.color = "#3a6b3a"; caja.textContent = "PC conectado a Cloudflare R2"; }
+    toast("✓ PC conectado a Cloudflare R2");
+    document.getElementById("r2-secret").value = "";
+    cerrarModal("m-r2");
+    await cargarEstadoR2();
+  } catch (e) {
+    const err = e.name === "TimeoutError" ? "Tiempo de espera agotado al conectar con Cloudflare" : "Error de conexión con el servidor local";
+    if (caja) { caja.style.color = "#8b2020"; caja.textContent = err; }
+    toast(err, true);
+  }
 }
 
 // ===== API CALLS =====

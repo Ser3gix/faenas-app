@@ -8,3 +8,4 @@ pytesseract
 mysql-connector-python
 python-dotenv
 boto3
+certifi

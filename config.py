@@ -126,15 +126,16 @@ OBJECT_STORAGE_SECRET_KEY = (
 	or ""
 ).strip()
 
-def recargar_almacenamiento():
-	"""Vuelve a leer .env y actualiza las variables de Cloudflare R2."""
+def recargar_almacenamiento(desde_archivo=False):
+	"""Actualiza las variables de Cloudflare R2 desde el entorno (y opcionalmente desde .env)."""
 	global OBJECT_STORAGE_BACKEND, OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_PUBLIC_BASE_URL
 	global OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_REGION, OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY
-	try:
-		from dotenv import load_dotenv
-		load_dotenv(os.path.join(APP_DIR, ".env"), override=True)
-	except Exception:
-		pass
+	if desde_archivo:
+		try:
+			from dotenv import load_dotenv
+			load_dotenv(os.path.join(APP_DIR, ".env"), override=True)
+		except Exception:
+			pass
 	OBJECT_STORAGE_BACKEND = os.environ.get("OBJECT_STORAGE_BACKEND", "local").strip().lower()
 	OBJECT_STORAGE_BUCKET = os.environ.get("OBJECT_STORAGE_BUCKET", "").strip()
 	OBJECT_STORAGE_PUBLIC_BASE_URL = (
@@ -187,10 +188,16 @@ def escribir_env_r2(valores):
 			continue
 		actuales[nombre] = str(valor)
 		os.environ[nombre] = str(valor)
-	lineas = [f"{k}={v}" for k, v in actuales.items()]
+	def _linea_env(nombre, valor):
+		texto = str(valor)
+		if any(c in texto for c in ' #\t"\''):
+			texto = '"' + texto.replace("\\", "\\\\").replace('"', '\\"') + '"'
+		return f"{nombre}={texto}"
+
+	lineas = [_linea_env(k, v) for k, v in actuales.items()]
 	with open(ruta, "w", encoding="utf-8") as fh:
 		fh.write("\n".join(lineas) + ("\n" if lineas else ""))
-	recargar_almacenamiento()
+	recargar_almacenamiento(desde_archivo=True)
 
 
 # --- CURSOR ---

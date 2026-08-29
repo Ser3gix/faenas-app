@@ -24,7 +24,7 @@ from database import (
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
-from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
+from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente, normalizar_endpoint_r2, _limpiar_valor
 from secretario import chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle, escribir_contexto, borrar_linea_contexto
 
 try:
@@ -756,15 +756,19 @@ def get_storage_info():
 @app.route("/api/config/r2", methods=["POST"])
 def guardar_config_r2():
     if en_servidor_nube():
-        return jsonify({"ok": False, "error": "En Render las claves van en Environment. En el PC abre http://127.0.0.1:5000"}), 400
+        return jsonify({"ok": False, "error": "Estás en Render. Las claves no se guardan aquí. En el PC: Arrancar_Faenas.bat y abre http://127.0.0.1:5000"}), 400
     datos = request.json or {}
-    endpoint = (datos.get("endpoint") or "").strip().rstrip("/")
-    bucket = (datos.get("bucket") or "").strip()
-    access = (datos.get("access_key") or "").strip()
-    secret = (datos.get("secret_key") or "").strip()
-    public_url = (datos.get("public_url") or "").strip().rstrip("/")
-    if not endpoint or not bucket:
-        return jsonify({"ok": False, "error": "Faltan endpoint y bucket"}), 400
+    endpoint, err_ep = normalizar_endpoint_r2(datos.get("endpoint"))
+    if err_ep:
+        return jsonify({"ok": False, "error": err_ep}), 400
+    bucket = _limpiar_valor(datos.get("bucket"))
+    access = _limpiar_valor(datos.get("access_key"))
+    secret = _limpiar_valor(datos.get("secret_key"))
+    public_url = _limpiar_valor(datos.get("public_url")).rstrip("/")
+    if "r2.cloudflarestorage.com" in public_url.lower():
+        public_url = ""
+    if not bucket:
+        return jsonify({"ok": False, "error": "Falta el nombre del bucket"}), 400
     if not access or not secret:
         from config import OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY
         access = access or OBJECT_STORAGE_ACCESS_KEY
