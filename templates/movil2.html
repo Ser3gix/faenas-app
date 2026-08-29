@@ -690,18 +690,21 @@ textarea { resize: vertical; min-height: 80px; }
 .mat-precios { font-size: 0.8rem; color: #666; }
 .mat-precio-min { color: var(--green); font-weight: 500; }
 
-#sl-book { padding: 8px 8px 12px; }
-.book-grid { display: flex; flex-direction: column; gap: 12px; }
-.book-card { background: white; border: 1px solid var(--sawdust); border-radius: 10px; overflow: hidden; box-shadow: 2px 2px 0 var(--sawdust); }
+#sl-book { padding: 6px 0 8px; }
+.book-grid { display: flex; flex-direction: column; gap: 10px; }
+.book-card { position: relative; background: #1a1208; border: none; border-radius: 0; overflow: hidden; }
 .book-card img {
   width: 100%;
-  height: calc(100dvh - var(--header-h) - var(--bottom-h) - 92px);
-  object-fit: contain;
-  background: #1a1208;
+  height: calc(100dvh - var(--header-h) - var(--bottom-h) - 48px);
+  object-fit: cover;
   display: block;
 }
-.book-card-info { padding: 8px 10px; }
-.book-card-titulo { font-family: var(--font-serif); font-size: 0.88rem; color: var(--accent); }
+.book-card-info {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 28px 12px 10px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.72));
+}
+.book-card-titulo { font-family: var(--font-serif); font-size: 0.95rem; color: #f0deb4; }
 
 .foto-viewer {
   position: fixed; inset: 0;
@@ -840,7 +843,7 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- Slide 3: BOOK -->
   <div class="slide" id="sl-book">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 10px">
       <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">📸 Book</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-s btn-inline" onclick="configurarCarpetaBook()">📁</button>
@@ -3569,7 +3572,8 @@ async function cargarFotosDeCarpetaBook() {
 function renderBookMovil() {
   const el = document.getElementById("book-movil-galeria");
   const dirN = localStorage.getItem("book_dir_name");
-  if (dirN) { const inf = document.getElementById("book-carpeta-info"); if (inf) { inf.textContent = "📁 " + dirN; inf.style.display = "block"; } }
+  const inf = document.getElementById("book-carpeta-info");
+  if (inf) inf.style.display = "none";
   if (!bookDirHandle && !dirN) { el.innerHTML = `<div class="empty"><div class="empty-icon">📁</div>Configura la carpeta del book<br><small>Pulsa 📁 para elegir dónde guardar las fotos</small></div>`; return; }
   if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos.<br><small>Pulsa + Foto para añadir</small></div>`; return; }
   el.innerHTML = `<div class="book-grid">${bookCache.map((f,i) => `<div class="book-card"><img src="${f.data}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoGrande('${f.data}')" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`).join("")}</div>`;
