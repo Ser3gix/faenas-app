@@ -467,13 +467,15 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 }
 .foto-del {
   position: absolute;
-  top: 3px; right: 3px;
-  background: rgba(139,32,32,0.85);
+  top: 4px; right: 3px;
+  z-index: 2;
+  background: rgba(139,32,32,0.92);
   color: white;
   border: none;
   border-radius: 50%;
-  width: 20px; height: 20px;
-  font-size: 0.85rem;
+  width: 28px; height: 28px;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
@@ -1834,21 +1836,23 @@ function renderPanelFotos(f) {
   const syncFotos = f.fotos || [];
   const dirNombre = localStorage.getItem("fotos_dir_name") || "";
 
-  const gridLocal = localFotos.map(p => `
+  const gridLocal = localFotos.map((p, i) => `
     <div class="foto-thumb">
       <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoLocalMovil('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const gridPend = pending.map((p, i) => `
     <div class="foto-thumb">
       <img src="${p.data}" alt="Foto" loading="lazy" onclick="verFotoGrande('${p.data}')">
       <span class="foto-pending">⏳</span>
-      <button class="foto-del" onclick="eliminarFotoPendiente('${faenaId}',${i})">×</button>
+      <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoPendiente('${faenaId}',${i})">×</button>
     </div>`).join("");
 
-  const gridSync = syncFotos.map(p => `
+  const gridSync = syncFotos.map((p, i) => `
     <div class="foto-thumb">
       <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoSincronizada('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const totalFotos = syncFotos.length + pending.length;
@@ -2063,6 +2067,7 @@ async function enviarFotosPendientes() {
 }
 
 function eliminarFotoPendiente(faenaId, idx) {
+  if (!confirm("¿Eliminar esta foto?")) return;
   const cola = cargarCola();
   let cont = 0;
   cola.fotos = cola.fotos.filter(f => {
@@ -2073,6 +2078,46 @@ function eliminarFotoPendiente(faenaId, idx) {
   toast("Foto eliminada");
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (f) renderPanelFotos(f);
+}
+
+function eliminarFotoLocalMovil(faenaId, idx) {
+  if (!confirm("¿Eliminar esta foto?")) return;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f || !f.fotosLocalMovil) return;
+  f.fotosLocalMovil.splice(idx, 1);
+  toast("Foto eliminada");
+  renderPanelFotos(f);
+}
+
+async function eliminarFotoSincronizada(faenaId, idx) {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  const foto = f && f.fotos ? f.fotos[idx] : null;
+  if (!f || !foto) return;
+  if (!confirm("¿Eliminar esta foto?")) return;
+  const nombre = foto.nombre || "";
+  if (!nombre || String(faenaId).startsWith("temp")) {
+    f.fotos.splice(idx, 1);
+    renderPanelFotos(f);
+    toast("Foto eliminada");
+    return;
+  }
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/fotos/${encodeURIComponent(nombre)}`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(10000)
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      toast(d.error || "No se pudo eliminar la foto", true);
+      return;
+    }
+    f.fotos = (f.fotos || []).filter((_, i) => i !== idx);
+    if (f.fotosLocalMovil) f.fotosLocalMovil = f.fotosLocalMovil.filter(x => x.nombre !== nombre);
+    toast("Foto eliminada");
+    renderPanelFotos(f);
+  } catch (e) {
+    toast("No se pudo eliminar la foto", true);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
