@@ -39,7 +39,33 @@ else:
 
 # --- CARPETA DE DATOS ---
 # Aquí se guardan la base de datos y las carpetas de cada faena.
-CARPETA_RAIZ = os.path.join(APP_DIR, "datos")
+# En el PC suele ser "datos"; también se admite "faenas-datos" / "app.faenas-datos"
+# o FAENAS_DATOS (disco de Render).
+def _carpeta_abs(ruta):
+	return os.path.abspath(ruta) if ruta else ""
+
+
+def raices_datos():
+	candidatos = [
+		(os.environ.get("FAENAS_DATOS") or os.environ.get("CARPETA_DATOS") or "").strip(),
+		os.path.join(APP_DIR, "faenas-datos"),
+		os.path.join(APP_DIR, "app.faenas-datos"),
+		os.path.join(os.path.dirname(APP_DIR), "faenas-datos"),
+		os.path.join(os.path.dirname(APP_DIR), "app.faenas-datos"),
+		os.path.join(APP_DIR, "datos"),
+	]
+	vistas = []
+	for ruta in candidatos:
+		if not ruta:
+			continue
+		abs_ruta = _carpeta_abs(ruta)
+		if os.path.isdir(abs_ruta) and abs_ruta not in vistas:
+			vistas.append(abs_ruta)
+	return vistas
+
+
+_raices = raices_datos()
+CARPETA_RAIZ = _raices[0] if _raices else os.path.join(APP_DIR, "datos")
 
 # --- BASE DE DATOS ---
 DB_PATH = os.path.join(CARPETA_RAIZ, "faenas.db")

@@ -18,7 +18,7 @@ try:
 except Exception:
     pass
 
-from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET
+from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET, raices_datos
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
@@ -123,16 +123,22 @@ def _resolver_carpeta_local(faena):
     carpeta = (faena.get("carpeta") or "").strip() if faena else ""
     if carpeta and os.path.isdir(carpeta):
         return carpeta
+    nombre_carpeta = os.path.basename(carpeta.replace("\\", "/").rstrip("/")) if carpeta else ""
     numero = str((faena or {}).get("numero") or "").strip()
-    if not numero or not os.path.isdir(CARPETA_RAIZ):
-        return ""
-    try:
-        for nombre in os.listdir(CARPETA_RAIZ):
-            ruta = os.path.join(CARPETA_RAIZ, nombre)
-            if os.path.isdir(ruta) and (nombre == numero or nombre.startswith(numero + "_")):
-                return ruta
-    except Exception:
-        pass
+    for raiz in raices_datos() or [CARPETA_RAIZ]:
+        if nombre_carpeta:
+            candidato = os.path.join(raiz, nombre_carpeta)
+            if os.path.isdir(candidato):
+                return candidato
+        if not numero or not os.path.isdir(raiz):
+            continue
+        try:
+            for nombre in os.listdir(raiz):
+                ruta = os.path.join(raiz, nombre)
+                if os.path.isdir(ruta) and (nombre == numero or nombre.startswith(numero + "_")):
+                    return ruta
+        except Exception:
+            pass
     return ""
 
 
@@ -157,13 +163,12 @@ def sincronizar_archivos_desde_pc():
     subidos = 0
     omitidos = 0
     errores = []
+    faenas_con_carpeta = 0
     for faena in faenas:
         carpeta = _resolver_carpeta_local(faena)
         if not carpeta:
             continue
-        if carpeta != (faena.get("carpeta") or ""):
-            conn.execute("UPDATE faenas SET carpeta=? WHERE id=?", (carpeta, faena["id"]))
-            faena["carpeta"] = carpeta
+        faenas_con_carpeta += 1
         registrados = _nombres_ya_registrados(conn, faena["id"])
         recorridos = [
             ("fotos", "fotos", "foto"),
@@ -214,7 +219,14 @@ def sincronizar_archivos_desde_pc():
                 subidos += 1
     conn.commit()
     conn.close()
-    return {"subidos": subidos, "omitidos": omitidos, "errores": errores}
+    return {
+        "subidos": subidos,
+        "omitidos": omitidos,
+        "errores": errores,
+        "faenas": len(faenas),
+        "faenas_con_carpeta": faenas_con_carpeta,
+        "raices": raices_datos(),
+    }
 
 
 def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):

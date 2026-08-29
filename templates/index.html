@@ -1400,7 +1400,12 @@ async function sincronizarArchivosPC() {
     const n = d.data?.subidos || 0;
     const omitidos = d.data?.omitidos || 0;
     const err = (d.data?.errores || []).length;
-    toast(`✓ ${n} archivo${n===1?"":"s"} del PC. ${omitidos ? omitidos + " ya estaban. " : ""}${err ? err + " con error." : ""}`);
+    if (!n && !omitidos) {
+      const raices = (d.data?.raices || []).join(" · ") || "datos / faenas-datos";
+      toast("No hay carpetas de faena en " + raices, true);
+    } else {
+      toast(`✓ ${n} archivo${n===1?"":"s"} del PC. ${omitidos ? omitidos + " ya estaban. " : ""}${err ? err + " con error." : ""}`);
+    }
     await cargarFaenas();
     renderFaenas();
   } catch (e) {
