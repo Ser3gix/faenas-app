@@ -53,16 +53,6 @@ header {
   z-index: 60;
 }
 header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
-.sync-btn {
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: var(--wood-light);
-  padding: 5px 11px;
-  border-radius: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
 .offline-indicator {
   font-size: 0.75rem;
   background: rgba(255,255,255,0.15);
@@ -700,9 +690,16 @@ textarea { resize: vertical; min-height: 80px; }
 .mat-precios { font-size: 0.8rem; color: #666; }
 .mat-precio-min { color: var(--green); font-weight: 500; }
 
-.book-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.book-card { background: white; border: 1px solid var(--sawdust); border-radius: 8px; overflow: hidden; box-shadow: 2px 2px 0 var(--sawdust); }
-.book-card img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+#sl-book { padding: 8px 8px 12px; }
+.book-grid { display: flex; flex-direction: column; gap: 12px; }
+.book-card { background: white; border: 1px solid var(--sawdust); border-radius: 10px; overflow: hidden; box-shadow: 2px 2px 0 var(--sawdust); }
+.book-card img {
+  width: 100%;
+  height: calc(100dvh - var(--header-h) - var(--bottom-h) - 92px);
+  object-fit: contain;
+  background: #1a1208;
+  display: block;
+}
 .book-card-info { padding: 8px 10px; }
 .book-card-titulo { font-family: var(--font-serif); font-size: 0.88rem; color: var(--accent); }
 
@@ -747,7 +744,6 @@ textarea { resize: vertical; min-height: 80px; }
   <span style="font-size:1.3rem">🪵</span>
   <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
-  <button class="sync-btn" onclick="recargarDatos()">⟳ Recargar</button>
 </header>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
@@ -871,21 +867,6 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
   </div>
 
-  <!-- Slide 4: CONEXIÓN -->
-  <div class="slide" id="sl-sync">
-    <div class="ip-box">
-        <div class="form-title" style="margin-bottom:10px">⚙️ Conexión</div>
-        <div style="font-size:0.85rem;color:#888;margin-bottom:12px;line-height:1.6">El móvil habla con Render. Abre esta página en la URL de Render; no hace falta IP del PC.</div>
-        <div class="field">
-          <label>API</label>
-          <div id="api-url-actual" style="font-size:0.82rem;word-break:break-all;color:var(--accent)"></div>
-        </div>
-    </div>
-    <div style="margin-top:10px">
-      <button class="btn btn-d" onclick="limpiarCacheLocal()">🗑️ Borrar caché del móvil</button>
-    </div>
-  </div>
-
 </div><!-- fin main-carousel -->
 
 <!-- ═══════════ BOTTOM NAV ═══════════ -->
@@ -894,7 +875,6 @@ textarea { resize: vertical; min-height: 80px; }
   <button id="nav-tickets" onclick="navTo(1)"><span class="ni">🎫</span>Tickets</button>
   <button id="nav-book" onclick="navTo(2)"><span class="ni">📸</span>Book</button>
   <button id="nav-ia" onclick="navTo(3)"><span class="ni">🧑‍💼</span>Jimmi</button>
-  <button id="nav-sync" onclick="navTo(4)"><span class="ni">⚙️</span>Conexión</button>
 </nav>
 
 <!-- ═══════════ FAENA OVERLAY ═══════════ -->
@@ -1292,7 +1272,7 @@ async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.7
 // NAVEGACIÓN PRINCIPAL (carousel)
 // ═══════════════════════════════════════════════════════════
 
-const NAV_IDS = ["nav-faenas","nav-tickets","nav-book","nav-ia","nav-sync"];
+const NAV_IDS = ["nav-faenas","nav-tickets","nav-book","nav-ia"];
 
 function navTo(idx) {
   const c = document.getElementById("main-carousel");
@@ -1305,8 +1285,6 @@ function navTo(idx) {
   if (idx === 2) renderBookMovil();
   if (idx === 3) actualizarSelectorFaenasIA();
 }
-
-function irASync() { navTo(4); }
 
 // Actualizar nav al hacer swipe manual
 document.getElementById("main-carousel").addEventListener("scroll", function() {
@@ -3983,8 +3961,6 @@ async function recargarDatos() {
 // ═══════════════════════════════════════════════════════════
 
 async function init() {
-  const apiEl = document.getElementById("api-url-actual");
-  if (apiEl) apiEl.textContent = getServerUrl();
   actualizarPanelConsultaIA();
   resetearConsultaIA();
   // Mostrar cargando y cargar desde la nube
