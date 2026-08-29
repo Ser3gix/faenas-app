@@ -24,7 +24,7 @@ from database import (
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
-from object_storage import r2_activo, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
+from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
 
 try:
     import sys
@@ -135,6 +135,27 @@ def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
     with open(ruta, "wb") as fh:
         fh.write(data)
     return ruta, "", "", "local"
+
+
+def _payload_foto(fila):
+    ruta = (fila.get("ruta_foto") or "").strip()
+    contenido = (fila.get("data_base64") or "").strip()
+    if contenido:
+        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
+    else:
+        data = _url_desde_ruta(ruta)
+        if not data and ruta and os.path.exists(ruta):
+            try:
+                with open(ruta, "rb") as f:
+                    data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
+            except Exception:
+                data = ""
+    return {
+        "id": fila.get("id"),
+        "nombre": fila.get("nombre"),
+        "ruta": ruta,
+        "data": data,
+    }
 
 
 def _url_desde_ruta(ruta):
@@ -2427,7 +2448,14 @@ def ia_guardar_json():
 # -------------------- SINCRONIZACIÓN WiFi --------------------
 @app.route("/api/sync/estado", methods=["GET"])
 def sync_estado():
-    return jsonify({"ok": True, "data": {"estado": "disponible"}})
+    return jsonify({
+        "ok": True,
+        "data": {
+            "estado": "disponible",
+            "r2": r2_listo(),
+            "r2_error": r2_error(),
+        },
+    })
 
 @app.route("/api/sync/datos", methods=["GET"])
 def sync_datos():
@@ -2460,7 +2488,20 @@ def sync_datos():
             gastos_lista = []
         faena["presupuesto"] = presupuesto_lista
         faena["gastos"] = gastos_lista
+        faena["fotos"] = []
         resultado.append(faena)
+    if resultado:
+        ids = [f["id"] for f in resultado]
+        placeholders = ",".join(["?"] * len(ids))
+        filas_fotos = conn.execute(
+            f"SELECT * FROM fotos_faena WHERE faena_id IN ({placeholders}) ORDER BY id ASC",
+            ids,
+        ).fetchall()
+        por_faena = {}
+        for fila in filas_a_lista(filas_fotos):
+            por_faena.setdefault(fila.get("faena_id"), []).append(_payload_foto(fila))
+        for faena in resultado:
+            faena["fotos"] = por_faena.get(faena["id"], [])
     conn.close()
     return jsonify({"ok": True, "data": resultado})
 
@@ -2663,21 +2704,7 @@ def listar_fotos(id):
     filas = conn.execute(
         "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
     ).fetchall()
-    fotos = []
-    for fila in filas_a_lista(filas):
-        contenido = (fila.get("data_base64") or "").strip()
-        ruta = fila.get("ruta_foto") or ""
-        if contenido:
-            data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
-        else:
-            data = _url_desde_ruta(ruta)
-            if not data and ruta and os.path.exists(ruta):
-                try:
-                    with open(ruta, "rb") as f:
-                        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
-                except Exception:
-                    data = ""
-        fotos.append({"id": fila.get("id"), "nombre": fila.get("nombre"), "ruta": ruta, "data": data})
+    fotos = [_payload_foto(fila) for fila in filas_a_lista(filas)]
 
     # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
     if faena["carpeta"]:

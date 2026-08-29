@@ -82,7 +82,11 @@ PUBLIC_BASE_URL = _public_base_url
 # Metadatos en TiDB; binarios en S3/R2/Supabase Storage u otro backend compatible.
 OBJECT_STORAGE_BACKEND = os.environ.get("OBJECT_STORAGE_BACKEND", "local").strip().lower()
 OBJECT_STORAGE_BUCKET = os.environ.get("OBJECT_STORAGE_BUCKET", "").strip()
-OBJECT_STORAGE_PUBLIC_BASE_URL = os.environ.get("OBJECT_STORAGE_PUBLIC_BASE_URL", "").strip().rstrip("/")
+OBJECT_STORAGE_PUBLIC_BASE_URL = (
+	os.environ.get("OBJECT_STORAGE_PUBLIC_BASE_URL")
+	or os.environ.get("OBJECT_STORAGE_PUBLIC_URL")
+	or ""
+).strip().rstrip("/")
 OBJECT_STORAGE_ENDPOINT = os.environ.get("OBJECT_STORAGE_ENDPOINT", "").strip().rstrip("/")
 OBJECT_STORAGE_REGION = os.environ.get("OBJECT_STORAGE_REGION", "auto").strip() or "auto"
 OBJECT_STORAGE_ACCESS_KEY = (

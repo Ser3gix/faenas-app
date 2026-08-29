@@ -1375,10 +1375,23 @@ function abrirFaena(id) {
   renderPanelDocumentos(f);
   renderPanelFotos(f);
   renderPanelGastos(f);
+  cargarFotosFaena(f);
   // Ir al panel guardado
   const pc = document.getElementById("panel-carousel");
   pc.scrollTo({ left: state.panelActual * window.innerWidth, behavior: "instant" });
   actualizarTabPanel(state.panelActual);
+}
+
+async function cargarFotosFaena(f) {
+  if (!f || !f.id || String(f.id).startsWith("temp")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/fotos`, { signal: AbortSignal.timeout(15000) });
+    const d = await r.json();
+    if (d.ok) {
+      f.fotos = d.data || [];
+      if (String(state.faenaActualId) === String(f.id || f._tempId)) renderPanelFotos(f);
+    }
+  } catch (e) {}
 }
 
 function cerrarFaena() {
@@ -2013,7 +2026,7 @@ async function procesarListaFotos(files) {
 }
 
 async function subirFotoAlServidor(faenaId, nombre, data) {
-  if (!faenaId || String(faenaId).startsWith("temp")) return;
+  if (!faenaId || String(faenaId).startsWith("temp")) return false;
   try {
     const r = await fetch(`${getServerUrl()}/sync/fotos`, {
       method: "POST",
@@ -2022,7 +2035,10 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       signal: AbortSignal.timeout(30000)
     });
     const d = await r.json();
-    if (!d.ok) return;
+    if (!d.ok) {
+      toast(d.error || "La foto no se pudo guardar en la nube", true);
+      return false;
+    }
     const cola = cargarCola();
     cola.fotos = cola.fotos.filter(x => !(String(x.faena_id) === String(faenaId) && x.nombre === nombre));
     guardarCola(cola);
@@ -2032,7 +2048,18 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       f.fotos.push({ nombre: d.data.nombre || nombre, data, _local: false });
       if (f.fotosLocalMovil) f.fotosLocalMovil = f.fotosLocalMovil.filter(x => x.nombre !== nombre);
     }
-  } catch (e) {}
+    return true;
+  } catch (e) {
+    toast("Sin conexión: la foto queda pendiente en el móvil", true);
+    return false;
+  }
+}
+
+async function enviarFotosPendientes() {
+  const cola = cargarCola();
+  for (const foto of cola.fotos || []) {
+    await subirFotoAlServidor(foto.faena_id, foto.nombre, foto.data);
+  }
 }
 
 function eliminarFotoPendiente(faenaId, idx) {
@@ -3705,13 +3732,22 @@ async function sincronizar() {
 
     // Fotos de obra
     let fotosEnviadas = 0;
+    const fotosOk = new Set();
     if (cola.fotos.length) {
       estado.textContent = `✓ Subiendo ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}...`;
       for (const foto of cola.fotos) {
         try {
           const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
           const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
-          if (r.ok) { const d = await r.json(); if (d.ok) fotosEnviadas++; }
+          if (r.ok) {
+            const d = await r.json();
+            if (d.ok) {
+              fotosEnviadas++;
+              fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
+            } else {
+              toast(d.error || "Una foto no se pudo guardar en la nube", true);
+            }
+          }
         } catch(e) {}
       }
       estado.textContent = `✓ ${fotosEnviadas} foto${fotosEnviadas>1?"s":""} subida${fotosEnviadas>1?"s":""}...`;
@@ -3759,8 +3795,21 @@ async function sincronizar() {
 
     await sincronizarBook(API);
 
-    // Limpiar cola
-    guardarCola({ clientes:[], faenas:[], anotaciones:[], anotacionesEditar:[], anotacionesEliminar:[], fotos:[], ticketFotos:[], tickets:[], faenasEditar:[], definicionesPendientes:[], bookEliminar:[], bookPendiente:[] });
+    // Limpiar cola (las fotos que no subieron se quedan en el móvil)
+    guardarCola({
+      clientes:[],
+      faenas:[],
+      anotaciones:[],
+      anotacionesEditar:[],
+      anotacionesEliminar:[],
+      fotos: (cola.fotos || []).filter(foto => !fotosOk.has(`${foto.faena_id}::${foto.nombre}`)),
+      ticketFotos:[],
+      tickets:[],
+      faenasEditar:[],
+      definicionesPendientes:[],
+      bookEliminar:[],
+      bookPendiente:[]
+    });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
     document.getElementById("ultima-sync").textContent = ahora;
@@ -3871,6 +3920,7 @@ async function recargarDatos() {
   state._cargando = true;
   renderFaenas();
   await cargarDatosIniciales();
+  await enviarFotosPendientes();
   state._cargando = false;
   renderFaenas();
   renderMateriales();
@@ -3890,6 +3940,7 @@ async function init() {
   renderFaenas();
   renderMateriales();
   await cargarDatosIniciales();
+  await enviarFotosPendientes();
   state._cargando = false;
   renderFaenas();
   renderMateriales();

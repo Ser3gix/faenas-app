@@ -10,6 +10,7 @@ from config import (
 )
 
 _cliente = None
+_error_cliente = ""
 
 
 def r2_activo():
@@ -23,8 +24,20 @@ def r2_activo():
     )
 
 
+def r2_listo():
+    return _get_cliente() is not None
+
+
+def r2_error():
+    if r2_listo():
+        return ""
+    if not r2_activo():
+        return "Faltan variables de Cloudflare R2"
+    return _error_cliente or "No se pudo conectar a Cloudflare R2"
+
+
 def _get_cliente():
-    global _cliente
+    global _cliente, _error_cliente
     if _cliente is not None:
         return _cliente
     if not r2_activo():
@@ -32,17 +45,37 @@ def _get_cliente():
     try:
         import boto3
         from botocore.config import Config as BotoConfig
-    except Exception:
+    except Exception as exc:
+        _error_cliente = "Falta el paquete boto3 en el servidor"
+        print(f"✗ Cloudflare R2: {_error_cliente} ({exc})")
         return None
-    _cliente = boto3.client(
-        "s3",
-        endpoint_url=OBJECT_STORAGE_ENDPOINT,
-        aws_access_key_id=OBJECT_STORAGE_ACCESS_KEY,
-        aws_secret_access_key=OBJECT_STORAGE_SECRET_KEY,
-        region_name=OBJECT_STORAGE_REGION or "auto",
-        config=BotoConfig(signature_version="s3v4"),
+    kwargs = dict(
+        signature_version="s3v4",
+        s3={"addressing_style": "path"},
     )
-    return _cliente
+    try:
+        boto_config = BotoConfig(
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+            **kwargs,
+        )
+    except TypeError:
+        boto_config = BotoConfig(**kwargs)
+    try:
+        _cliente = boto3.client(
+            "s3",
+            endpoint_url=OBJECT_STORAGE_ENDPOINT,
+            aws_access_key_id=OBJECT_STORAGE_ACCESS_KEY,
+            aws_secret_access_key=OBJECT_STORAGE_SECRET_KEY,
+            region_name=OBJECT_STORAGE_REGION or "auto",
+            config=boto_config,
+        )
+        _error_cliente = ""
+        return _cliente
+    except Exception as exc:
+        _error_cliente = str(exc)
+        print(f"✗ Cloudflare R2: {exc}")
+        return None
 
 
 def clave_objeto(*partes):
@@ -77,7 +110,7 @@ def url_publica(object_key):
 def subir_bytes(object_key, data, content_type="application/octet-stream"):
     cliente = _get_cliente()
     if not cliente:
-        return {"ok": False, "error": "Cloudflare R2 no está configurado"}
+        return {"ok": False, "error": r2_error() or "Cloudflare R2 no está configurado"}
     cliente.put_object(
         Bucket=OBJECT_STORAGE_BUCKET,
         Key=object_key,
