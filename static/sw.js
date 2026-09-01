@@ -4,7 +4,7 @@
 // Versión 2 — cachea la app completa en la instalación
 // ============================================================
 
-const CACHE = "faenas-v16";
+const CACHE = "faenas-v17";
 const ARCHIVOS_CACHE = [
   "/movil2",
   "/static/manifest.json",
@@ -40,12 +40,15 @@ self.addEventListener("fetch", e => {
   const esPagina = e.request.mode === "navigate" || url.includes("/movil2") || url.includes("/static/sw.js");
   if (esPagina) {
     e.respondWith(
-      fetch(e.request).then(res => {
-        if (res.ok && e.request.method === "GET") {
-          caches.open(CACHE).then(cache => cache.put(e.request, res.clone()));
-        }
-        return res;
-      }).catch(() => caches.match(e.request))
+      caches.open(CACHE).then(cache =>
+        cache.match(e.request).then(cached => {
+          const networkFetch = fetch(e.request).then(res => {
+            if (res.ok && e.request.method === "GET") cache.put(e.request, res.clone());
+            return res;
+          }).catch(() => cached || null);
+          return cached || networkFetch;
+        })
+      )
     );
     return;
   }

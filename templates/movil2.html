@@ -3975,7 +3975,7 @@ async function sincronizar() {
   if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
 }
 
-async function cargarDatosIniciales() {
+async function cargarDatosIniciales(silencioso) {
   const API = getServerUrl();
   const optsTimeout = (ms) => {
     try {
@@ -4045,7 +4045,7 @@ async function cargarDatosIniciales() {
   }
 
   if (!faenasCargadas) {
-    toast("No se pudo cargar faenas del servidor", true);
+    if (!silencioso && !state.faenas.length) toast("No se pudo cargar faenas del servidor", true);
     incorporarFaenasPendientes();
   }
   const subidas = await enviarFaenasPendientes();
@@ -4065,44 +4065,82 @@ async function cargarDatosIniciales() {
   await sincronizarBook(API);
 }
 
-async function recargarDatos() {
-  state._cargando = true;
-  renderFaenas();
-  await cargarDatosIniciales();
-  await enviarFotosPendientes();
-  state._cargando = false;
+function leerJSONLocal(clave, fallback) {
+  try {
+    const v = JSON.parse(localStorage.getItem(clave) || "null");
+    return v == null ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function hidratarDesdeCache() {
+  const faenas = leerJSONLocal("faenas_cache", []);
+  const clientes = leerJSONLocal("clientes_cache", []);
+  const materiales = leerJSONLocal("materiales_cache", []);
+  if (Array.isArray(faenas) && faenas.length) state.faenas = faenas;
+  if (Array.isArray(clientes) && clientes.length) state.clientes = clientes;
+  if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
+  incorporarFaenasPendientes();
+}
+
+function refrescarPantallaActual() {
   renderFaenas();
   renderMateriales();
   renderBookMovil();
+  actualizarPanelConsultaIA();
+  if (!state.faenaActualId) return;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+  if (f && document.getElementById("faena-overlay")?.classList.contains("open")) {
+    renderPanelDatos(f);
+    renderPanelPresupuesto(f);
+    renderPanelDocumentos(f);
+    renderPanelFotos(f);
+    renderPanelGastos(f);
+  }
+}
+
+let _fondoEnCurso = false;
+async function actualizarEnSegundoPlano() {
+  if (_fondoEnCurso) return;
+  _fondoEnCurso = true;
+  try {
+    await cargarDatosIniciales(true);
+    await enviarFotosPendientes();
+    state._cargando = false;
+    refrescarPantallaActual();
+  } catch (e) {
+    console.warn("Actualización en segundo plano:", e);
+    state._cargando = false;
+  }
+  _fondoEnCurso = false;
+}
+
+async function recargarDatos() {
+  await actualizarEnSegundoPlano();
   toast("✓ Datos actualizados");
 }
 
-// ═══════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════
-
 async function init() {
-  actualizarPanelConsultaIA();
-  resetearConsultaIA();
-  // Mostrar cargando y cargar desde la nube
-  state._cargando = true;
-  renderFaenas();
-  renderMateriales();
-  await cargarDatosIniciales();
-  await enviarFotosPendientes();
-  state._cargando = false;
-  renderFaenas();
-  renderMateriales();
-  renderBookMovil();
-  actualizarPanelConsultaIA();
-  // Service Worker
+  hidratarDesdeCache();
+  state._cargando = !state.faenas.length;
+  refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=16", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=17", { updateViaCache: "none" }).catch(() => {});
   }
-  // Offline indicator
-  window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
-  window.addEventListener("offline", () => document.getElementById("offline-ind").classList.add("show"));
-  if (!navigator.onLine) document.getElementById("offline-ind").classList.add("show");
+  window.addEventListener("online",  () => {
+    document.getElementById("offline-ind")?.classList.remove("show");
+    actualizarEnSegundoPlano();
+  });
+  window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
+  if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") actualizarEnSegundoPlano();
+  });
+  window.addEventListener("pageshow", ev => {
+    if (ev.persisted) actualizarEnSegundoPlano();
+  });
+  actualizarEnSegundoPlano();
 }
 
 init();
