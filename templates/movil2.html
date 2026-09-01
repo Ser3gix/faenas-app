@@ -1125,6 +1125,92 @@ function guardarCola(c) {
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
 }
 
+function esIdTemporalCliente(id) {
+  const s = String(id || "");
+  return !s || s.startsWith("TEMP-");
+}
+
+function incorporarFaenasPendientes() {
+  const cola = cargarCola();
+  for (const f of (cola.faenas || [])) {
+    const ya = state.faenas.some(x =>
+      String(x._tempId || "") === String(f._tempId || "") ||
+      (x.id && f.id && String(x.id) === String(f.id))
+    );
+    if (!ya) state.faenas.unshift({ ...f, _offline: true });
+  }
+}
+
+async function enviarFaenasPendientes() {
+  const API = getServerUrl();
+  const cola = cargarCola();
+  const mapaClientes = {};
+  for (const c of (cola.clientes || [])) {
+    try {
+      const r = await fetch(`${API}/clientes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: c.nombre,
+          telefono: c.telefono || "",
+          direccion: c.direccion || "",
+          email: c.email || "",
+          intermediario_id: 0
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await r.json();
+      if (d.ok && d.data && d.data.id) {
+        mapaClientes[c._tempId] = d.data.id;
+        const local = state.clientes.find(x => String(x.id || x._tempId) === String(c._tempId));
+        if (local) { local.id = d.data.id; delete local._offline; }
+      }
+    } catch (e) {
+      console.error("Error subiendo cliente:", e);
+    }
+  }
+  cola.clientes = (cola.clientes || []).filter(c => !mapaClientes[c._tempId]);
+
+  const subidas = [];
+  for (const f of (cola.faenas || [])) {
+    try {
+      let clienteId = mapaClientes[f._clienteTempId] || mapaClientes[f.cliente_id] || f.cliente_id;
+      if (esIdTemporalCliente(clienteId)) continue;
+      const r = await fetch(`${API}/faenas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: Number(clienteId) || clienteId,
+          intermediario_id: f.intermediario_id || 0,
+          direccion: f.direccion || "",
+          tipo_trabajo: f.tipo_trabajo,
+          importe: f.importe || 0,
+          fecha_inicio: f.fecha_inicio || new Date().toISOString().slice(0, 10)
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await r.json();
+      if (d.ok && d.data && d.data.id) {
+        subidas.push(String(f._tempId));
+        const local = state.faenas.find(x => String(x._tempId) === String(f._tempId));
+        if (local) {
+          local.id = d.data.id;
+          local.numero = d.data.numero;
+          local._offline = false;
+          delete local._tempId;
+        }
+      }
+    } catch (e) {
+      console.error("Error subiendo faena:", e);
+    }
+  }
+  cola.faenas = (cola.faenas || []).filter(f => !subidas.includes(String(f._tempId)));
+  guardarCola(cola);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+  return subidas.length;
+}
+
 const state = {
   faenas:        [],
   clientes:      [],
@@ -2596,12 +2682,6 @@ async function crearFaena() {
     clienteId = clienteSel;
     const c = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(clienteSel));
     clienteNombre = c?.nombre || "—";
-    if (c) {
-      const telInput = document.getElementById("nf-tel");
-      const dirInput = document.getElementById("nf-dir");
-      if (telInput) telInput.value = c.telefono || "";
-      if (dirInput) dirInput.value = c.direccion || "";
-    }
   }
   const tipo = document.getElementById("nf-tipo").value.trim();
   if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
@@ -2615,15 +2695,17 @@ async function crearFaena() {
     direccion: document.getElementById("nf-dir").value,
     tipo_trabajo: tipo,
     importe: parseFloat(document.getElementById("nf-importe").value) || 0,
+    fecha_inicio: new Date().toISOString().slice(0, 10),
     archivada: 0, anotaciones: [], fotos: [], gastos: [], _offline: true
   };
   cola.faenas.push(faena);
   guardarCola(cola);
   state.faenas.unshift(faena);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-  toast("✓ Faena creada — se sincronizará al llegar a casa");
+  const subidas = await enviarFaenasPendientes();
   renderFaenas();
   cerrarModal("m-nueva-faena");
+  toast(subidas ? "✓ Faena guardada" : "✓ Faena en el móvil — se subirá al conectar");
   // Limpiar
   ["nf-tel","nf-dir","nf-tipo","nf-importe","nc-nombre","nc-tel","nc-dir","nc-email"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   document.getElementById("nf-cliente-sel").value = "";
@@ -3689,10 +3771,10 @@ function limpiarCacheLocal() {
 
 async function sincronizar() {
   const btn = document.getElementById("btn-sync");
-  const estado = document.getElementById("sync-estado");
+  const estado = document.getElementById("sync-estado") || { textContent: "", className: "" };
   let API = getServerUrl();
-  btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...';
-  btn.disabled = true; estado.textContent = ""; estado.className = "sync-estado";
+  if (btn) { btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...'; btn.disabled = true; }
+  if (estado) { estado.textContent = ""; estado.className = "sync-estado"; }
 
   const cola = cargarCola();
   try {
@@ -3860,7 +3942,7 @@ async function sincronizar() {
     });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
-    document.getElementById("ultima-sync").textContent = ahora;
+    document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
 
     renderFaenas();
     renderMateriales();
@@ -3884,12 +3966,13 @@ async function sincronizar() {
     estado.className = "sync-estado sync-ok";
     toast("✓ Sincronización completada");
   } catch(e) {
-    estado.textContent = `✗ Error: ${e.message}`;
-    estado.className = "sync-estado sync-error";
+    if (estado) {
+      estado.textContent = `✗ Error: ${e.message}`;
+      estado.className = "sync-estado sync-error";
+    }
     toast("Error: " + e.message, true);
   }
-  btn.innerHTML = "⟳ &nbsp; Sincronizar ahora";
-  btn.disabled = false;
+  if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
 }
 
 async function cargarDatosIniciales() {
@@ -3910,6 +3993,7 @@ async function cargarDatosIniciales() {
       const d = await rFaenas.json();
       if (d.ok && Array.isArray(d.data)) {
         state.faenas = d.data;
+        incorporarFaenasPendientes();
         localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
         faenasCargadas = true;
       }
@@ -3926,6 +4010,7 @@ async function cargarDatosIniciales() {
         const d = await rFaenasSimple.json();
         if (d.ok && Array.isArray(d.data)) {
           state.faenas = d.data;
+          incorporarFaenasPendientes();
           localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
           faenasCargadas = true;
         }
@@ -3961,6 +4046,21 @@ async function cargarDatosIniciales() {
 
   if (!faenasCargadas) {
     toast("No se pudo cargar faenas del servidor", true);
+    incorporarFaenasPendientes();
+  }
+  const subidas = await enviarFaenasPendientes();
+  if (subidas) {
+    try {
+      const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
+      if (rFaenas.ok) {
+        const d = await rFaenas.json();
+        if (d.ok && Array.isArray(d.data)) {
+          state.faenas = d.data;
+          incorporarFaenasPendientes();
+          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        }
+      }
+    } catch (e) {}
   }
   await sincronizarBook(API);
 }
