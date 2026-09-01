@@ -1059,6 +1059,27 @@ def _conn_para_faena(faena_id):
     conn.close()
     return get_sqlite_local()
 
+
+def _omitir_sync_faena(faena_id):
+    """Motivo para no sincronizar a una faena (archivada o ya no existe)."""
+    if not faena_id:
+        return "no_encontrada"
+    conn = get_connection()
+    fila = conn.execute("SELECT id, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+    conn.close()
+    if not fila:
+        conn2 = get_sqlite_local()
+        fila = conn2.execute("SELECT id, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        conn2.close()
+    if not fila:
+        return "no_encontrada"
+    try:
+        if int(fila["archivada"] or 0) == 1:
+            return "archivada"
+    except (TypeError, ValueError):
+        pass
+    return None
+
 @app.route("/api/faenas", methods=["GET"])
 def get_faenas():
     conn = get_connection()
@@ -3061,11 +3082,14 @@ def sync_fotos():
     data_b64 = datos.get("data", "")
     if not faena_id or not data_b64:
         return jsonify({"ok": False, "error": "Faltan datos"}), 400
+    motivo = _omitir_sync_faena(faena_id)
+    if motivo:
+        return jsonify({"ok": True, "omitida": True, "motivo": motivo})
     conn = get_connection()
     faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
     if not faena:
         conn.close()
-        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+        return jsonify({"ok": True, "omitida": True, "motivo": "no_encontrada"})
     if not faena["carpeta"] and not r2_activo():
         conn.close()
         return jsonify({"ok": False, "error": "Faena o carpeta no encontrada"}), 404
@@ -3689,11 +3713,18 @@ def crear_book():
     conn = get_connection()
     numero_faena = "generico"
     if faena_id and faena_id != 0:
-        faena = conn.execute("SELECT numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
-        if not faena:
-            conn.close()
-            return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-        numero_faena = faena["numero"]
+        faena = conn.execute("SELECT numero, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        archivada = False
+        if faena:
+            try:
+                archivada = int(faena["archivada"] or 0) == 1
+            except (TypeError, ValueError):
+                archivada = False
+        if not faena or archivada:
+            faena_id = 0
+            numero_faena = "generico"
+        else:
+            numero_faena = faena["numero"]
     nombre_foto = f"book_{numero_faena}_{int(time.time() * 1000)}.jpg"
     try:
         if r2_activo():

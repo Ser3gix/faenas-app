@@ -2003,6 +2003,10 @@ async function archivar(id) {
   enlace.click();
   enlace.remove();
   toast("Faena archivada. Guarda el ZIP en el PC.");
+  if (String(state.detalleId) === String(id)) {
+    cerrarModal("m-detalle");
+    state.detalleId = null;
+  }
   await cargarFaenas(); renderFaenas();
 }
 async function toggleArchivadas() {

@@ -1125,6 +1125,49 @@ function guardarCola(c) {
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
 }
 
+function idsFaenasVivas() {
+  const ids = new Set();
+  const cola = cargarCola();
+  for (const f of [...(state.faenas || []), ...(cola.faenas || [])]) {
+    if (Number(f.archivada) === 1) continue;
+    if (f.id != null && f.id !== "") ids.add(String(f.id));
+    if (f._tempId) ids.add(String(f._tempId));
+  }
+  return ids;
+}
+
+function faenaIdSigueViva(id, vivos) {
+  if (id == null || id === "" || id === 0 || id === "0") return true;
+  const s = String(id);
+  if (s.startsWith("temp") || s.startsWith("TEMP-")) return true;
+  return vivos.has(s);
+}
+
+function aplicarFaenasServidor(lista) {
+  const activas = (Array.isArray(lista) ? lista : []).filter(f => Number(f.archivada) !== 1);
+  state.faenas = activas;
+  incorporarFaenasPendientes();
+  purgarRegistrosDeFaenasInactivas();
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+}
+
+function purgarRegistrosDeFaenasInactivas() {
+  const vivos = idsFaenasVivas();
+  const cola = cargarCola();
+  const porFaena = arr => (arr || []).filter(x => faenaIdSigueViva(x && x.faena_id, vivos));
+  cola.fotos = porFaena(cola.fotos);
+  cola.ticketFotos = porFaena(cola.ticketFotos);
+  cola.anotaciones = porFaena(cola.anotaciones);
+  cola.gastos = porFaena(cola.gastos);
+  cola.tickets = porFaena(cola.tickets);
+  cola.faenasEditar = (cola.faenasEditar || []).filter(x => faenaIdSigueViva(x && x.id, vivos));
+  guardarCola(cola);
+  if (state.faenaActualId && !state.faenas.some(x => String(x.id || x._tempId) === String(state.faenaActualId))) {
+    state.faenaActualId = null;
+    cerrarFaena();
+  }
+}
+
 function esIdTemporalCliente(id) {
   const s = String(id || "");
   return !s || s.startsWith("TEMP-");
@@ -2118,6 +2161,12 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       signal: AbortSignal.timeout(30000)
     });
     const d = await r.json();
+    if (d.omitida || r.status === 404 || /no encontrada/i.test(d.error || "")) {
+      const cola = cargarCola();
+      cola.fotos = cola.fotos.filter(x => !(String(x.faena_id) === String(faenaId) && x.nombre === nombre));
+      guardarCola(cola);
+      return false;
+    }
     if (!d.ok) {
       toast(d.error || "La foto no se pudo guardar en la nube", true);
       return false;
@@ -3871,7 +3920,9 @@ async function sincronizar() {
           const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
           if (r.ok) {
             const d = await r.json();
-            if (d.ok) {
+            if (d.omitida || /no encontrada/i.test(d.error || "")) {
+              fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
+            } else if (d.ok) {
               fotosEnviadas++;
               fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
             } else {
@@ -3909,7 +3960,7 @@ async function sincronizar() {
       fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
       fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
     ]);
-    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) { state.faenas = d.data; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } }
+    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarFaenasServidor(d.data); }
     if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
     if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
 
@@ -3992,9 +4043,7 @@ async function cargarDatosIniciales(silencioso) {
     if (rFaenas.ok) {
       const d = await rFaenas.json();
       if (d.ok && Array.isArray(d.data)) {
-        state.faenas = d.data;
-        incorporarFaenasPendientes();
-        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        aplicarFaenasServidor(d.data);
         faenasCargadas = true;
       }
     }
@@ -4009,9 +4058,7 @@ async function cargarDatosIniciales(silencioso) {
       if (rFaenasSimple.ok) {
         const d = await rFaenasSimple.json();
         if (d.ok && Array.isArray(d.data)) {
-          state.faenas = d.data;
-          incorporarFaenasPendientes();
-          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+          aplicarFaenasServidor(d.data);
           faenasCargadas = true;
         }
       }
@@ -4055,9 +4102,7 @@ async function cargarDatosIniciales(silencioso) {
       if (rFaenas.ok) {
         const d = await rFaenas.json();
         if (d.ok && Array.isArray(d.data)) {
-          state.faenas = d.data;
-          incorporarFaenasPendientes();
-          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+          aplicarFaenasServidor(d.data);
         }
       }
     } catch (e) {}
@@ -4078,10 +4123,13 @@ function hidratarDesdeCache() {
   const faenas = leerJSONLocal("faenas_cache", []);
   const clientes = leerJSONLocal("clientes_cache", []);
   const materiales = leerJSONLocal("materiales_cache", []);
-  if (Array.isArray(faenas) && faenas.length) state.faenas = faenas;
+  if (Array.isArray(faenas) && faenas.length) {
+    state.faenas = faenas.filter(f => Number(f.archivada) !== 1);
+  }
   if (Array.isArray(clientes) && clientes.length) state.clientes = clientes;
   if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
   incorporarFaenasPendientes();
+  purgarRegistrosDeFaenasInactivas();
 }
 
 function refrescarPantallaActual() {
@@ -4126,7 +4174,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=17", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=18", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
