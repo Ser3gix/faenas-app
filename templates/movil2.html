@@ -1444,11 +1444,28 @@ function abrirFaena(id) {
   renderPanelDocumentos(f);
   renderPanelFotos(f);
   renderPanelGastos(f);
+  cargarAnotacionesFaena(f);
   cargarFotosFaena(f);
   // Ir al panel guardado
   const pc = document.getElementById("panel-carousel");
   pc.scrollTo({ left: state.panelActual * window.innerWidth, behavior: "instant" });
   actualizarTabPanel(state.panelActual);
+}
+
+async function cargarAnotacionesFaena(f) {
+  if (!f || !f.id || String(f.id).startsWith("temp")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.data)) {
+      f.anotaciones = d.data;
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+      if (String(state.faenaActualId) === String(f.id || f._tempId)) {
+        renderPanelDocumentos(f);
+        renderFaenas();
+      }
+    }
+  } catch (e) {}
 }
 
 async function cargarFotosFaena(f) {
@@ -4175,7 +4192,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=18", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=19", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
