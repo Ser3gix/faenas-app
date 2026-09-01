@@ -4130,6 +4130,7 @@ function hidratarDesdeCache() {
   if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
   incorporarFaenasPendientes();
   purgarRegistrosDeFaenasInactivas();
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
 }
 
 function refrescarPantallaActual() {
