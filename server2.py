@@ -282,28 +282,150 @@ def _url_desde_ruta(ruta):
     return ""
 
 
-def _bytes_desde_ruta_foto(ruta):
+def _parece_imagen(data):
+    if not data or len(data) < 12:
+        return False
+    if data[:3] == b"\xff\xd8\xff":
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return False
+
+
+def _claves_r2_desde_ruta(ruta):
+    ruta_n = (ruta or "").strip().replace("\\", "/")
+    if not ruta_n:
+        return []
+    claves = []
+    if ruta_n.startswith("http://") or ruta_n.startswith("https://"):
+        from urllib.parse import urlparse
+        from config import OBJECT_STORAGE_PUBLIC_BASE_URL
+        base = (OBJECT_STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
+        if base and ruta_n.startswith(base):
+            claves.append(ruta_n[len(base):].lstrip("/"))
+        path = urlparse(ruta_n).path.lstrip("/")
+        if path:
+            claves.append(path)
+    else:
+        if ":" in ruta_n[:3]:
+            ruta_n = ruta_n.split(":", 1)[-1].lstrip("/")
+        partes = [p for p in ruta_n.split("/") if p]
+        nombre = partes[-1] if partes else ""
+        numero = ""
+        tipo = "fotos"
+        for i, parte in enumerate(partes):
+            if re.match(r"^\d{4,8}_", parte):
+                numero = parte.split("_")[0]
+                if i + 1 < len(partes) and partes[i + 1].lower() in {"fotos", "documentos", "tickets", "pdf"}:
+                    tipo = partes[i + 1].lower()
+                break
+        if numero and nombre:
+            claves.append(clave_objeto(numero, tipo, nombre))
+        if nombre:
+            claves.append(clave_objeto("_book", nombre))
+            claves.append(nombre)
+        posix = "/".join(partes)
+        if "datos/" in posix:
+            posix = posix.split("datos/", 1)[-1]
+        if posix and posix not in claves:
+            claves.append(posix)
+    vistas = []
+    for k in claves:
+        k = (k or "").replace("\\", "/").lstrip("/")
+        if k and k not in vistas:
+            vistas.append(k)
+    return vistas
+
+
+def _http_imagen(url):
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        return None
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "faenas-app"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = resp.read()
+        return data if _parece_imagen(data) else None
+    except Exception:
+        return None
+
+
+def _bytes_desde_ruta_foto(ruta, faena_id=None):
     ruta = (ruta or "").strip()
     if not ruta:
         return None
     if os.path.exists(ruta):
         with open(ruta, "rb") as fh:
-            return fh.read()
+            data = fh.read()
+        if _parece_imagen(data):
+            return data
     nombre = os.path.basename(ruta.replace("\\", "/"))
     local_book = os.path.join(CARPETA_RAIZ, "_book", nombre) if nombre else ""
     if local_book and os.path.exists(local_book):
         with open(local_book, "rb") as fh:
-            return fh.read()
-    clave = ruta.replace("\\", "/").lstrip("/")
+            data = fh.read()
+        if _parece_imagen(data):
+            return data
     if ruta.startswith("http://") or ruta.startswith("https://"):
-        from urllib.parse import urlparse
-        from config import OBJECT_STORAGE_PUBLIC_BASE_URL
-        base = (OBJECT_STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
-        if base and ruta.startswith(base):
-            clave = ruta[len(base):].lstrip("/")
-        else:
-            clave = urlparse(ruta).path.lstrip("/")
-    return descargar_bytes(clave) if clave else None
+        data = _http_imagen(ruta)
+        if data:
+            return data
+    for clave in _claves_r2_desde_ruta(ruta):
+        data = descargar_bytes(clave)
+        if _parece_imagen(data):
+            return data
+        pub = url_publica(clave)
+        data = _http_imagen(pub)
+        if data:
+            return data
+    if faena_id:
+        data = _bytes_fotos_de_faena(faena_id, nombre)
+        if data:
+            return data
+    return None
+
+
+def _bytes_fotos_de_faena(faena_id, nombre_pista=""):
+    if not faena_id:
+        return None
+    conn = get_connection()
+    try:
+        filas = filas_a_lista(conn.execute(
+            "SELECT nombre, ruta_foto FROM fotos_faena WHERE faena_id=? ORDER BY id",
+            (faena_id,),
+        ).fetchall())
+        archivos = []
+        try:
+            archivos = filas_a_lista(conn.execute(
+                "SELECT nombre, object_key, public_url FROM archivos_faena WHERE faena_id=? ORDER BY id",
+                (faena_id,),
+            ).fetchall())
+        except Exception:
+            pass
+    finally:
+        conn.close()
+    pista = (nombre_pista or "").lower()
+    candidatos = []
+    for fila in filas:
+        candidatos.append((fila.get("ruta_foto") or "", fila.get("nombre") or ""))
+    for fila in archivos:
+        candidatos.append((fila.get("object_key") or fila.get("public_url") or "", fila.get("nombre") or ""))
+    if pista:
+        candidatos.sort(key=lambda x: 0 if pista in (x[1] or "").lower() else 1)
+    vistos = set()
+    for ruta, nombre in candidatos:
+        for clave in [ruta, nombre] + _claves_r2_desde_ruta(ruta):
+            if not clave or clave in vistos:
+                continue
+            vistos.add(clave)
+            if clave.startswith("http"):
+                data = _http_imagen(clave)
+            else:
+                data = descargar_bytes(clave) or _http_imagen(url_publica(clave))
+            if _parece_imagen(data):
+                return data
+    return None
 
 
 def _borrar_binario(ruta, object_key=""):
@@ -2995,16 +3117,16 @@ def sync_book():
 @app.route("/api/book/<int:id>/imagen", methods=["GET"])
 def imagen_book(id):
     conn = get_connection()
-    fila = conn.execute("SELECT ruta_foto FROM book_fotos WHERE id=?", (id,)).fetchone()
+    fila = conn.execute("SELECT ruta_foto, faena_id FROM book_fotos WHERE id=?", (id,)).fetchone()
     conn.close()
     if not fila:
         return Response("No encontrada", status=404)
     fila = fila_a_dict(fila)
-    raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"))
+    raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"), fila.get("faena_id"))
     if not raw:
         return Response("No encontrada", status=404)
     resp = send_file(io.BytesIO(raw), mimetype="image/jpeg", download_name=f"book_{id}.jpg")
-    resp.headers["Cache-Control"] = "private, max-age=86400"
+    resp.headers["Cache-Control"] = "private, max-age=3600"
     return resp
 
 # -------------------- FOTOS DE FAENA (PC) --------------------

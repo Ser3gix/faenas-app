@@ -3664,7 +3664,7 @@ function renderBookMovil() {
   if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos en el book.<br><small>Pulsa + Foto para añadir</small></div>`; return; }
   el.innerHTML = `<div class="book-grid">${bookCache.map((f,i) => {
     const src = urlFotoBook(f);
-    return `<div class="book-card"><img src="${escHtml(src)}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoBook(${i})" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`;
+    return `<div class="book-card"><img src="${escHtml(src)}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoBook(${i})" onerror="this.onerror=null;this.style.background='#3a2a18'" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`;
   }).join("")}</div>`;
 }
 
@@ -4097,7 +4097,7 @@ async function init() {
   actualizarPanelConsultaIA();
   // Service Worker
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=16", { updateViaCache: "none" }).catch(() => {});
   }
   // Offline indicator
   window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
