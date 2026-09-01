@@ -992,12 +992,15 @@ def crear_faena():
     if not cliente_id:
         return jsonify({"ok": False, "error": "El cliente es obligatorio"}), 400
     conn = get_connection()
-    cliente = conn.execute("SELECT nombre FROM clientes WHERE id=?", (cliente_id,)).fetchone()
+    cliente = conn.execute("SELECT nombre, intermediario_id FROM clientes WHERE id=?", (cliente_id,)).fetchone()
     if not cliente:
         conn.close()
         return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
-    intermediario_id = datos.get("intermediario_id", 0)
-    numero = generar_numero_faena(intermediario_id, cliente_id)
+    intermediario_id = cliente["intermediario_id"]
+    if intermediario_id is None or intermediario_id == "":
+        intermediario_id = 0
+    numero = generar_numero_faena(intermediario_id, cliente_id, conn)
+    carpeta = crear_carpeta_faena(numero, cliente["nombre"])
     carpeta = crear_carpeta_faena(numero, cliente["nombre"])
     cursor = conn.cursor()
     cursor.execute("""

@@ -676,13 +676,61 @@ def inicializar_db():
     print(f"✓ Base de datos lista en: {destino}")
 
 
-def generar_numero_faena(intermediario_id, cliente_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) AS total FROM faenas WHERE cliente_id = ?", (cliente_id,))
-    count = cursor.fetchone()["total"]
-    conn.close()
-    return f"{int(intermediario_id):02d}{int(cliente_id):02d}{count + 1:02d}"
+def generar_numero_faena(intermediario_id, cliente_id, conn=None):
+    """Número: 1 dígito intermediario + 2 dígitos cliente de ese intermediario + 2 dígitos faena del cliente.
+    Sin intermediario la primera cifra es 0. No reescribe números ya guardados.
+    """
+    cerrar = False
+    if conn is None:
+        conn = get_connection()
+        cerrar = True
+    try:
+        cli = conn.execute(
+            "SELECT intermediario_id FROM clientes WHERE id=?",
+            (cliente_id,),
+        ).fetchone()
+        if cli is not None:
+            inter_cli = cli["intermediario_id"]
+            if inter_cli is None or inter_cli == "":
+                inter_cli = 0
+            intermediario_id = inter_cli
+        iid = int(intermediario_id or 0)
+        if iid < 0:
+            iid = 0
+        digito_i = 0 if iid == 0 else min(iid, 9)
+
+        filas_cli = conn.execute(
+            "SELECT id FROM clientes WHERE COALESCE(intermediario_id, 0) = ? ORDER BY id",
+            (iid,),
+        ).fetchall()
+        indice_cli = 1
+        for i, fila in enumerate(filas_cli, start=1):
+            if int(fila["id"]) == int(cliente_id):
+                indice_cli = i
+                break
+        indice_cli = min(max(indice_cli, 1), 99)
+
+        filas_f = conn.execute(
+            "SELECT numero FROM faenas WHERE cliente_id = ?",
+            (cliente_id,),
+        ).fetchall()
+        max_f = 0
+        for fila in filas_f:
+            solo = "".join(c for c in str(fila["numero"] or "") if c.isdigit())
+            if len(solo) >= 2:
+                max_f = max(max_f, int(solo[-2:]))
+        indice_f = min(max_f + 1, 99)
+
+        while indice_f <= 99:
+            numero = f"{digito_i}{indice_cli:02d}{indice_f:02d}"
+            existe = conn.execute("SELECT 1 FROM faenas WHERE numero=?", (numero,)).fetchone()
+            if not existe:
+                return numero
+            indice_f += 1
+        return f"{digito_i}{indice_cli:02d}{indice_f}"
+    finally:
+        if cerrar:
+            conn.close()
 
 
 def crear_carpeta_faena(numero_faena, nombre_cliente):
