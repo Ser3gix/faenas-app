@@ -2790,21 +2790,21 @@ function verFotoGrande(src) {
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "✕ Cerrar";
   closeBtn.className = "close-btn";
-  closeBtn.onclick = () => viewer.remove();
+  closeBtn.onclick = ev => { ev.stopPropagation(); viewer.remove(); };
   viewer.appendChild(img);
   viewer.appendChild(closeBtn);
   document.body.appendChild(viewer);
 
   let scale = 1, x = 0, y = 0;
   const pointers = new Map();
-  let dragging = false;
   let pinch0 = 0;
   let pinchScale0 = 1;
-  let pinchX0 = 0;
-  let pinchY0 = 0;
+  let startX = 0, startY = 0, startAt = 0;
+  let moved = false;
+  let pinched = false;
 
   const aplicar = () => {
-    if (scale <= 1.02) {
+    if (scale < 1.05) {
       scale = 1;
       x = 0;
       y = 0;
@@ -2814,24 +2814,34 @@ function verFotoGrande(src) {
   };
 
   const limitar = () => {
-    const extra = (scale - 1) * 280;
-    const max = Math.max(80, extra);
+    const extra = (scale - 1) * 320;
+    const max = Math.max(120, extra);
     x = Math.max(-max, Math.min(max, x));
     y = Math.max(-max, Math.min(max, y));
   };
 
+  viewer.addEventListener("touchstart", e => {
+    if (e.target === closeBtn) return;
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
   viewer.addEventListener("pointerdown", e => {
     if (e.target === closeBtn) return;
-    if (e.target !== img && e.target !== viewer) return;
-    viewer.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    try { viewer.setPointerCapture(e.pointerId); } catch (err) {}
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    dragging = false;
-    if (pointers.size === 2) {
+    if (pointers.size === 1) {
+      startX = e.clientX;
+      startY = e.clientY;
+      startAt = Date.now();
+      moved = false;
+      pinched = false;
+    }
+    if (pointers.size >= 2) {
+      pinched = true;
       const pts = [...pointers.values()];
       pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       pinchScale0 = scale;
-      pinchX0 = x;
-      pinchY0 = y;
     }
   });
 
@@ -2839,7 +2849,11 @@ function verFotoGrande(src) {
     if (!pointers.has(e.pointerId)) return;
     const prev = pointers.get(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) {
+    const distOrigen = Math.hypot(e.clientX - startX, e.clientY - startY);
+    if (distOrigen > 10) moved = true;
+
+    if (pointers.size >= 2) {
+      pinched = true;
       const pts = [...pointers.values()];
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (pinch0 > 8) {
@@ -2850,16 +2864,11 @@ function verFotoGrande(src) {
       return;
     }
     if (scale > 1 && pointers.size === 1) {
-      const dx = e.clientX - prev.x;
-      const dy = e.clientY - prev.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) {
-        dragging = true;
-        img.classList.add("panning");
-      }
-      x += dx;
-      y += dy;
+      x += e.clientX - prev.x;
+      y += e.clientY - prev.y;
       limitar();
       aplicar();
+      img.classList.add("panning");
     }
   });
 
@@ -2870,18 +2879,15 @@ function verFotoGrande(src) {
   };
 
   viewer.addEventListener("pointerup", e => {
-    const eraArrastre = dragging;
-    const sobreImg = e.target === img;
     soltar(e);
-    if (eraArrastre) {
-      dragging = false;
-      return;
-    }
-    if (e.target === viewer) {
+    if (pointers.size > 0) return;
+    const tapRapido = !moved && !pinched && (Date.now() - startAt) < 350;
+    if (pinched || moved) return;
+    if (e.target === viewer && scale <= 1) {
       viewer.remove();
       return;
     }
-    if (!sobreImg) return;
+    if (e.target !== img || !tapRapido) return;
     if (scale <= 1) {
       scale = 2.2;
     } else {
@@ -2895,9 +2901,7 @@ function verFotoGrande(src) {
 
   viewer.addEventListener("wheel", e => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.12 : 0.9;
-    const next = Math.min(4, Math.max(1, scale * factor));
-    scale = next;
+    scale = Math.min(4, Math.max(1, scale * (e.deltaY < 0 ? 1.12 : 0.9)));
     limitar();
     aplicar();
   }, { passive: false });
@@ -4672,7 +4676,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=25", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=26", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
