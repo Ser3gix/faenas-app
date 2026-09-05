@@ -1,19 +1,17 @@
 # object_storage.py — Cloudflare R2 (API compatible con S3)
-from config import (
-    OBJECT_STORAGE_ACCESS_KEY,
-    OBJECT_STORAGE_BACKEND,
-    OBJECT_STORAGE_BUCKET,
-    OBJECT_STORAGE_ENDPOINT,
-    OBJECT_STORAGE_PUBLIC_BASE_URL,
-    OBJECT_STORAGE_REGION,
-    OBJECT_STORAGE_SECRET_KEY,
-)
 
 _cliente = None
 _error_cliente = ""
 
 
 def r2_activo():
+    from config import (
+        OBJECT_STORAGE_ACCESS_KEY,
+        OBJECT_STORAGE_BACKEND,
+        OBJECT_STORAGE_BUCKET,
+        OBJECT_STORAGE_ENDPOINT,
+        OBJECT_STORAGE_SECRET_KEY,
+    )
     backend = (OBJECT_STORAGE_BACKEND or "").strip().lower()
     return (
         backend in {"r2", "s3", "cloudflare"}
@@ -32,8 +30,27 @@ def r2_error():
     if r2_listo():
         return ""
     if not r2_activo():
-        return "Faltan variables de Cloudflare R2"
+        return "Faltan datos de Cloudflare R2 en el PC (.env)"
     return _error_cliente or "No se pudo conectar a Cloudflare R2"
+
+
+def reiniciar_cliente():
+    global _cliente, _error_cliente
+    _cliente = None
+    _error_cliente = ""
+
+
+def probar_conexion():
+    """Comprueba de verdad el acceso al bucket (listado)."""
+    cliente = _get_cliente()
+    if not cliente:
+        return False, r2_error()
+    from config import OBJECT_STORAGE_BUCKET
+    try:
+        cliente.list_objects_v2(Bucket=OBJECT_STORAGE_BUCKET, MaxKeys=1)
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 def _get_cliente():
@@ -62,6 +79,12 @@ def _get_cliente():
     except TypeError:
         boto_config = BotoConfig(**kwargs)
     try:
+        from config import (
+            OBJECT_STORAGE_ACCESS_KEY,
+            OBJECT_STORAGE_ENDPOINT,
+            OBJECT_STORAGE_REGION,
+            OBJECT_STORAGE_SECRET_KEY,
+        )
         _cliente = boto3.client(
             "s3",
             endpoint_url=OBJECT_STORAGE_ENDPOINT,
@@ -91,6 +114,7 @@ def clave_objeto(*partes):
 def url_publica(object_key):
     if not object_key:
         return ""
+    from config import OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_PUBLIC_BASE_URL
     base = (OBJECT_STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
     if base:
         return f"{base}/{object_key.lstrip('/')}"
@@ -108,6 +132,7 @@ def url_publica(object_key):
 
 
 def subir_bytes(object_key, data, content_type="application/octet-stream"):
+    from config import OBJECT_STORAGE_BUCKET
     cliente = _get_cliente()
     if not cliente:
         return {"ok": False, "error": r2_error() or "Cloudflare R2 no está configurado"}
@@ -128,6 +153,7 @@ def subir_bytes(object_key, data, content_type="application/octet-stream"):
 def borrar_objeto(object_key):
     if not object_key:
         return True
+    from config import OBJECT_STORAGE_BUCKET
     cliente = _get_cliente()
     if not cliente:
         return False
@@ -142,6 +168,7 @@ def descargar_bytes(object_key):
     cliente = _get_cliente()
     if not cliente or not object_key:
         return None
+    from config import OBJECT_STORAGE_BUCKET
     try:
         resp = cliente.get_object(Bucket=OBJECT_STORAGE_BUCKET, Key=object_key)
         return resp["Body"].read()

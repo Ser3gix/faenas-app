@@ -10,6 +10,7 @@ import urllib.request
 import urllib.error
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 import shutil
 try:
@@ -18,13 +19,13 @@ try:
 except Exception:
     pass
 
-from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET
+from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_DIR, OBJECT_STORAGE_BUCKET, raices_datos, en_servidor_nube, escribir_env_r2
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista
 )
-from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica
+from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
 from secretario import chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle, escribir_contexto, borrar_linea_contexto
 
 try:
@@ -75,6 +76,7 @@ app = Flask(
     static_folder=os.path.join(APP_DIR, "static"),
     template_folder=os.path.join(APP_DIR, "templates")
 )
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 CORS(app, origins="*", allow_headers=["Content-Type"], supports_credentials=False)
 
 @app.after_request
@@ -83,6 +85,21 @@ def after_request(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
+
+
+@app.errorhandler(413)
+def archivo_demasiado_grande(_e):
+    return jsonify({"ok": False, "error": "La foto es demasiado grande (máx. 25 MB)"}), 413
+
+
+@app.errorhandler(Exception)
+def error_api(e):
+    if isinstance(e, HTTPException):
+        return e
+    if request.path.startswith("/api/"):
+        print("api error:", e)
+        return jsonify({"ok": False, "error": str(e) or "Error interno"}), 500
+    raise e
 
 
 def limpiar_data_b64(data_b64):
@@ -117,6 +134,116 @@ def _es_foto_nombre(nombre):
 
 def _es_pdf_nombre(nombre):
     return _extension(nombre) in _EXTS_PDF
+
+
+def _resolver_carpeta_local(faena):
+    carpeta = (faena.get("carpeta") or "").strip() if faena else ""
+    if carpeta and os.path.isdir(carpeta):
+        return carpeta
+    nombre_carpeta = os.path.basename(carpeta.replace("\\", "/").rstrip("/")) if carpeta else ""
+    numero = str((faena or {}).get("numero") or "").strip()
+    for raiz in raices_datos() or [CARPETA_RAIZ]:
+        if nombre_carpeta:
+            candidato = os.path.join(raiz, nombre_carpeta)
+            if os.path.isdir(candidato):
+                return candidato
+        if not numero or not os.path.isdir(raiz):
+            continue
+        try:
+            for nombre in os.listdir(raiz):
+                ruta = os.path.join(raiz, nombre)
+                if os.path.isdir(ruta) and (nombre == numero or nombre.startswith(numero + "_")):
+                    return ruta
+        except Exception:
+            pass
+    return ""
+
+
+def _nombres_ya_registrados(conn, faena_id):
+    nombres = set()
+    for fila in filas_a_lista(conn.execute("SELECT nombre FROM fotos_faena WHERE faena_id=?", (faena_id,)).fetchall()):
+        if fila.get("nombre"):
+            nombres.add(fila["nombre"])
+    try:
+        for fila in filas_a_lista(conn.execute("SELECT nombre FROM archivos_faena WHERE faena_id=?", (faena_id,)).fetchall()):
+            if fila.get("nombre"):
+                nombres.add(fila["nombre"])
+    except Exception:
+        pass
+    return nombres
+
+
+def sincronizar_archivos_desde_pc():
+    """Registra (y sube a R2 si está configurado) fotos, PDFs y documentos que hay en las carpetas del PC."""
+    conn = get_connection()
+    faenas = filas_a_lista(conn.execute("SELECT id, numero, carpeta FROM faenas").fetchall())
+    subidos = 0
+    omitidos = 0
+    errores = []
+    faenas_con_carpeta = 0
+    for faena in faenas:
+        carpeta = _resolver_carpeta_local(faena)
+        if not carpeta:
+            continue
+        faenas_con_carpeta += 1
+        registrados = _nombres_ya_registrados(conn, faena["id"])
+        recorridos = [
+            ("fotos", "fotos", "foto"),
+            ("Documentos", "documentos", "documento"),
+            ("tickets", "tickets", "ticket"),
+        ]
+        for subcarpeta, carpeta_rel, tipo in recorridos:
+            origen = os.path.join(carpeta, subcarpeta)
+            if not os.path.isdir(origen):
+                continue
+            for nombre in sorted(os.listdir(origen)):
+                ruta = os.path.join(origen, nombre)
+                if not os.path.isfile(ruta):
+                    continue
+                if nombre in registrados:
+                    omitidos += 1
+                    continue
+                try:
+                    with open(ruta, "rb") as fh:
+                        data = fh.read()
+                except Exception as exc:
+                    errores.append(f"{nombre}: {exc}")
+                    continue
+                mime = _mime_archivo(nombre)
+                tipo_fila = tipo
+                rel = carpeta_rel
+                if _es_foto_nombre(nombre):
+                    tipo_fila = "foto"
+                    rel = "fotos"
+                elif _es_pdf_nombre(nombre):
+                    tipo_fila = "pdf"
+                    rel = "pdf"
+                try:
+                    if r2_activo():
+                        _url, object_key, public_url, backend = _guardar_binario(faena, rel, nombre, data, mime)
+                    else:
+                        object_key, public_url, backend = "", "", "pc"
+                except Exception as exc:
+                    errores.append(f"{nombre}: {exc}")
+                    continue
+                if tipo_fila == "foto":
+                    conn.execute(
+                        "INSERT INTO fotos_faena (faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
+                        (faena["id"], nombre, object_key or ruta, ""),
+                    )
+                _registrar_archivo(conn, faena["id"], tipo_fila, nombre, backend, object_key or ruta, public_url, mime, len(data))
+                registrados.add(nombre)
+                subidos += 1
+    conn.commit()
+    conn.close()
+    return {
+        "subidos": subidos,
+        "omitidos": omitidos,
+        "errores": errores,
+        "faenas": len(faenas),
+        "faenas_con_carpeta": faenas_con_carpeta,
+        "raices": raices_datos(),
+    }
 
 
 def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
@@ -170,6 +297,152 @@ def _url_desde_ruta(ruta):
     if r2_activo():
         return url_publica(ruta)
     return ""
+
+
+def _parece_imagen(data):
+    if not data or len(data) < 12:
+        return False
+    if data[:3] == b"\xff\xd8\xff":
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return False
+
+
+def _claves_r2_desde_ruta(ruta):
+    ruta_n = (ruta or "").strip().replace("\\", "/")
+    if not ruta_n:
+        return []
+    claves = []
+    if ruta_n.startswith("http://") or ruta_n.startswith("https://"):
+        from urllib.parse import urlparse
+        from config import OBJECT_STORAGE_PUBLIC_BASE_URL
+        base = (OBJECT_STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
+        if base and ruta_n.startswith(base):
+            claves.append(ruta_n[len(base):].lstrip("/"))
+        path = urlparse(ruta_n).path.lstrip("/")
+        if path:
+            claves.append(path)
+    else:
+        if ":" in ruta_n[:3]:
+            ruta_n = ruta_n.split(":", 1)[-1].lstrip("/")
+        partes = [p for p in ruta_n.split("/") if p]
+        nombre = partes[-1] if partes else ""
+        numero = ""
+        tipo = "fotos"
+        for i, parte in enumerate(partes):
+            if re.match(r"^\d{4,8}_", parte):
+                numero = parte.split("_")[0]
+                if i + 1 < len(partes) and partes[i + 1].lower() in {"fotos", "documentos", "tickets", "pdf"}:
+                    tipo = partes[i + 1].lower()
+                break
+        if numero and nombre:
+            claves.append(clave_objeto(numero, tipo, nombre))
+        if nombre:
+            claves.append(clave_objeto("_book", nombre))
+            claves.append(nombre)
+        posix = "/".join(partes)
+        if "datos/" in posix:
+            posix = posix.split("datos/", 1)[-1]
+        if posix and posix not in claves:
+            claves.append(posix)
+    vistas = []
+    for k in claves:
+        k = (k or "").replace("\\", "/").lstrip("/")
+        if k and k not in vistas:
+            vistas.append(k)
+    return vistas
+
+
+def _http_imagen(url):
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        return None
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "faenas-app"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = resp.read()
+        return data if _parece_imagen(data) else None
+    except Exception:
+        return None
+
+
+def _bytes_desde_ruta_foto(ruta, faena_id=None):
+    ruta = (ruta or "").strip()
+    if not ruta:
+        return None
+    if os.path.exists(ruta):
+        with open(ruta, "rb") as fh:
+            data = fh.read()
+        if _parece_imagen(data):
+            return data
+    nombre = os.path.basename(ruta.replace("\\", "/"))
+    local_book = os.path.join(CARPETA_RAIZ, "_book", nombre) if nombre else ""
+    if local_book and os.path.exists(local_book):
+        with open(local_book, "rb") as fh:
+            data = fh.read()
+        if _parece_imagen(data):
+            return data
+    if ruta.startswith("http://") or ruta.startswith("https://"):
+        data = _http_imagen(ruta)
+        if data:
+            return data
+    for clave in _claves_r2_desde_ruta(ruta):
+        data = descargar_bytes(clave)
+        if _parece_imagen(data):
+            return data
+        pub = url_publica(clave)
+        data = _http_imagen(pub)
+        if data:
+            return data
+    if faena_id:
+        data = _bytes_fotos_de_faena(faena_id, nombre)
+        if data:
+            return data
+    return None
+
+
+def _bytes_fotos_de_faena(faena_id, nombre_pista=""):
+    if not faena_id:
+        return None
+    conn = get_connection()
+    try:
+        filas = filas_a_lista(conn.execute(
+            "SELECT nombre, ruta_foto FROM fotos_faena WHERE faena_id=? ORDER BY id",
+            (faena_id,),
+        ).fetchall())
+        archivos = []
+        try:
+            archivos = filas_a_lista(conn.execute(
+                "SELECT nombre, object_key, public_url FROM archivos_faena WHERE faena_id=? ORDER BY id",
+                (faena_id,),
+            ).fetchall())
+        except Exception:
+            pass
+    finally:
+        conn.close()
+    pista = (nombre_pista or "").lower()
+    candidatos = []
+    for fila in filas:
+        candidatos.append((fila.get("ruta_foto") or "", fila.get("nombre") or ""))
+    for fila in archivos:
+        candidatos.append((fila.get("object_key") or fila.get("public_url") or "", fila.get("nombre") or ""))
+    if pista:
+        candidatos.sort(key=lambda x: 0 if pista in (x[1] or "").lower() else 1)
+    vistos = set()
+    for ruta, nombre in candidatos:
+        for clave in [ruta, nombre] + _claves_r2_desde_ruta(ruta):
+            if not clave or clave in vistos:
+                continue
+            vistos.add(clave)
+            if clave.startswith("http"):
+                data = _http_imagen(clave)
+            else:
+                data = descargar_bytes(clave) or _http_imagen(url_publica(clave))
+            if _parece_imagen(data):
+                return data
+    return None
 
 
 def _borrar_binario(ruta, object_key=""):
@@ -627,6 +900,74 @@ def get_ip():
 def get_db_info():
     return jsonify({"ok": True, "data": get_db_status()})
 
+@app.route("/api/info/storage", methods=["GET"])
+def get_storage_info():
+    from config import OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_PUBLIC_BASE_URL
+    ok, err = (False, r2_error())
+    if r2_activo():
+        ok, err = probar_conexion()
+    return jsonify({"ok": True, "data": {
+        "r2_activo": r2_activo(),
+        "r2_conectado": ok,
+        "error": err,
+        "bucket": OBJECT_STORAGE_BUCKET or "",
+        "endpoint": OBJECT_STORAGE_ENDPOINT or "",
+        "public_url": OBJECT_STORAGE_PUBLIC_BASE_URL or "",
+        "configurable": not en_servidor_nube(),
+    }})
+
+@app.route("/api/config/r2", methods=["POST"])
+def guardar_config_r2():
+    if en_servidor_nube():
+        return jsonify({"ok": False, "error": "En Render las claves van en Environment. En el PC abre http://127.0.0.1:5000"}), 400
+    datos = request.json or {}
+    endpoint = (datos.get("endpoint") or "").strip().rstrip("/")
+    bucket = (datos.get("bucket") or "").strip()
+    access = (datos.get("access_key") or "").strip()
+    secret = (datos.get("secret_key") or "").strip()
+    public_url = (datos.get("public_url") or "").strip().rstrip("/")
+    if not endpoint or not bucket:
+        return jsonify({"ok": False, "error": "Faltan endpoint y bucket"}), 400
+    if not access or not secret:
+        from config import OBJECT_STORAGE_ACCESS_KEY, OBJECT_STORAGE_SECRET_KEY
+        access = access or OBJECT_STORAGE_ACCESS_KEY
+        secret = secret or OBJECT_STORAGE_SECRET_KEY
+    if not access or not secret:
+        return jsonify({"ok": False, "error": "Faltan access key y secret key"}), 400
+    claves = [
+        "OBJECT_STORAGE_BACKEND", "OBJECT_STORAGE_ENDPOINT", "OBJECT_STORAGE_BUCKET",
+        "OBJECT_STORAGE_PUBLIC_BASE_URL", "OBJECT_STORAGE_ACCESS_KEY", "OBJECT_STORAGE_SECRET_KEY",
+    ]
+    anteriores = {k: os.environ.get(k) for k in claves}
+    os.environ["OBJECT_STORAGE_BACKEND"] = "r2"
+    os.environ["OBJECT_STORAGE_ENDPOINT"] = endpoint
+    os.environ["OBJECT_STORAGE_BUCKET"] = bucket
+    os.environ["OBJECT_STORAGE_PUBLIC_BASE_URL"] = public_url
+    os.environ["OBJECT_STORAGE_ACCESS_KEY"] = access
+    os.environ["OBJECT_STORAGE_SECRET_KEY"] = secret
+    from config import recargar_almacenamiento
+    recargar_almacenamiento()
+    reiniciar_cliente()
+    ok, err = probar_conexion()
+    if not ok:
+        for k, v in anteriores.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        recargar_almacenamiento()
+        reiniciar_cliente()
+        return jsonify({"ok": False, "error": err or "No se pudo conectar a Cloudflare"}), 400
+    escribir_env_r2({
+        "OBJECT_STORAGE_BACKEND": "r2",
+        "OBJECT_STORAGE_ENDPOINT": endpoint,
+        "OBJECT_STORAGE_BUCKET": bucket,
+        "OBJECT_STORAGE_PUBLIC_BASE_URL": public_url,
+        "OBJECT_STORAGE_ACCESS_KEY": access,
+        "OBJECT_STORAGE_SECRET_KEY": secret,
+    })
+    return jsonify({"ok": True, "data": {"r2_conectado": True, "bucket": bucket}})
+
 # -------------------- INTERMEDIARIOS --------------------
 @app.route("/api/intermediarios", methods=["GET"])
 def get_intermediarios():
@@ -735,6 +1076,27 @@ def _conn_para_faena(faena_id):
     conn.close()
     return get_sqlite_local()
 
+
+def _omitir_sync_faena(faena_id):
+    """Motivo para no sincronizar a una faena (archivada o ya no existe)."""
+    if not faena_id:
+        return "no_encontrada"
+    conn = get_connection()
+    fila = conn.execute("SELECT id, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+    conn.close()
+    if not fila:
+        conn2 = get_sqlite_local()
+        fila = conn2.execute("SELECT id, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        conn2.close()
+    if not fila:
+        return "no_encontrada"
+    try:
+        if int(fila["archivada"] or 0) == 1:
+            return "archivada"
+    except (TypeError, ValueError):
+        pass
+    return None
+
 @app.route("/api/faenas", methods=["GET"])
 def get_faenas():
     conn = get_connection()
@@ -790,18 +1152,21 @@ def crear_faena():
     if not cliente_id:
         return jsonify({"ok": False, "error": "El cliente es obligatorio"}), 400
     conn = get_connection()
-    cliente = conn.execute("SELECT nombre FROM clientes WHERE id=?", (cliente_id,)).fetchone()
+    cliente = conn.execute("SELECT nombre, intermediario_id FROM clientes WHERE id=?", (cliente_id,)).fetchone()
     if not cliente:
         conn.close()
         return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
-    intermediario_id = datos.get("intermediario_id", 0)
-    numero = generar_numero_faena(intermediario_id, cliente_id)
+    intermediario_id = cliente["intermediario_id"]
+    if intermediario_id is None or intermediario_id == "":
+        intermediario_id = 0
+    numero = generar_numero_faena(intermediario_id, cliente_id, conn)
+    carpeta = crear_carpeta_faena(numero, cliente["nombre"])
     carpeta = crear_carpeta_faena(numero, cliente["nombre"])
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO faenas
-            (numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, carpeta)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, carpeta, fase)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         numero,
         cliente_id,
@@ -810,7 +1175,8 @@ def crear_faena():
         datos.get("tipo_trabajo", ""),
         datos.get("importe", 0),
         datos.get("fecha_inicio", ""),
-        carpeta
+        carpeta,
+        datos.get("fase") or "medicion",
     ))
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -842,22 +1208,98 @@ def eliminar_faena(id):
     conn.execute("DELETE FROM anotaciones WHERE faena_id=?", (id,))
     conn.execute("DELETE FROM gastos_faena WHERE faena_id=?", (id,))
     conn.execute("DELETE FROM fotos_faena WHERE faena_id=?", (id,))
+    try:
+        conn.execute("DELETE FROM presupuestos_faena WHERE faena_id=?", (id,))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM book_fotos WHERE faena_id=?", (id,))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM archivos_faena WHERE faena_id=?", (id,))
+    except Exception:
+        pass
     conn.execute("DELETE FROM faenas WHERE id=?", (id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
 
-@app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
-def archivar_faena(id):
+FASES_ACTIVAS = ("medicion", "presupuestada", "en_proceso")
+FASES_VALIDAS = FASES_ACTIVAS + ("terminada",)
+
+
+def _importe_para_terminar(conn, faena_id, importe_actual):
+    try:
+        actual = float(importe_actual or 0)
+    except (TypeError, ValueError):
+        actual = 0
+    if actual > 0:
+        return actual
+    total = 0
+    try:
+        total = float(conn.execute(
+            "SELECT COALESCE(SUM(total),0) AS t FROM presupuestos_faena WHERE faena_id=?",
+            (faena_id,),
+        ).fetchone()["t"] or 0)
+    except Exception:
+        total = 0
+    if not total:
+        try:
+            total = float(conn.execute(
+                "SELECT COALESCE(SUM(total),0) AS t FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))='presupuesto'",
+                (faena_id,),
+            ).fetchone()["t"] or 0)
+        except Exception:
+            total = 0
+    return total
+
+
+def _terminar_faena(id):
     conn = get_connection()
     faena = conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
+    faena = fila_a_dict(faena)
+    importe = _importe_para_terminar(conn, id, faena.get("importe"))
+    try:
+        conn.execute(
+            "UPDATE faenas SET archivada=1, fase='terminada', importe=? WHERE id=?",
+            (importe, id),
+        )
+    except Exception:
+        conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
     conn.commit()
     conn.close()
-    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip"}})
+    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip", "importe": importe}})
+
+
+@app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
+def archivar_faena(id):
+    return _terminar_faena(id)
+
+
+@app.route("/api/faenas/<int:id>/fase", methods=["PUT"])
+def cambiar_fase_faena(id):
+    fase = ((request.json or {}).get("fase") or "").strip()
+    if fase not in FASES_VALIDAS:
+        return jsonify({"ok": False, "error": "Fase no válida"}), 400
+    if fase == "terminada":
+        return _terminar_faena(id)
+    conn = get_connection()
+    faena = conn.execute("SELECT id FROM faenas WHERE id=?", (id,)).fetchone()
+    if not faena:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    try:
+        conn.execute("UPDATE faenas SET fase=?, archivada=0 WHERE id=?", (fase, id))
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "error": "No se pudo guardar la fase"}), 500
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"fase": fase}})
 
 
 @app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
@@ -2320,7 +2762,7 @@ def secretario_contexto_post():
     texto = (datos.get("texto") or datos.get("nota") or "").strip()
     if not texto:
         return jsonify({"ok": False, "error": "Escribe el contexto a añadir"}), 400
-    anotar_contexto(texto)
+    anotar_contexto(texto, modo=datos.get("modo") or datos.get("contexto"))
     return jsonify({"ok": True, "data": leer_contexto_detalle()})
 
 
@@ -2343,8 +2785,9 @@ def secretario_chat():
     pregunta = (datos.get("pregunta") or datos.get("mensaje") or "").strip()
     historial = datos.get("historial") if isinstance(datos.get("historial"), list) else []
     faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    modo = datos.get("modo") or datos.get("contexto") or datos.get("contexto_tipo")
     try:
-        res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id)
+        res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id, modo=modo)
         if not res.get("ok"):
             return jsonify(res), 400
         return jsonify(res)
@@ -2607,8 +3050,27 @@ def sync_datos():
             por_faena.setdefault(fila.get("faena_id"), []).append(_payload_foto(fila))
         for faena in resultado:
             faena["fotos"] = por_faena.get(faena["id"], [])
+    terminadas = []
+    try:
+        filas_t = conn.execute("""
+            SELECT f.id, f.numero, f.tipo_trabajo, f.importe, c.nombre AS cliente_nombre
+            FROM faenas f
+            LEFT JOIN clientes c ON f.cliente_id = c.id
+            WHERE f.archivada = 1
+            ORDER BY f.id DESC
+        """).fetchall()
+        for fila in filas_a_lista(filas_t):
+            terminadas.append({
+                "id": fila.get("id"),
+                "numero": fila.get("numero") or "",
+                "cliente_nombre": fila.get("cliente_nombre") or "",
+                "tipo_trabajo": fila.get("tipo_trabajo") or "",
+                "importe": fila.get("importe") or 0,
+            })
+    except Exception:
+        terminadas = []
     conn.close()
-    return jsonify({"ok": True, "data": resultado})
+    return jsonify({"ok": True, "data": resultado, "terminadas": terminadas})
 
 @app.route("/api/sync/anotaciones", methods=["POST"])
 def sync_anotaciones():
@@ -2730,11 +3192,14 @@ def sync_fotos():
     data_b64 = datos.get("data", "")
     if not faena_id or not data_b64:
         return jsonify({"ok": False, "error": "Faltan datos"}), 400
+    motivo = _omitir_sync_faena(faena_id)
+    if motivo:
+        return jsonify({"ok": True, "omitida": True, "motivo": motivo})
     conn = get_connection()
     faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
     if not faena:
         conn.close()
-        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+        return jsonify({"ok": True, "omitida": True, "motivo": "no_encontrada"})
     if not faena["carpeta"] and not r2_activo():
         conn.close()
         return jsonify({"ok": False, "error": "Faena o carpeta no encontrada"}), 404
@@ -2764,8 +3229,8 @@ def sync_fotos():
     return jsonify({"ok": True, "data": {"ruta": object_key or ruta, "nombre": nombre}})
 
 @app.route("/api/sync/book", methods=["GET"])
+@app.route("/api/book", methods=["GET"])
 def sync_book():
-    import base64
     conn = get_connection()
     filas = conn.execute("""
         SELECT b.*, f.numero AS faena_numero, c.nombre AS cliente_nombre
@@ -2777,19 +3242,26 @@ def sync_book():
     resultado = []
     for fila in filas:
         item = fila_a_dict(fila)
-        ruta = item.get("ruta_foto", "")
-        if ruta and os.path.exists(ruta):
-            try:
-                with open(ruta, "rb") as f:
-                    item["data"] = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()
-            except Exception as e:
-                item["data"] = ""
-                print(f"Error leyendo foto {ruta}: {e}")
-        else:
-            item["data"] = _url_desde_ruta(ruta)
+        item["data"] = f"/api/book/{item['id']}/imagen"
         resultado.append(item)
     conn.close()
     return jsonify({"ok": True, "data": resultado})
+
+
+@app.route("/api/book/<int:id>/imagen", methods=["GET"])
+def imagen_book(id):
+    conn = get_connection()
+    fila = conn.execute("SELECT ruta_foto, faena_id FROM book_fotos WHERE id=?", (id,)).fetchone()
+    conn.close()
+    if not fila:
+        return Response("No encontrada", status=404)
+    fila = fila_a_dict(fila)
+    raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"), fila.get("faena_id"))
+    if not raw:
+        return Response("No encontrada", status=404)
+    resp = send_file(io.BytesIO(raw), mimetype="image/jpeg", download_name=f"book_{id}.jpg")
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 # -------------------- FOTOS DE FAENA (PC) --------------------
 def _mime_por_extension(nombre):
@@ -2801,10 +3273,11 @@ def _mime_por_extension(nombre):
 def listar_fotos(id):
     import base64
     conn = _conn_para_faena(id)
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    faena = fila_a_dict(faena)
 
     filas = conn.execute(
         "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
@@ -2812,8 +3285,9 @@ def listar_fotos(id):
     fotos = [_payload_foto(fila) for fila in filas_a_lista(filas)]
 
     # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
-    if faena["carpeta"]:
-        carpeta_fotos = os.path.join(faena["carpeta"], "fotos")
+    carpeta_local = _resolver_carpeta_local(faena)
+    if carpeta_local:
+        carpeta_fotos = os.path.join(carpeta_local, "fotos")
         if os.path.exists(carpeta_fotos):
             registrados = {f["nombre"] for f in fotos}
             extensiones = {".jpg", ".jpeg", ".png", ".webp"}
@@ -2867,13 +3341,19 @@ def abrir_carpeta_fotos(id):
     return jsonify({"ok": True})
 
 # -------------------- DOCUMENTOS --------------------
+@app.route("/api/faenas/sincronizar-pc", methods=["POST"])
+def api_sincronizar_archivos_pc():
+    resultado = sincronizar_archivos_desde_pc()
+    return jsonify({"ok": True, "data": resultado})
+
 @app.route("/api/faenas/<int:id>/documentos", methods=["GET"])
 def listar_documentos(id):
     conn = _conn_para_faena(id)
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    faena = conn.execute("SELECT numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    faena = fila_a_dict(faena)
     vistos = set()
     archivos = []
     try:
@@ -2898,7 +3378,7 @@ def listar_documentos(id):
             "storage": fila.get("storage_backend") or "",
             "descarga": f"/api/faenas/{id}/documentos/{nombre}/descargar",
         })
-    carpeta = faena["carpeta"] if faena else ""
+    carpeta = _resolver_carpeta_local(faena)
     if carpeta:
         carpeta_docs = os.path.join(carpeta, "Documentos")
         if os.path.isdir(carpeta_docs):
@@ -3323,66 +3803,193 @@ def guardar_presupuesto(id):
     }})
 
 
-@app.route("/api/book", methods=["POST"])
-def crear_book():
+def _campos_book_request():
+    ctype = (request.content_type or "").lower()
+    datos = request.get_json(silent=True) or {} if "application/json" in ctype else {}
+    form = request.form
+
+    def campo(nombre, defecto=None):
+        if nombre in datos and datos[nombre] is not None:
+            return datos[nombre]
+        if nombre in form:
+            return form.get(nombre)
+        return defecto
+
+    return {
+        "faena_id": campo("faena_id", 0),
+        "titulo": (campo("titulo", "") or "")[:255],
+        "descripcion": (campo("descripcion", "") or "")[:5000],
+        "orden": campo("orden", None),
+        "ruta_foto": (campo("ruta_foto", "") or "").strip(),
+        "data": campo("data", "") or "",
+    }
+
+
+def _bytes_imagen_book_request(campos=None, solo_nueva=False):
     import base64 as b64mod
-    datos = request.json or {}
-    faena_id = datos.get("faena_id") or 0
-    titulo = datos.get("titulo", "")
-    descripcion = datos.get("descripcion", "")
-    foto_b64 = datos.get("data", "")
-    if not foto_b64:
-        return jsonify({"ok": False, "error": "Se requiere data"}), 400
-    conn = get_connection()
+    archivo = request.files.get("archivo") or request.files.get("file")
+    if archivo and getattr(archivo, "filename", ""):
+        return archivo.read()
+    campos = campos or _campos_book_request()
+    foto_b64 = campos.get("data") or ""
+    if foto_b64:
+        raw = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
+        return b64mod.b64decode(raw)
+    if solo_nueva:
+        return None
+    ruta_origen = (campos.get("ruta_foto") or "").strip()
+    if ruta_origen:
+        return _bytes_desde_ruta_foto(ruta_origen)
+    return None
+
+
+def _jpeg_book(img_bytes, max_lado=1600, calidad=78):
+    if not img_bytes:
+        return None
+    if Image is None:
+        return img_bytes
+    try:
+        im = Image.open(io.BytesIO(img_bytes))
+        if ImageOps is not None:
+            im = ImageOps.exif_transpose(im)
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        w, h = im.size
+        lado = max(w, h)
+        if lado > max_lado:
+            ratio = max_lado / float(lado)
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
+            im = im.resize((max(1, int(w * ratio)), max(1, int(h * ratio))), resample)
+        out = io.BytesIO()
+        im.save(out, format="JPEG", quality=calidad, optimize=True)
+        return out.getvalue()
+    except Exception:
+        return img_bytes
+
+
+def _resolver_faena_book(conn, faena_id):
+    try:
+        faena_id = int(faena_id or 0)
+    except (TypeError, ValueError):
+        faena_id = 0
     numero_faena = "generico"
-    if faena_id and faena_id != 0:
-        faena = conn.execute("SELECT numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
-        if not faena:
-            conn.close()
-            return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-        numero_faena = faena["numero"]
+    if faena_id:
+        faena = conn.execute("SELECT numero, archivada FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        archivada = False
+        if faena:
+            try:
+                archivada = int(faena["archivada"] or 0) == 1
+            except (TypeError, ValueError):
+                archivada = False
+        if not faena or archivada:
+            return 0, "generico"
+        return faena_id, faena["numero"]
+    return 0, numero_faena
+
+
+def _guardar_archivo_book(img_bytes, numero_faena):
+    img_bytes = _jpeg_book(img_bytes)
+    if not img_bytes:
+        return {"ok": False, "error": "No se pudo leer la imagen"}
     nombre_foto = f"book_{numero_faena}_{int(time.time() * 1000)}.jpg"
     try:
-        raw = foto_b64.split(",")[1] if "," in foto_b64 else foto_b64
-        img_bytes = b64mod.b64decode(raw)
         if r2_activo():
             key = clave_objeto("_book", nombre_foto)
             res = subir_bytes(key, img_bytes, "image/jpeg")
             if not res.get("ok"):
-                conn.close()
-                return jsonify({"ok": False, "error": res.get("error") or "No se pudo subir al book"}), 500
-            ruta_foto = res.get("url") or key
-        else:
-            carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
-            os.makedirs(carpeta_book, exist_ok=True)
-            ruta_foto = os.path.join(carpeta_book, nombre_foto)
-            with open(ruta_foto, "wb") as f:
-                f.write(img_bytes)
+                return {"ok": False, "error": res.get("error") or "No se pudo subir al book"}
+            return {"ok": True, "ruta": res.get("url") or key}
+        carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
+        os.makedirs(carpeta_book, exist_ok=True)
+        ruta_foto = os.path.join(carpeta_book, nombre_foto)
+        with open(ruta_foto, "wb") as f:
+            f.write(img_bytes)
+        return {"ok": True, "ruta": ruta_foto}
     except Exception as e:
-        conn.close()
-        return jsonify({"ok": False, "error": str(e)}), 500
-    cursor = conn.cursor()
-    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()["max_orden"]
-    cursor.execute(
-        "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
-        (faena_id or None, ruta_foto, titulo, descripcion, max_orden + 1)
-    )
-    conn.commit()
-    nuevo_id = cursor.lastrowid
-    conn.close()
-    return jsonify({"ok": True, "data": {"id": nuevo_id}})
+        return {"ok": False, "error": str(e) or "No se pudo guardar la foto"}
+
+
+@app.route("/api/book", methods=["POST"])
+def crear_book():
+    try:
+        campos = _campos_book_request()
+        try:
+            img_bytes = _bytes_imagen_book_request(campos)
+        except Exception:
+            return jsonify({"ok": False, "error": "La foto no es válida"}), 400
+        if not img_bytes:
+            return jsonify({"ok": False, "error": "Se requiere una foto"}), 400
+        conn = get_connection()
+        try:
+            faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
+            guardado = _guardar_archivo_book(img_bytes, numero_faena)
+            if not guardado.get("ok"):
+                return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
+            ruta_foto = guardado["ruta"]
+            max_fila = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()
+            max_orden = int((max_fila["max_orden"] if max_fila else 0) or 0)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
+                (int(faena_id or 0), ruta_foto, campos.get("titulo") or "", campos.get("descripcion") or "", max_orden + 1)
+            )
+            conn.commit()
+            nuevo_id = cursor.lastrowid
+        finally:
+            conn.close()
+        return jsonify({"ok": True, "data": {"id": nuevo_id}})
+    except Exception as e:
+        print("crear_book:", e)
+        return jsonify({"ok": False, "error": str(e) or "No se pudo guardar la foto"}), 500
 
 @app.route("/api/book/<int:id>", methods=["PUT"])
 def editar_book(id):
-    datos = request.json
-    conn = get_connection()
-    conn.execute(
-        "UPDATE book_fotos SET titulo=?, descripcion=?, orden=? WHERE id=?",
-        (datos.get("titulo", ""), datos.get("descripcion", ""), datos.get("orden", 0), id)
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
+    try:
+        campos = _campos_book_request()
+        conn = get_connection()
+        try:
+            fila = conn.execute("SELECT * FROM book_fotos WHERE id=?", (id,)).fetchone()
+            if not fila:
+                return jsonify({"ok": False, "error": "Foto no encontrada"}), 404
+            actual = fila_a_dict(fila)
+            json_body = {}
+            ctype = (request.content_type or "").lower()
+            if "application/json" in ctype:
+                json_body = request.get_json(silent=True) or {}
+            titulo = campos.get("titulo") if ("titulo" in request.form or "titulo" in json_body) else (actual.get("titulo") or "")
+            descripcion = campos.get("descripcion") if ("descripcion" in request.form or "descripcion" in json_body) else (actual.get("descripcion") or "")
+            if campos.get("orden") is not None and str(campos.get("orden")) != "":
+                try:
+                    orden = int(campos.get("orden"))
+                except (TypeError, ValueError):
+                    orden = actual.get("orden") or 0
+            else:
+                orden = actual.get("orden") or 0
+            if "faena_id" in request.form or "faena_id" in json_body:
+                faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
+            else:
+                faena_id, numero_faena = _resolver_faena_book(conn, actual.get("faena_id") or 0)
+            ruta_foto = actual.get("ruta_foto")
+            try:
+                img_bytes = _bytes_imagen_book_request(campos, solo_nueva=True)
+            except Exception:
+                return jsonify({"ok": False, "error": "La foto no es válida"}), 400
+            if img_bytes:
+                guardado = _guardar_archivo_book(img_bytes, numero_faena)
+                if not guardado.get("ok"):
+                    return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
+                ruta_foto = guardado["ruta"]
+            conn.execute(
+                "UPDATE book_fotos SET faena_id=?, ruta_foto=?, titulo=?, descripcion=?, orden=? WHERE id=?",
+                (int(faena_id or 0), ruta_foto or "", (titulo or "")[:255], (descripcion or "")[:5000], int(orden or 0), id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        print("editar_book:", e)
+        return jsonify({"ok": False, "error": str(e) or "No se pudo guardar los cambios"}), 500
 
 @app.route("/api/book/<int:id>", methods=["DELETE"])
 def eliminar_book(id):

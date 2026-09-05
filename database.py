@@ -299,6 +299,7 @@ def _crear_esquema_sqlite(cursor):
             importe REAL DEFAULT 0,
             fecha_inicio TEXT DEFAULT '',
             archivada INTEGER DEFAULT 0,
+            fase TEXT DEFAULT 'en_proceso',
             carpeta TEXT DEFAULT '',
             FOREIGN KEY (cliente_id) REFERENCES clientes(id),
             FOREIGN KEY (intermediario_id) REFERENCES intermediarios(id)
@@ -386,6 +387,8 @@ def _crear_esquema_sqlite(cursor):
         cursor.execute("ALTER TABLE fotos_faena ADD COLUMN data_base64 TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+
+    _asegurar_columna_fase(cursor, mysql=False)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS book_fotos (
@@ -494,6 +497,7 @@ def _crear_esquema_mysql(cursor):
             importe DOUBLE NOT NULL DEFAULT 0,
             fecha_inicio VARCHAR(32) NOT NULL DEFAULT '',
             archivada TINYINT(1) NOT NULL DEFAULT 0,
+            fase VARCHAR(32) NOT NULL DEFAULT 'en_proceso',
             carpeta VARCHAR(255) NOT NULL DEFAULT '',
             CONSTRAINT fk_faenas_clientes
                 FOREIGN KEY (cliente_id) REFERENCES clientes(id),
@@ -656,6 +660,28 @@ def _crear_esquema_mysql(cursor):
     except Exception:
         pass
 
+    _asegurar_columna_fase(cursor, mysql=True)
+
+
+def _asegurar_columna_fase(cursor, mysql=False):
+    """Añade fase sin romper datos ya guardados."""
+    try:
+        if mysql:
+            cursor.execute("ALTER TABLE faenas ADD COLUMN fase VARCHAR(32) NOT NULL DEFAULT 'en_proceso'")
+        else:
+            cursor.execute("ALTER TABLE faenas ADD COLUMN fase TEXT DEFAULT 'en_proceso'")
+    except Exception:
+        pass
+    try:
+        cursor.execute(
+            "UPDATE faenas SET fase='terminada' WHERE COALESCE(archivada,0)=1 AND (fase IS NULL OR fase='')"
+        )
+        cursor.execute(
+            "UPDATE faenas SET fase='en_proceso' WHERE COALESCE(archivada,0)=0 AND (fase IS NULL OR fase='')"
+        )
+    except Exception:
+        pass
+
 
 def inicializar_db():
     os.makedirs(CARPETA_RAIZ, exist_ok=True)
@@ -676,13 +702,61 @@ def inicializar_db():
     print(f"✓ Base de datos lista en: {destino}")
 
 
-def generar_numero_faena(intermediario_id, cliente_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) AS total FROM faenas WHERE cliente_id = ?", (cliente_id,))
-    count = cursor.fetchone()["total"]
-    conn.close()
-    return f"{int(intermediario_id):02d}{int(cliente_id):02d}{count + 1:02d}"
+def generar_numero_faena(intermediario_id, cliente_id, conn=None):
+    """Número: 1 dígito intermediario + 2 dígitos cliente de ese intermediario + 2 dígitos faena del cliente.
+    Sin intermediario la primera cifra es 0. No reescribe números ya guardados.
+    """
+    cerrar = False
+    if conn is None:
+        conn = get_connection()
+        cerrar = True
+    try:
+        cli = conn.execute(
+            "SELECT intermediario_id FROM clientes WHERE id=?",
+            (cliente_id,),
+        ).fetchone()
+        if cli is not None:
+            inter_cli = cli["intermediario_id"]
+            if inter_cli is None or inter_cli == "":
+                inter_cli = 0
+            intermediario_id = inter_cli
+        iid = int(intermediario_id or 0)
+        if iid < 0:
+            iid = 0
+        digito_i = 0 if iid == 0 else min(iid, 9)
+
+        filas_cli = conn.execute(
+            "SELECT id FROM clientes WHERE COALESCE(intermediario_id, 0) = ? ORDER BY id",
+            (iid,),
+        ).fetchall()
+        indice_cli = 1
+        for i, fila in enumerate(filas_cli, start=1):
+            if int(fila["id"]) == int(cliente_id):
+                indice_cli = i
+                break
+        indice_cli = min(max(indice_cli, 1), 99)
+
+        filas_f = conn.execute(
+            "SELECT numero FROM faenas WHERE cliente_id = ?",
+            (cliente_id,),
+        ).fetchall()
+        max_f = 0
+        for fila in filas_f:
+            solo = "".join(c for c in str(fila["numero"] or "") if c.isdigit())
+            if len(solo) >= 2:
+                max_f = max(max_f, int(solo[-2:]))
+        indice_f = min(max_f + 1, 99)
+
+        while indice_f <= 99:
+            numero = f"{digito_i}{indice_cli:02d}{indice_f:02d}"
+            existe = conn.execute("SELECT 1 FROM faenas WHERE numero=?", (numero,)).fetchone()
+            if not existe:
+                return numero
+            indice_f += 1
+        return f"{digito_i}{indice_cli:02d}{indice_f}"
+    finally:
+        if cerrar:
+            conn.close()
 
 
 def crear_carpeta_faena(numero_faena, nombre_cliente):

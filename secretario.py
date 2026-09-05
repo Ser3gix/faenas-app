@@ -1,5 +1,6 @@
 # secretario.py — Jimmi: consulta, memoria en TiDB y propuestas
 MAX_RESUMEN = 8000
+MAX_MEMORIA_MODO = 2500
 
 from database import get_connection, fila_a_dict, filas_a_lista
 
@@ -74,10 +75,59 @@ def escribir_contexto(resumen):
         conn.close()
 
 
-def anotar_contexto(nota):
+def normalizar_modo(modo):
+    m = str(modo or "").strip().lower()
+    if m in ("materiales", "material"):
+        return "materiales"
+    if m in ("faenas", "trabajos", "trabajo"):
+        return "faenas"
+    return "todo"
+
+
+def _etiquetas_linea(linea):
+    tags = []
+    rest = (linea or "").lstrip("- ").strip()
+    while rest.startswith("["):
+        fin = rest.find("]")
+        if fin <= 0:
+            break
+        tags.append(rest[1:fin].strip().lower())
+        rest = rest[fin + 1:].lstrip()
+    return tags, rest
+
+
+def _es_correccion(tags):
+    return any(t.replace("ó", "o") == "correccion" for t in tags)
+
+
+def memoria_para_modo(modo):
+    modo = normalizar_modo(modo)
+    lineas = leer_contexto_detalle().get("lineas") or []
+    elegidas = []
+    for ln in lineas:
+        tags, _cuerpo = _etiquetas_linea(ln)
+        if _es_correccion(tags):
+            elegidas.append(ln)
+            continue
+        if modo == "todo":
+            if not tags or "todo" in tags or "general" in tags:
+                elegidas.append(ln)
+        elif modo == "faenas":
+            if "faenas" in tags or "trabajos" in tags:
+                elegidas.append(ln)
+        elif modo == "materiales":
+            if "materiales" in tags:
+                elegidas.append(ln)
+    texto = "\n".join(f"- {ln}" for ln in elegidas)
+    return texto[:MAX_MEMORIA_MODO]
+
+
+def anotar_contexto(nota, modo=None):
     nota = (nota or "").strip()
     if not nota:
         return
+    if not nota.startswith("["):
+        nota = f"[{normalizar_modo(modo)}] {nota}"
     actual = leer_contexto()
     if nota in actual:
         return
@@ -169,22 +219,67 @@ def cruzar_articulos(articulos):
         conn.close()
 
 
-def snapshot_negocio(faena_id=None):
-    conn = get_connection()
+def _faenas_activas(conn, limite):
     try:
-        faenas = filas_a_lista(conn.execute(
+        return filas_a_lista(conn.execute(
+            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, f.fase,
+                      c.nombre AS cliente_nombre
+               FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+               WHERE f.archivada=0 AND COALESCE(f.fase,'')<>'terminada'
+               ORDER BY f.id DESC LIMIT ?""",
+            (limite,),
+        ).fetchall())
+    except Exception:
+        return filas_a_lista(conn.execute(
             """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada,
                       c.nombre AS cliente_nombre
                FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
-               WHERE f.archivada=0 ORDER BY f.id DESC LIMIT 40"""
+               WHERE f.archivada=0 ORDER BY f.id DESC LIMIT ?""",
+            (limite,),
         ).fetchall())
-        mats = filas_a_lista(conn.execute(
-            "SELECT m.id, m.nombre, m.unidad, m.categoria, p.proveedor, p.precio_unitario "
-            "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
-            "ORDER BY m.nombre LIMIT 80"
+
+
+def _faenas_terminadas(conn, limite):
+    try:
+        return filas_a_lista(conn.execute(
+            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe,
+                      c.nombre AS cliente_nombre
+               FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+               WHERE f.archivada=1 OR f.fase='terminada'
+               ORDER BY f.id DESC LIMIT ?""",
+            (limite,),
         ).fetchall())
+    except Exception:
+        return filas_a_lista(conn.execute(
+            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe,
+                      c.nombre AS cliente_nombre
+               FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+               WHERE f.archivada=1 ORDER BY f.id DESC LIMIT ?""",
+            (limite,),
+        ).fetchall())
+
+
+def snapshot_negocio(faena_id=None, modo="todo"):
+    modo = normalizar_modo(modo)
+    incluir_faenas = modo in ("todo", "faenas")
+    incluir_mats = modo in ("todo", "materiales")
+    lim_act = 25 if modo == "todo" else 40
+    lim_ter = 20 if modo == "todo" else 40
+    lim_mat = 40 if modo == "todo" else 60
+    conn = get_connection()
+    try:
+        faenas = _faenas_activas(conn, lim_act) if incluir_faenas else []
+        terminadas = _faenas_terminadas(conn, lim_ter) if incluir_faenas else []
+        mats = []
+        if incluir_mats:
+            mats = filas_a_lista(conn.execute(
+                "SELECT m.id, m.nombre, m.unidad, m.categoria, p.proveedor, p.precio_unitario "
+                "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
+                "ORDER BY m.nombre LIMIT ?",
+                (lim_mat,),
+            ).fetchall())
         extra = {}
-        if faena_id:
+        if faena_id and incluir_faenas:
             pres = filas_a_lista(conn.execute(
                 "SELECT descripcion, cantidad, precio_unitario, total FROM presupuestos_faena WHERE faena_id=? LIMIT 40",
                 (faena_id,),
@@ -195,12 +290,18 @@ def snapshot_negocio(faena_id=None):
                 (faena_id,),
             ).fetchall())
             extra = {"presupuesto": pres, "gastos": gastos}
-        return {"faenas": faenas, "materiales": mats, "faena_detalle": extra}
+        return {
+            "modo": modo,
+            "faenas": faenas,
+            "faenas_terminadas": terminadas,
+            "materiales": mats,
+            "faena_detalle": extra,
+        }
     finally:
         conn.close()
 
 
-def chat_jimmi(pregunta, historial=None, faena_id=None):
+def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
     from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
     pregunta = (pregunta or "").strip()
     if not pregunta:
@@ -208,8 +309,9 @@ def chat_jimmi(pregunta, historial=None, faena_id=None):
     if not IA_API_KEY:
         return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
 
-    memoria = leer_contexto()
-    datos = snapshot_negocio(faena_id)
+    modo = normalizar_modo(modo)
+    memoria = memoria_para_modo(modo)
+    datos = snapshot_negocio(faena_id, modo)
     hist = []
     for m in (historial or [])[-8:]:
         if isinstance(m, dict) and m.get("texto"):
@@ -217,6 +319,9 @@ def chat_jimmi(pregunta, historial=None, faena_id=None):
     system = (
         "Eres Jimmi, secretario de un taller de carpintería. Hablas español, claro y breve. "
         "Usa los datos de la app y tu memoria. No inventes precios ni faenas. "
+        f"Modo de consulta: {modo}. "
+        "Las faenas en curso están en datos_app.faenas. Las terminadas están en datos_app.faenas_terminadas. "
+        "Si preguntan cuáles están terminadas, usa esa lista. Las correcciones del usuario en memoria_jimmi prevalecen. "
         "Si piden precios de tiendas, busca en internet si puedes y compara con el almacén. "
         "Si algo requiere cambiar datos, descríbelo y di que el usuario debe pulsar Aceptar. "
         "No borres faenas ni clientes."
@@ -224,6 +329,7 @@ def chat_jimmi(pregunta, historial=None, faena_id=None):
     user = {
         "pregunta": pregunta,
         "faena_id": faena_id,
+        "modo": modo,
         "memoria_jimmi": memoria,
         "datos_app": datos,
         "historial": hist,
@@ -250,6 +356,5 @@ def chat_jimmi(pregunta, historial=None, faena_id=None):
     texto = (_gemini_extraer_texto(raw) or "").strip()
     if not texto:
         return {"ok": False, "error": "Jimmi no ha podido responder"}
-    anotar_contexto(f"Pregunta: {pregunta[:200]} → {texto[:280]}")
     propuestas = []
-    return {"ok": True, "data": {"respuesta": texto, "propuestas": propuestas, "motor": "jimmi"}}
+    return {"ok": True, "data": {"respuesta": texto, "propuestas": propuestas, "motor": "jimmi", "modo": modo}}

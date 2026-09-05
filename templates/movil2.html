@@ -6,42 +6,48 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#5c3d0e">
+<meta name="theme-color" content="#8F4F2A">
 <link rel="manifest" href="/static/manifest.json">
 <script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <title>Faenas</title>
 <style>
 :root {
-  --font-mono: 'Courier New', Courier, monospace;
-  --font-serif: Georgia, 'Times New Roman', serif;
-  --wood: #c8a96e;
-  --wood-dark: #8b6914;
-  --wood-light: #f0deb4;
-  --ink: #1a1208;
-  --paper: #e8f7f9;
-  --paper-dark: #d0eef2;
-  --sawdust: #b8dde3;
-  --accent: #5c3d0e;
-  --green: #3a6b3a;
-  --red: #8b2020;
-  --blue: #1e3a5f;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-sans);
+  --font-serif: var(--font-sans);
+  --wood: #E7D5B8;
+  --wood-dark: #6B3A22;
+  --wood-light: #F6EFE4;
+  --ink: #1C1917;
+  --muted: #57534E;
+  --paper: #F4EFE6;
+  --paper-dark: #EDE6D9;
+  --sawdust: #E7E0D4;
+  --accent: #8F4F2A;
+  --accent-soft: #F0E4D6;
+  --green: #15803D;
+  --red: #B91C1C;
+  --blue: #1D4ED8;
+  --radius: 16px;
+  --shadow: 0 8px 24px rgba(28, 25, 23, 0.08);
   --safe-bottom: env(safe-area-inset-bottom, 16px);
   --header-h: 56px;
-  --bottom-h: calc(64px + var(--safe-bottom));
+  --bottom-h: calc(68px + var(--safe-bottom));
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; }
 body {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   background: var(--paper);
   color: var(--ink);
   font-size: 16px;
+  line-height: 1.45;
 }
 
 /* ──────── HEADER ──────── */
 header {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 0 16px;
   padding-top: env(safe-area-inset-top, 0);
   height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
@@ -52,22 +58,13 @@ header {
   top: 0; left: 0; right: 0;
   z-index: 60;
 }
-header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
-.sync-btn {
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: var(--wood-light);
-  padding: 5px 11px;
-  border-radius: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
+header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; flex: 1; letter-spacing: -0.02em; }
 .offline-indicator {
   font-size: 0.75rem;
-  background: rgba(255,255,255,0.15);
-  padding: 3px 8px;
-  border-radius: 10px;
+  font-weight: 600;
+  background: rgba(0,0,0,0.2);
+  padding: 4px 10px;
+  border-radius: 999px;
   display: none;
 }
 .offline-indicator.show { display: block; }
@@ -85,7 +82,7 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   scrollbar-width: none;
 }
 #main-carousel::-webkit-scrollbar { display: none; }
@@ -105,72 +102,74 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 .bottom-nav {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  background: white;
-  border-top: 2px solid var(--sawdust);
+  background: #fff;
+  border-top: 1px solid var(--sawdust);
   display: flex;
-  padding-bottom: var(--safe-bottom);
+  gap: 4px;
+  padding: 6px 8px var(--safe-bottom);
   z-index: 60;
   height: var(--bottom-h);
 }
 .bottom-nav button {
   flex: 1;
-  padding: 8px 4px;
+  min-height: 44px;
+  padding: 4px 2px;
   border: none;
   background: none;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: #aaa;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  text-transform: uppercase;
-  transition: color 0.15s;
+  border-radius: 12px;
 }
-.bottom-nav button .ni { font-size: 1.4rem; }
-.bottom-nav button.active { color: var(--accent); }
+.bottom-nav button .ni { font-size: 1.35rem; line-height: 1; }
+.bottom-nav button.active { color: var(--accent); background: var(--accent-soft); }
 
 /* ──────── FAENA CARDS (lista) ──────── */
 #lista-faenas {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2px 2px 12px;
-  scroll-snap-type: y proximity;
+  padding: 2px 2px 20px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 #lista-faenas::-webkit-scrollbar { display: none; }
+.lista-toolbar { display: flex; margin-bottom: 12px; }
+.btn-nueva { min-height: 48px; font-size: 1rem; font-weight: 700; border-radius: 14px; }
 .faena-card {
-  background: white;
+  background: #fff;
   border: 1px solid var(--sawdust);
-  border-radius: 12px;
-  padding: 18px 18px 20px;
-  margin-bottom: 0;
-  box-shadow: 2px 2px 0 var(--sawdust);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  box-shadow: var(--shadow);
   cursor: pointer;
   width: 100%;
-  min-height: 220px;
-  scroll-snap-align: start;
 }
 .faena-card:active { background: var(--paper-dark); }
-.fc-num { font-size: 0.82rem; margin-bottom: 4px; }
+.fc-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fc-num { font-size: 0.82rem; margin-bottom: 0; }
 .fc-cliente {
-  font-family: var(--font-serif);
-  font-size: 1.35rem;
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 1.2rem;
+  font-weight: 700;
   color: var(--ink);
   line-height: 1.2;
+  letter-spacing: -0.02em;
   margin-bottom: 4px;
 }
-.fc-tipo { font-size: 0.9rem; color: var(--accent); margin-bottom: 4px; }
-.fc-dir { font-size: 0.82rem; color: #888; margin-bottom: 8px; }
-.fc-footer { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--sawdust); }
-.fc-precio { font-size: 1rem; font-weight: 600; color: var(--green); }
+.fc-tipo { font-size: 0.95rem; color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+.fc-dir { font-size: 0.88rem; color: var(--muted); margin-bottom: 8px; }
+.fc-footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px solid var(--sawdust); }
+.fc-precio { font-size: 1.05rem; font-weight: 700; color: var(--green); }
 
 /* ──────── FAENA OVERLAY (detalle) ──────── */
 .faena-overlay {
@@ -187,7 +186,7 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 
 .overlay-header {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 0 14px;
   padding-top: env(safe-area-inset-top, 0);
   height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
@@ -197,50 +196,54 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   flex-shrink: 0;
 }
 .overlay-back {
-  background: none;
+  background: rgba(255,255,255,0.16);
   border: none;
-  color: var(--wood-light);
-  font-family: var(--font-mono);
-  font-size: 1rem;
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 8px 12px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 40px;
 }
-.overlay-title {
-  flex: 1;
-  min-width: 0;
-}
+.overlay-title { flex: 1; min-width: 0; }
 .overlay-num {
-  font-size: 0.8rem;
-  opacity: 0.8;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .overlay-cliente {
-  font-family: var(--font-serif);
-  font-size: 1rem;
+  font-family: var(--font-sans);
+  font-size: 1.02rem;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .overlay-edit-btn {
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: var(--wood-light);
-  padding: 5px 10px;
-  border-radius: 16px;
-  font-size: 0.82rem;
+  background: rgba(255,255,255,0.16);
+  border: none;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  min-height: 40px;
 }
 
 /* ──────── PANEL TABS ──────── */
 .panel-tabs-wrap {
-  background: white;
-  border-bottom: 2px solid var(--sawdust);
+  background: #fff;
+  border-bottom: 1px solid var(--sawdust);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -249,24 +252,61 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 .panel-tabs-wrap::-webkit-scrollbar { display: none; }
 .panel-tabs {
   display: flex;
-  padding: 0 8px;
-  gap: 0;
+  padding: 4px 8px;
+  gap: 4px;
   min-width: max-content;
 }
 .panel-tab {
   padding: 10px 14px;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #aaa;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
   cursor: pointer;
   border-bottom: 3px solid transparent;
   white-space: nowrap;
-  transition: all 0.15s;
   user-select: none;
 }
 .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.fase-tabs-mov {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 0 12px;
+  padding: 2px 0 6px;
+  border-bottom: none;
+  scrollbar-width: none;
+}
+.fase-tabs-mov::-webkit-scrollbar { display: none; }
+.fase-tab-mov {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  min-height: 40px;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--sawdust);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.fase-tab-mov.active { color: var(--ink); }
+.fase-tab-mov[data-fase="medicion"].active { background: #DBEAFE; color: #1D4ED8; }
+.fase-tab-mov[data-fase="presupuestada"].active { background: #FEF3C7; color: #B45309; }
+.fase-tab-mov[data-fase="en_proceso"].active { background: #DCFCE7; color: #15803D; }
+.fase-tab-mov[data-fase="terminada"].active { background: #E7E5E4; color: #44403C; }
+.fase-sel-mov {
+  width: auto;
+  max-width: 48%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 16px;
+  margin-left: auto;
+  border-radius: 12px;
+  font-weight: 600;
+}
 
 /* ──────── PANEL CAROUSEL ──────── */
 #panel-carousel {
@@ -302,43 +342,45 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   gap: 10px;
 }
 .datos-campo:last-child { border-bottom: none; }
-.datos-k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: #999; margin-top: 2px; white-space: nowrap; }
-.datos-v { font-size: 0.95rem; font-weight: 500; text-align: right; line-height: 1.4; }
+.datos-k { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.datos-v { font-size: 1rem; font-weight: 600; text-align: right; line-height: 1.4; }
 .call-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: #d4edda;
+  background: #DCFCE7;
   color: var(--green);
-  border: 1px solid #a8d5b5;
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 0.85rem;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
   text-decoration: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 .datos-section-title {
-  font-family: var(--font-serif);
-  font-size: 1rem;
-  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink);
   margin-bottom: 10px;
   padding-bottom: 6px;
-  border-bottom: 2px solid var(--sawdust);
+  border-bottom: 1px solid var(--sawdust);
 }
 
 /* ──────── PRESUPUESTO ──────── */
 .presup-total {
   background: var(--ink);
-  color: var(--wood-light);
-  border-radius: 10px;
+  color: #fff;
+  border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-.presup-total-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
-.presup-total-val { font-size: 1.6rem; font-weight: 600; font-family: var(--font-serif); }
+.presup-total-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+.presup-total-val { font-size: 1.6rem; font-weight: 700; font-family: var(--font-sans); }
 .presup-line {
   display: flex;
   justify-content: space-between;
@@ -350,7 +392,7 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 .presup-line:last-child { border-bottom: none; }
 .presup-concepto { font-size: 0.9rem; flex: 1; }
 .presup-precio { font-size: 0.95rem; font-weight: 600; color: var(--green); white-space: nowrap; }
-.presup-empty { font-size: 0.9rem; color: #aaa; text-align: center; padding: 20px 0; }
+.presup-empty { font-size: 0.95rem; color: var(--muted); text-align: center; padding: 20px 0; }
 .presup-actions { display: flex; gap: 6px; margin-top: 6px; }
 .presup-actions .btn { padding: 6px 10px; font-size: 0.72rem; }
 
@@ -359,16 +401,16 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: white;
+  padding: 12px;
+  background: #fff;
   border: 1px solid var(--sawdust);
-  border-radius: 6px;
+  border-radius: 12px;
   margin-bottom: 6px;
 }
 .doc-icon { font-size: 1.4rem; flex-shrink: 0; }
 .doc-info { flex: 1; min-width: 0; }
 .doc-nombre { font-size: 0.88rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.doc-meta { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+.doc-meta { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
 
 /* ──────── ANOTACIONES LIBRETA ──────── */
 .notebook-header {
@@ -378,18 +420,19 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
   margin-bottom: 10px;
 }
 .notebook-title {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 1rem;
-  color: var(--accent);
+  font-weight: 700;
+  color: var(--ink);
 }
 .notebook {
-  background: white;
+  background: #fff;
   border: 1px solid var(--sawdust);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background-image: repeating-linear-gradient(
-    white 0px, white 35px,
-    #c5e0e6 36px
+    #fff 0px, #fff 35px,
+    #EDE6D9 36px
   );
   min-height: 200px;
 }
@@ -575,7 +618,7 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 .ticket-thumb { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
 .ticket-info { flex: 1; min-width: 0; }
 .ticket-nombre { font-size: 0.82rem; font-weight: 500; }
-.ticket-meta { font-size: 0.72rem; color: #aaa; margin-top: 2px; }
+.ticket-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
 .gasto-item {
   display: flex;
   justify-content: space-between;
@@ -590,93 +633,95 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 
 /* ──────── COMPONENTES COMPARTIDOS ──────── */
 .badge {
-  font-size: 0.68rem;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-  text-transform: uppercase;
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-weight: 700;
   white-space: nowrap;
 }
-.b-direct { background: var(--wood-light); color: var(--wood-dark); }
-.b-inter  { background: #dde8f0; color: var(--blue); }
-.b-green  { background: #d4edda; color: var(--green); }
-.b-gray   { background: #e8e8e8; color: #555; }
-.b-orange { background: #fdecd0; color: #8b5000; }
+.b-direct { background: var(--accent-soft); color: var(--wood-dark); }
+.b-inter  { background: #DBEAFE; color: var(--blue); }
+.b-green  { background: #DCFCE7; color: var(--green); }
+.b-gray   { background: #E7E5E4; color: #44403C; }
+.b-orange { background: #FEF3C7; color: #B45309; }
 
 .num-faena {
-  background: var(--ink); color: var(--wood-light);
-  padding: 2px 6px; border-radius: 3px; font-size: 0.82rem; letter-spacing: 0.06em;
+  background: var(--ink); color: #fff;
+  padding: 3px 8px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em;
 }
 .num-temp {
-  background: #8b5000; color: #fdecd0;
-  padding: 2px 6px; border-radius: 3px; font-size: 0.82rem;
+  background: #B45309; color: #FFFBEB;
+  padding: 3px 8px; border-radius: 8px; font-size: 0.78rem; font-weight: 700;
 }
 
 .btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px;
   padding: 12px 16px;
-  border: none; border-radius: 6px;
-  font-family: var(--font-mono); font-size: 0.88rem;
-  cursor: pointer; letter-spacing: 0.04em; text-transform: uppercase;
+  border: none; border-radius: 12px;
+  font-family: var(--font-sans); font-size: 0.95rem; font-weight: 700;
+  cursor: pointer;
   width: 100%; margin-bottom: 8px;
 }
 .btn:active { opacity: 0.82; }
-.btn-p { background: var(--accent); color: var(--wood-light); }
-.btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
-.btn-g { background: #d4edda; color: var(--green); border: 1px solid #a8d5b5; }
-.btn-d { background: #fde8e8; color: var(--red); border: 1px solid #f0b0b0; }
-.btn-inline { width: auto; margin-bottom: 0; padding: 6px 12px; font-size: 0.8rem; }
+.btn-p { background: var(--accent); color: #fff; }
+.btn-s { background: var(--sawdust); color: var(--ink); }
+.btn-g { background: #DCFCE7; color: var(--green); }
+.btn-d { background: #FEE2E2; color: var(--red); }
+.btn-inline { width: auto; margin-bottom: 0; padding: 10px 14px; font-size: 0.9rem; }
 .btn-row { display: flex; gap: 8px; margin-bottom: 8px; }
 
 .form-box {
-  background: var(--paper-dark);
+  background: #fff;
   border: 1px solid var(--sawdust);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 14px;
+  box-shadow: var(--shadow);
 }
 .form-title {
-  font-family: var(--font-serif); font-size: 0.95rem; color: var(--accent);
+  font-family: var(--font-sans); font-size: 1.02rem; font-weight: 700; color: var(--ink);
   margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--sawdust);
 }
 .field { margin-bottom: 12px; }
-label { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: #888; margin-bottom: 4px; }
+label { display: block; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
 input, select, textarea {
-  width: 100%; padding: 11px 13px;
-  border: 1px solid #ccc; border-radius: 6px;
-  font-family: var(--font-mono); font-size: 0.92rem;
-  background: white; color: var(--ink);
+  width: 100%; padding: 12px 13px;
+  min-height: 44px;
+  border: 1px solid #D6D3D1; border-radius: 12px;
+  font-family: var(--font-sans); font-size: 16px;
+  background: #fff; color: var(--ink);
   appearance: none; -webkit-appearance: none;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(143,79,42,0.18); }
 textarea { resize: vertical; min-height: 80px; }
 
 .overlay-modal {
   display: none; position: fixed; inset: 0;
-  background: rgba(26,18,8,0.55); z-index: 200;
+  background: rgba(28,25,23,0.55); z-index: 200;
   align-items: center; justify-content: center; padding: 16px;
 }
 .overlay-modal.open { display: flex; }
 .modal-box {
-  background: white; border: 1px solid var(--sawdust);
-  border-radius: 10px; padding: 18px; width: 100%; max-width: 420px;
-  box-shadow: 4px 4px 0 var(--sawdust);
+  background: #fff; border: 1px solid var(--sawdust);
+  border-radius: 18px; padding: 18px; width: 100%; max-width: 420px;
+  box-shadow: var(--shadow);
 }
 
 .toast {
   position: fixed;
-  bottom: calc(72px + var(--safe-bottom));
+  bottom: calc(76px + var(--safe-bottom));
   left: 14px; right: 14px;
-  background: var(--accent); color: var(--wood-light);
-  padding: 11px 14px; border-radius: 8px;
-  font-size: 0.88rem; z-index: 9999; text-align: center;
+  background: var(--ink); color: #fff;
+  padding: 12px 14px; border-radius: 14px;
+  font-size: 0.95rem; font-weight: 600; z-index: 9999; text-align: center;
   transform: translateY(20px); opacity: 0;
   transition: all 0.25s; pointer-events: none;
 }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.err { background: var(--red); }
 
-.empty { text-align: center; padding: 40px 16px; color: #ccc; }
+.empty { text-align: center; padding: 40px 16px; color: var(--muted); }
 .empty-icon { font-size: 2.2rem; margin-bottom: 8px; }
 
 .pending-badge {
@@ -694,26 +739,67 @@ textarea { resize: vertical; min-height: 80px; }
 .sync-error { color: var(--red); }
 .ip-box { background: var(--paper-dark); border: 1px solid var(--sawdust); border-radius: 8px; padding: 14px; margin-top: 14px; }
 
-.mat-cat { font-family: var(--font-serif); font-size: 0.95rem; color: var(--accent); margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--sawdust); }
-.mat-item { background: white; border: 1px solid var(--sawdust); border-radius: 6px; padding: 9px 12px; margin-bottom: 5px; }
+.mat-cat { font-family: var(--font-sans); font-size: 0.95rem; font-weight: 700; color: var(--ink); margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--sawdust); }
+.mat-item { background: #fff; border: 1px solid var(--sawdust); border-radius: 12px; padding: 12px; margin-bottom: 5px; }
 .mat-nombre { font-size: 0.9rem; font-weight: 500; margin-bottom: 3px; }
 .mat-precios { font-size: 0.8rem; color: #666; }
 .mat-precio-min { color: var(--green); font-weight: 500; }
 
-.book-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.book-card { background: white; border: 1px solid var(--sawdust); border-radius: 8px; overflow: hidden; box-shadow: 2px 2px 0 var(--sawdust); }
-.book-card img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
-.book-card-info { padding: 8px 10px; }
-.book-card-titulo { font-family: var(--font-serif); font-size: 0.88rem; color: var(--accent); }
+#sl-book { padding: 6px 16px 8px; touch-action: pan-y; }
+.book-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.book-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.book-card.sel { box-shadow: 0 0 0 3px var(--accent); }
+.book-card img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  height: auto;
+  object-fit: cover;
+  display: block;
+  background: var(--paper-dark);
+}
+.book-check {
+  position: absolute; top: 8px; left: 8px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: none; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+}
+.book-card.sel .book-check { display: flex; }
+.book-card-info {
+  position: static;
+  padding: 8px 10px 10px;
+  background: #fff;
+}
+.book-card-titulo { font-family: var(--font-sans); font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+.book-card-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
 
 .foto-viewer {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.96);
   z-index: 9999; display: flex; align-items: center; justify-content: center;
-  overflow: auto; touch-action: pinch-zoom;
+  overflow: hidden;
+  touch-action: none;
 }
-.foto-viewer img { max-width: 90%; max-height: 90%; object-fit: contain; transition: transform 0.1s; cursor: zoom-in; }
-.foto-viewer img.zoomed { cursor: zoom-out; transform: scale(1.5); }
+.foto-viewer img {
+  max-width: 90%; max-height: 90%; object-fit: contain;
+  cursor: zoom-in;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.foto-viewer img.zoomed { cursor: grab; }
+.foto-viewer img.panning { cursor: grabbing; }
 .foto-viewer .close-btn {
   position: absolute; top: 18px; right: 18px;
   background: rgba(255,255,255,0.2); border: 1px solid white;
@@ -728,9 +814,10 @@ textarea { resize: vertical; min-height: 80px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .section-sep {
-  font-family: var(--font-serif);
-  font-size: 0.9rem;
-  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
   padding: 10px 0 6px;
   border-bottom: 1px solid var(--sawdust);
   margin-bottom: 10px;
@@ -738,6 +825,30 @@ textarea { resize: vertical; min-height: 80px; }
   justify-content: space-between;
   align-items: center;
 }
+.jimmi-chat {
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-height: 180px;
+  max-height: 42vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.jimmi-hint { color: var(--muted); font-size: 0.9rem; padding: 8px 4px; }
+.msg {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  margin: 8px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg-user { background: var(--accent); color: #fff; margin-left: auto; border-bottom-right-radius: 6px; }
+.msg-jimmi { background: var(--paper-dark); color: var(--ink); border-bottom-left-radius: 6px; }
+.msg-who { display: block; font-size: 0.72rem; font-weight: 700; opacity: 0.75; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -747,7 +858,6 @@ textarea { resize: vertical; min-height: 80px; }
   <span style="font-size:1.3rem">🪵</span>
   <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
-  <button class="sync-btn" onclick="recargarDatos()">⟳ Recargar</button>
 </header>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
@@ -755,8 +865,14 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- Slide 0: LISTA DE FAENAS -->
   <div class="slide" id="sl-faenas">
-    <div style="display:flex;justify-content:flex-start;margin-bottom:12px">
-      <button class="btn btn-p btn-inline" onclick="abrirNuevaFaena()" style="white-space:nowrap;padding:11px 14px">+ Nueva</button>
+    <div class="lista-toolbar">
+      <button class="btn btn-p btn-nueva" onclick="abrirNuevaFaena()">+ Nueva faena</button>
+    </div>
+    <div class="fase-tabs-mov" id="fase-tabs-mov">
+      <button class="fase-tab-mov" data-fase="medicion" onclick="seleccionarFaseMovil('medicion')">Medición</button>
+      <button class="fase-tab-mov" data-fase="presupuestada" onclick="seleccionarFaseMovil('presupuestada')">Presupuestada</button>
+      <button class="fase-tab-mov active" data-fase="en_proceso" onclick="seleccionarFaseMovil('en_proceso')">En proceso</button>
+      <button class="fase-tab-mov" data-fase="terminada" onclick="seleccionarFaseMovil('terminada')">Terminadas</button>
     </div>
     <div id="lista-faenas"></div>
   </div>
@@ -764,7 +880,7 @@ textarea { resize: vertical; min-height: 80px; }
   <!-- Slide: TICKETS -->
   <div class="slide" id="sl-tickets">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">🎫 Tickets</div>
+      <div class="form-title" style="border:none;margin:0;padding:0">Tickets</div>
       <button class="btn btn-d btn-inline" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">× Cancelar</button>
     </div>
     <div class="form-box">
@@ -844,13 +960,18 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- Slide 3: BOOK -->
   <div class="slide" id="sl-book">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent)">📸 Book</div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-s btn-inline" onclick="configurarCarpetaBook()">📁</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 4px">
+      <div class="form-title" style="border:none;margin:0;padding:0">Book</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-s btn-inline" id="btn-book-sel" onclick="alternarSeleccionBook()">Seleccionar</button>
         <button class="btn btn-p btn-inline" onclick="añadirFotoBook()">+ Foto</button>
         <button class="btn btn-g btn-inline" onclick="compartirBook()">↗</button>
       </div>
+    </div>
+    <input id="q-book-mov" placeholder="Buscar por título o faena..." oninput="renderBookMovil()" style="margin-bottom:8px">
+    <div id="book-sel-acciones" style="display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-g btn-inline" onclick="compartirFotosBookSel()">Compartir</button>
+      <button class="btn btn-d btn-inline" onclick="quitarFotosBookSel()">Quitar</button>
     </div>
     <div id="book-carpeta-info" style="font-size:0.82rem;color:#aaa;margin-bottom:10px;padding:6px 10px;background:var(--paper-dark);border-radius:6px;display:none"></div>
     <div id="book-movil-galeria"></div>
@@ -858,31 +979,25 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- Slide: JIMMI -->
   <div class="slide" id="sl-ia">
-    <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">Jimmi</div>
+    <div class="form-title" style="border:none;margin-bottom:12px;padding:0">Jimmi</div>
+    <div class="field" style="margin-bottom:8px">
+      <label>Contexto</label>
+      <select id="ia-contexto">
+        <option value="todo">Todo</option>
+        <option value="faenas">Faenas</option>
+        <option value="materiales">Materiales</option>
+      </select>
+    </div>
     <div class="field" style="margin-bottom:8px">
       <label>Faena (opcional)</label>
       <select id="ia-faena-id"><option value="">— Todo el negocio —</option></select>
     </div>
-    <div id="jimmi-mensajes" style="background:white;border:1px solid var(--sawdust);border-radius:8px;padding:12px;min-height:180px;max-height:42vh;overflow-y:auto;margin-bottom:10px;font-size:0.9rem;line-height:1.6"></div>
+    <div class="jimmi-chat" id="jimmi-mensajes"><div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div></div>
     <textarea id="ia-pregunta" rows="3" placeholder="Pregunta a Jimmi: presupuestos, precios, faenas..." style="font-size:0.95rem;margin-bottom:8px"></textarea>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="enviarConsultaIA()">Enviar</button>
       <button class="btn btn-s" onclick="resetearConsultaIA()">Limpiar</button>
-    </div>
-  </div>
-
-  <!-- Slide 4: CONEXIÓN -->
-  <div class="slide" id="sl-sync">
-    <div class="ip-box">
-        <div class="form-title" style="margin-bottom:10px">⚙️ Conexión</div>
-        <div style="font-size:0.85rem;color:#888;margin-bottom:12px;line-height:1.6">El móvil habla con Render. Abre esta página en la URL de Render; no hace falta IP del PC.</div>
-        <div class="field">
-          <label>API</label>
-          <div id="api-url-actual" style="font-size:0.82rem;word-break:break-all;color:var(--accent)"></div>
-        </div>
-    </div>
-    <div style="margin-top:10px">
-      <button class="btn btn-d" onclick="limpiarCacheLocal()">🗑️ Borrar caché del móvil</button>
+      <button class="btn btn-g" onclick="abrirCorregirJimmi()">Corregir a Jimmi</button>
     </div>
   </div>
 
@@ -894,7 +1009,6 @@ textarea { resize: vertical; min-height: 80px; }
   <button id="nav-tickets" onclick="navTo(1)"><span class="ni">🎫</span>Tickets</button>
   <button id="nav-book" onclick="navTo(2)"><span class="ni">📸</span>Book</button>
   <button id="nav-ia" onclick="navTo(3)"><span class="ni">🧑‍💼</span>Jimmi</button>
-  <button id="nav-sync" onclick="navTo(4)"><span class="ni">⚙️</span>Conexión</button>
 </nav>
 
 <!-- ═══════════ FAENA OVERLAY ═══════════ -->
@@ -1072,6 +1186,22 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<!-- Modal: Corregir a Jimmi -->
+<div class="overlay-modal" id="m-corregir-jimmi">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">Corregir a Jimmi</div>
+    <p style="font-size:0.82rem;color:#888;margin-bottom:12px;line-height:1.5">Escribe la respuesta correcta. Jimmi la guardará en su memoria.</p>
+    <div class="field"><label>Pregunta</label><textarea id="cj-pregunta" rows="2" placeholder="¿Qué faenas están terminadas?"></textarea></div>
+    <div class="field">
+      <label>Lo que dijo Jimmi</label>
+      <div id="cj-dijo" style="font-size:0.85rem;background:white;border:1px solid var(--sawdust);border-radius:6px;padding:10px;min-height:48px;white-space:pre-wrap;color:#555"></div>
+    </div>
+    <div class="field"><label>Respuesta correcta *</label><textarea id="cj-correcta" rows="4" placeholder="Las faenas terminadas son…"></textarea></div>
+    <button class="btn btn-p" onclick="guardarCorreccionJimmi()">Guardar para Jimmi</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-corregir-jimmi')">Cancelar</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div id="camara-overlay" class="camara-overlay">
@@ -1122,7 +1252,8 @@ function cargarCola() {
     faenasEditar:           JSON.parse(localStorage.getItem("cola_faenasEditar")|| "[]"),
     definicionesPendientes: JSON.parse(localStorage.getItem("cola_definicionesPendientes") || "[]"),
     bookEliminar:           JSON.parse(localStorage.getItem("cola_bookEliminar")|| "[]"),
-    bookPendiente:          JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]")
+    bookPendiente:          JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]"),
+    faenasEliminar:         JSON.parse(localStorage.getItem("cola_faenasEliminar")|| "[]")
   };
 }
 
@@ -1140,14 +1271,195 @@ function guardarCola(c) {
   localStorage.setItem("cola_definicionesPendientes",  JSON.stringify(c.definicionesPendientes || []));
   localStorage.setItem("cola_bookEliminar",            JSON.stringify(c.bookEliminar || []));
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
+  const eliminar = c.faenasEliminar !== undefined
+    ? (c.faenasEliminar || [])
+    : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
+  localStorage.setItem("cola_faenasEliminar", JSON.stringify(eliminar));
+}
+
+function esIdFaenaTemporal(id) {
+  const s = String(id || "");
+  return !s || s.startsWith("temp") || s.startsWith("TMP") || s.startsWith("TEMP");
+}
+
+function idsFaenasPendientesEliminar() {
+  const cola = cargarCola();
+  return new Set((cola.faenasEliminar || []).map(x => String(x)));
+}
+
+function filtrarFaenasEliminadas(lista) {
+  const ids = idsFaenasPendientesEliminar();
+  if (!ids.size) return Array.isArray(lista) ? lista : [];
+  return (lista || []).filter(f =>
+    !ids.has(String(f.id)) && !ids.has(String(f._tempId || ""))
+  );
+}
+
+function idsFaenasVivas() {
+  const ids = new Set();
+  const cola = cargarCola();
+  const pendientes = idsFaenasPendientesEliminar();
+  for (const f of [...(state.faenas || []), ...(cola.faenas || [])]) {
+    if (Number(f.archivada) === 1) continue;
+    if (f.id != null && f.id !== "") {
+      const sid = String(f.id);
+      if (!pendientes.has(sid)) ids.add(sid);
+    }
+    if (f._tempId && !pendientes.has(String(f._tempId))) ids.add(String(f._tempId));
+  }
+  return ids;
+}
+
+function faenaIdSigueViva(id, vivos) {
+  if (id == null || id === "" || id === 0 || id === "0") return true;
+  const s = String(id);
+  if (s.startsWith("temp") || s.startsWith("TEMP-")) return true;
+  return vivos.has(s);
+}
+
+function aplicarFaenasServidor(lista) {
+  const activas = (Array.isArray(lista) ? lista : []).filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada");
+  state.faenas = filtrarFaenasEliminadas(activas);
+  incorporarFaenasPendientes();
+  purgarRegistrosDeFaenasInactivas();
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+}
+
+function aplicarTerminadasServidor(lista) {
+  if (!Array.isArray(lista)) return;
+  state.terminadas = filtrarFaenasEliminadas(lista).map(f => ({
+    id: f.id,
+    numero: f.numero,
+    cliente_nombre: f.cliente_nombre,
+    tipo_trabajo: f.tipo_trabajo,
+    importe: f.importe || 0
+  }));
+  localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
+}
+
+function aplicarRespuestaFaenas(d) {
+  if (!d || !d.ok) return false;
+  let ok = false;
+  if (Array.isArray(d.data)) { aplicarFaenasServidor(d.data); ok = true; }
+  if (Array.isArray(d.terminadas)) {
+    aplicarTerminadasServidor(d.terminadas);
+    state._terminadasDeSync = true;
+  }
+  return ok;
+}
+
+function purgarRegistrosDeFaenasInactivas() {
+  const vivos = idsFaenasVivas();
+  const cola = cargarCola();
+  const porFaena = arr => (arr || []).filter(x => faenaIdSigueViva(x && x.faena_id, vivos));
+  cola.fotos = porFaena(cola.fotos);
+  cola.ticketFotos = porFaena(cola.ticketFotos);
+  cola.anotaciones = porFaena(cola.anotaciones);
+  cola.gastos = porFaena(cola.gastos);
+  cola.tickets = porFaena(cola.tickets);
+  cola.faenasEditar = (cola.faenasEditar || []).filter(x => faenaIdSigueViva(x && x.id, vivos));
+  guardarCola(cola);
+  if (state.faenaActualId && !state.faenas.some(x => String(x.id || x._tempId) === String(state.faenaActualId))) {
+    state.faenaActualId = null;
+    cerrarFaena();
+  }
+}
+
+function esIdTemporalCliente(id) {
+  const s = String(id || "");
+  return !s || s.startsWith("TEMP-");
+}
+
+function incorporarFaenasPendientes() {
+  const cola = cargarCola();
+  for (const f of (cola.faenas || [])) {
+    const ya = state.faenas.some(x =>
+      String(x._tempId || "") === String(f._tempId || "") ||
+      (x.id && f.id && String(x.id) === String(f.id))
+    );
+    if (!ya) state.faenas.unshift({ ...f, _offline: true });
+  }
+}
+
+async function enviarFaenasPendientes() {
+  const API = getServerUrl();
+  const cola = cargarCola();
+  const mapaClientes = {};
+  for (const c of (cola.clientes || [])) {
+    try {
+      const r = await fetch(`${API}/clientes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: c.nombre,
+          telefono: c.telefono || "",
+          direccion: c.direccion || "",
+          email: c.email || "",
+          intermediario_id: 0
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await r.json();
+      if (d.ok && d.data && d.data.id) {
+        mapaClientes[c._tempId] = d.data.id;
+        const local = state.clientes.find(x => String(x.id || x._tempId) === String(c._tempId));
+        if (local) { local.id = d.data.id; delete local._offline; }
+      }
+    } catch (e) {
+      console.error("Error subiendo cliente:", e);
+    }
+  }
+  cola.clientes = (cola.clientes || []).filter(c => !mapaClientes[c._tempId]);
+
+  const subidas = [];
+  for (const f of (cola.faenas || [])) {
+    try {
+      let clienteId = mapaClientes[f._clienteTempId] || mapaClientes[f.cliente_id] || f.cliente_id;
+      if (esIdTemporalCliente(clienteId)) continue;
+      const r = await fetch(`${API}/faenas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: Number(clienteId) || clienteId,
+          intermediario_id: f.intermediario_id || 0,
+          direccion: f.direccion || "",
+          tipo_trabajo: f.tipo_trabajo,
+          importe: f.importe || 0,
+          fase: f.fase || "medicion",
+          fecha_inicio: f.fecha_inicio || new Date().toISOString().slice(0, 10)
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await r.json();
+      if (d.ok && d.data && d.data.id) {
+        subidas.push(String(f._tempId));
+        const local = state.faenas.find(x => String(x._tempId) === String(f._tempId));
+        if (local) {
+          local.id = d.data.id;
+          local.numero = d.data.numero;
+          local._offline = false;
+          delete local._tempId;
+        }
+      }
+    } catch (e) {
+      console.error("Error subiendo faena:", e);
+    }
+  }
+  cola.faenas = (cola.faenas || []).filter(f => !subidas.includes(String(f._tempId)));
+  guardarCola(cola);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+  return subidas.length;
 }
 
 const state = {
   faenas:        [],
+  terminadas:    [],
   clientes:      [],
   materiales:    [],
   faenaActualId: null,
-  panelActual:   0
+  panelActual:   0,
+  faseVista:     "en_proceso"
 };
 
 function actualizarSelectorFaenasIA() {
@@ -1167,7 +1479,7 @@ function resetearConsultaIA() {
   const box = document.getElementById("jimmi-mensajes");
   if (pregunta) pregunta.value = "";
   if (faena) faena.value = "";
-  if (box) box.innerHTML = '<div style="color:#999;font-size:0.85rem">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div>';
+  if (box) box.innerHTML = '<div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div>';
   window._jimmiHistorial = [];
   actualizarSelectorFaenasIA();
 }
@@ -1292,7 +1604,7 @@ async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.7
 // NAVEGACIÓN PRINCIPAL (carousel)
 // ═══════════════════════════════════════════════════════════
 
-const NAV_IDS = ["nav-faenas","nav-tickets","nav-book","nav-ia","nav-sync"];
+const NAV_IDS = ["nav-faenas","nav-tickets","nav-book","nav-ia"];
 
 function navTo(idx) {
   const c = document.getElementById("main-carousel");
@@ -1305,8 +1617,6 @@ function navTo(idx) {
   if (idx === 2) renderBookMovil();
   if (idx === 3) actualizarSelectorFaenasIA();
 }
-
-function irASync() { navTo(4); }
 
 // Actualizar nav al hacer swipe manual
 document.getElementById("main-carousel").addEventListener("scroll", function() {
@@ -1334,11 +1644,28 @@ function abrirFaena(id) {
   renderPanelDocumentos(f);
   renderPanelFotos(f);
   renderPanelGastos(f);
+  cargarAnotacionesFaena(f);
   cargarFotosFaena(f);
   // Ir al panel guardado
   const pc = document.getElementById("panel-carousel");
   pc.scrollTo({ left: state.panelActual * window.innerWidth, behavior: "instant" });
   actualizarTabPanel(state.panelActual);
+}
+
+async function cargarAnotacionesFaena(f) {
+  if (!f || !f.id || String(f.id).startsWith("temp")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.data)) {
+      f.anotaciones = d.data;
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+      if (String(state.faenaActualId) === String(f.id || f._tempId)) {
+        renderPanelDocumentos(f);
+        renderFaenas();
+      }
+    }
+  } catch (e) {}
 }
 
 async function cargarFotosFaena(f) {
@@ -2034,6 +2361,7 @@ async function confirmarDestinoFoto(tipo) {
       }
     }
     toast("Foto guardada en el book");
+    await sincronizarBook(getServerUrl());
     renderBookMovil();
   }
   window._fotosDestinoPendientes = [];
@@ -2050,6 +2378,12 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       signal: AbortSignal.timeout(30000)
     });
     const d = await r.json();
+    if (d.omitida || r.status === 404 || /no encontrada/i.test(d.error || "")) {
+      const cola = cargarCola();
+      cola.fotos = cola.fotos.filter(x => !(String(x.faena_id) === String(faenaId) && x.nombre === nombre));
+      guardarCola(cola);
+      return false;
+    }
     if (!d.ok) {
       toast(d.error || "La foto no se pudo guardar en la nube", true);
       return false;
@@ -2479,40 +2813,215 @@ function verFotoGrande(src) {
   viewer.className = "foto-viewer";
   const img = document.createElement("img");
   img.src = src;
-  let zoomed = false;
-  img.onclick = e => { e.stopPropagation(); zoomed = !zoomed; img.classList.toggle("zoomed", zoomed); };
+  img.alt = "";
   const closeBtn = document.createElement("button");
-  closeBtn.textContent = "✕ Cerrar"; closeBtn.className = "close-btn";
-  closeBtn.onclick = () => viewer.remove();
-  viewer.appendChild(img); viewer.appendChild(closeBtn);
-  viewer.onclick = e => { if (e.target === viewer) viewer.remove(); };
+  closeBtn.textContent = "✕ Cerrar";
+  closeBtn.className = "close-btn";
+  closeBtn.onclick = ev => { ev.stopPropagation(); viewer.remove(); };
+  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
   document.body.appendChild(viewer);
-  let d0 = 0;
-  viewer.addEventListener("touchstart", e => { if (e.touches.length === 2) d0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }, { passive: true });
-  viewer.addEventListener("touchmove", e => {
-    if (e.touches.length === 2 && d0 > 0) {
-      const d1 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      img.style.transform = `scale(${Math.min(3, Math.max(1, d1/d0))})`;
+
+  let scale = 1, x = 0, y = 0;
+  const pointers = new Map();
+  let pinch0 = 0;
+  let pinchScale0 = 1;
+  let startX = 0, startY = 0, startAt = 0;
+  let moved = false;
+  let pinched = false;
+
+  const aplicar = () => {
+    if (scale < 1.05) {
+      scale = 1;
+      x = 0;
+      y = 0;
     }
-  }, { passive: true });
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    img.classList.toggle("zoomed", scale > 1);
+  };
+
+  const limitar = () => {
+    const extra = (scale - 1) * 320;
+    const max = Math.max(120, extra);
+    x = Math.max(-max, Math.min(max, x));
+    y = Math.max(-max, Math.min(max, y));
+  };
+
+  viewer.addEventListener("touchstart", e => {
+    if (e.target === closeBtn) return;
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  viewer.addEventListener("pointerdown", e => {
+    if (e.target === closeBtn) return;
+    e.preventDefault();
+    try { viewer.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      startX = e.clientX;
+      startY = e.clientY;
+      startAt = Date.now();
+      moved = false;
+      pinched = false;
+    }
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchScale0 = scale;
+    }
+  });
+
+  viewer.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const distOrigen = Math.hypot(e.clientX - startX, e.clientY - startY);
+    if (distOrigen > 10) moved = true;
+
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinch0 > 8) {
+        scale = Math.min(4, Math.max(1, pinchScale0 * (d / pinch0)));
+        limitar();
+        aplicar();
+      }
+      return;
+    }
+    if (scale > 1 && pointers.size === 1) {
+      x += e.clientX - prev.x;
+      y += e.clientY - prev.y;
+      limitar();
+      aplicar();
+      img.classList.add("panning");
+    }
+  });
+
+  const soltar = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch0 = 0;
+    img.classList.remove("panning");
+  };
+
+  viewer.addEventListener("pointerup", e => {
+    soltar(e);
+    if (pointers.size > 0) return;
+    const tapRapido = !moved && !pinched && (Date.now() - startAt) < 350;
+    if (pinched || moved) return;
+    if (e.target === viewer && scale <= 1) {
+      viewer.remove();
+      return;
+    }
+    if (e.target !== img || !tapRapido) return;
+    if (scale <= 1) {
+      scale = 2.2;
+    } else {
+      scale = 1;
+      x = 0;
+      y = 0;
+    }
+    aplicar();
+  });
+  viewer.addEventListener("pointercancel", soltar);
+
+  viewer.addEventListener("wheel", e => {
+    e.preventDefault();
+    scale = Math.min(4, Math.max(1, scale * (e.deltaY < 0 ? 1.12 : 0.9)));
+    limitar();
+    aplicar();
+  }, { passive: false });
 }
 
 // ═══════════════════════════════════════════════════════════
 // FAENAS — lista, crear, editar
 // ═══════════════════════════════════════════════════════════
 
+function faseDeFaena(f) {
+  if (!f) return "en_proceso";
+  if (Number(f.archivada) === 1 || f.fase === "terminada") return "terminada";
+  const fase = f.fase || "en_proceso";
+  if (fase === "medicion" || fase === "presupuestada" || fase === "en_proceso") return fase;
+  return "en_proceso";
+}
+
+function seleccionarFaseMovil(fase) {
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs-mov .fase-tab-mov").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
+}
+
+async function cambiarFaseMovil(event, id, fase) {
+  if (event) event.stopPropagation();
+  if (fase === "terminada") {
+    toast("Las faenas se terminan desde el PC para guardar el ZIP", true);
+    renderFaenas();
+    return;
+  }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (f && f._offline) {
+    f.fase = fase;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    toast("✓ Fase actualizada");
+    renderFaenas();
+    return;
+  }
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fase }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudo cambiar la fase", true); renderFaenas(); return; }
+    if (f) f.fase = fase;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    toast("✓ Fase actualizada");
+    state.faseVista = fase;
+    seleccionarFaseMovil(fase);
+  } catch (e) {
+    toast("Sin conexión: no se pudo cambiar la fase", true);
+    renderFaenas();
+  }
+}
+
 function renderFaenas() {
   const cola = cargarCola();
-  const todas = [...state.faenas];
-  const lista = todas;
   const el = document.getElementById("lista-faenas");
   actualizarSelectorFaenasIA();
+  if (state.faseVista === "terminada") {
+    const lista = state.terminadas || [];
+    if (!lista.length) {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas terminadas"}</div>`;
+      return;
+    }
+    el.innerHTML = lista.map(f => {
+      const precio = parseFloat(f.importe) || 0;
+      return `<div class="faena-card">
+        <div class="fc-top">
+          <span class="num-faena">${escHtml(f.numero || "")}</span>
+          ${precio > 0 ? `<span class="fc-precio">${precio.toFixed(2)} €</span>` : `<span class="fc-precio">—</span>`}
+        </div>
+        <div class="fc-cliente">${escHtml(f.cliente_nombre || "—")}</div>
+        <div class="fc-tipo">${escHtml(f.tipo_trabajo || "Sin descripción")}</div>
+      </div>`;
+    }).join("");
+    return;
+  }
+  const todas = [...state.faenas];
+  const lista = todas.filter(f => faseDeFaena(f) === state.faseVista);
   if (!lista.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas.<br><small>Crea la primera faena</small>"}</div>`;
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas en esta fase.<br><small>Crea la primera faena</small>"}</div>`;
     return;
   }
   el.innerHTML = lista.map(f => {
     const esTemp = f._offline;
+    const id = f.id || f._tempId;
+    const fase = faseDeFaena(f);
     const presupuesto = (f.presupuesto && f.presupuesto.length)
       ? f.presupuesto
       : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
@@ -2520,20 +3029,27 @@ function renderFaenas() {
       ? f.gastos_reales
       : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
     const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
-    const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(f.id || f._tempId)).length;
-    const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(f.id || f._tempId)).length;
+    const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(id)).length;
+    const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(id)).length;
     const pend = pendAnot + pendFotos;
-    return `<div class="faena-card" onclick="abrirFaena('${f.id || f._tempId}')">
-      <div class="fc-num">${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}</div>
+    return `<div class="faena-card" onclick="abrirFaena('${id}')">
+      <div class="fc-top">
+        ${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}
+        ${totalPresupuesto > 0 ? `<span class="fc-precio">${totalPresupuesto.toFixed(2)} €</span>` : ""}
+      </div>
       <div class="fc-cliente">${escHtml(f.cliente_nombre||"—")}</div>
       <div class="fc-tipo">${escHtml(f.tipo_trabajo||"Sin descripción")}</div>
-      ${f.direccion ? `<div class="fc-dir">📍 ${escHtml(f.direccion)}</div>` : ""}
+      ${f.direccion ? `<div class="fc-dir">${escHtml(f.direccion)}</div>` : ""}
       <div class="fc-footer">
-        ${totalPresupuesto > 0 ? `<span class="fc-precio">${totalPresupuesto.toFixed(2)} €</span>` : ""}
         ${(f.anotaciones?.length||0) > 0 ? `<span class="badge b-gray">📝 ${f.anotaciones.length}</span>` : ""}
         ${gastosReales.length > 0 ? `<span class="badge b-green">💶 ${gastosReales.length}</span>` : ""}
         ${pend > 0 ? `<span class="badge b-orange">⏳ ${pend}</span>` : ""}
-        <button class="btn btn-d btn-inline" style="margin-left:auto;padding:4px 8px;font-size:0.7rem" onclick="eliminarFaenaDesdeTarjeta(event,'${f.id || f._tempId}')">🗑️</button>
+        <select class="fase-sel-mov" onclick="event.stopPropagation()" onchange="cambiarFaseMovil(event,'${id}',this.value)">
+          <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
+          <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
+          <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
+        </select>
+        <button class="btn btn-d btn-inline" style="min-width:44px" onclick="eliminarFaenaDesdeTarjeta(event,'${id}')">🗑️</button>
       </div>
     </div>`;
   }).join("");
@@ -2548,13 +3064,59 @@ function eliminarFaenaDesdeTarjeta(event, id) {
   eliminarFaenaLocal(id);
 }
 
-function eliminarFaenaLocal(id) {
-  if (!confirm("¿Eliminar esta faena del móvil? También se borrarán sus datos locales.")) return;
-  state.faenas = state.faenas.filter(f => String(f.id) !== String(id) && String(f._tempId || "") !== String(id));
+function quitarFaenaDeListasLocales(id) {
+  const sid = String(id);
+  const misma = f => String(f.id) !== sid && String(f._tempId || "") !== sid;
+  state.faenas = (state.faenas || []).filter(misma);
+  state.terminadas = (state.terminadas || []).filter(misma);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
+  const cola = cargarCola();
+  cola.faenas = (cola.faenas || []).filter(misma);
+  cola.faenasEditar = (cola.faenasEditar || []).filter(x => String(x.id) !== sid && String(x._tempId || "") !== sid);
+  if (!esIdFaenaTemporal(sid)) {
+    if (!(cola.faenasEliminar || []).some(x => String(x) === sid)) {
+      cola.faenasEliminar = [...(cola.faenasEliminar || []), sid];
+    }
+  }
+  guardarCola(cola);
+  purgarRegistrosDeFaenasInactivas();
+}
+
+async function enviarFaenasEliminadas() {
+  const cola = cargarCola();
+  const pendientes = [...(cola.faenasEliminar || [])];
+  if (!pendientes.length) return 0;
+  const okIds = [];
+  for (const id of pendientes) {
+    if (esIdFaenaTemporal(id)) {
+      okIds.push(id);
+      continue;
+    }
+    try {
+      const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
+        method: "DELETE",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (r.ok || r.status === 404) okIds.push(id);
+    } catch (e) {}
+  }
+  if (okIds.length) {
+    const cola2 = cargarCola();
+    const done = new Set(okIds.map(String));
+    cola2.faenasEliminar = (cola2.faenasEliminar || []).filter(x => !done.has(String(x)));
+    guardarCola(cola2);
+  }
+  return okIds.length;
+}
+
+async function eliminarFaenaLocal(id) {
+  if (!confirm("¿Eliminar esta faena? Se borrará también del registro (servidor/PC) y no se podrá recuperar.")) return;
+  quitarFaenaDeListasLocales(id);
   if (String(state.faenaActualId) === String(id)) cerrarFaena();
   renderFaenas();
-  toast("✓ Faena eliminada del móvil");
+  const enviadas = await enviarFaenasEliminadas();
+  toast(enviadas ? "✓ Faena eliminada del registro" : "✓ Faena quitada del móvil — se borrará del registro al conectar");
 }
 
 function abrirNuevaFaena() {
@@ -2614,12 +3176,6 @@ async function crearFaena() {
     clienteId = clienteSel;
     const c = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(clienteSel));
     clienteNombre = c?.nombre || "—";
-    if (c) {
-      const telInput = document.getElementById("nf-tel");
-      const dirInput = document.getElementById("nf-dir");
-      if (telInput) telInput.value = c.telefono || "";
-      if (dirInput) dirInput.value = c.direccion || "";
-    }
   }
   const tipo = document.getElementById("nf-tipo").value.trim();
   if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
@@ -2633,15 +3189,18 @@ async function crearFaena() {
     direccion: document.getElementById("nf-dir").value,
     tipo_trabajo: tipo,
     importe: parseFloat(document.getElementById("nf-importe").value) || 0,
+    fecha_inicio: new Date().toISOString().slice(0, 10),
+    fase: "medicion",
     archivada: 0, anotaciones: [], fotos: [], gastos: [], _offline: true
   };
   cola.faenas.push(faena);
   guardarCola(cola);
   state.faenas.unshift(faena);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-  toast("✓ Faena creada — se sincronizará al llegar a casa");
+  const subidas = await enviarFaenasPendientes();
   renderFaenas();
   cerrarModal("m-nueva-faena");
+  toast(subidas ? "✓ Faena guardada" : "✓ Faena en el móvil — se subirá al conectar");
   // Limpiar
   ["nf-tel","nf-dir","nf-tipo","nf-importe","nc-nombre","nc-tel","nc-dir","nc-email"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   document.getElementById("nf-cliente-sel").value = "";
@@ -3517,6 +4076,14 @@ async function procesarTextoManual() {
 }
 
 // ─── IA: consulta en lenguaje natural ────────────────────────────────────────
+function modoJimmiActual() {
+  const v = (document.getElementById("ia-contexto")?.value || "todo").trim().toLowerCase();
+  if (v === "materiales" || v === "material") return "materiales";
+  if (v === "faenas" || v === "trabajos" || v === "trabajo") return "faenas";
+  if (v === "general") return "todo";
+  return "todo";
+}
+
 async function enviarConsultaIA() {
   const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
   if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
@@ -3524,20 +4091,26 @@ async function enviarConsultaIA() {
   window._jimmiHistorial = window._jimmiHistorial || [];
   window._jimmiHistorial.push({ rol: "usuario", texto: pregunta });
   const faenaId = document.getElementById("ia-faena-id")?.value || "";
-  if (box) box.innerHTML += `<div style="margin:8px 0"><strong>Tú:</strong> ${escHtml(pregunta)}</div><div style="color:#888">Jimmi está pensando…</div>`;
+  const modo = modoJimmiActual();
+  if (box) {
+    box.innerHTML = window._jimmiHistorial.map(m =>
+      `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
+    ).join("") + `<div class="jimmi-hint">Jimmi está pensando…</div>`;
+    box.scrollTop = box.scrollHeight;
+  }
   document.getElementById("ia-pregunta").value = "";
   try {
     const r = await fetch(`${getServerUrl()}/secretario/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial })
+      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial, modo })
     });
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
     window._jimmiHistorial.push({ rol: "jimmi", texto });
     if (box) {
       box.innerHTML = window._jimmiHistorial.map(m =>
-        `<div style="margin:8px 0"><strong>${m.rol === "usuario" ? "Tú" : "Jimmi"}:</strong> ${escHtml(m.texto)}</div>`
+        `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
       ).join("");
       box.scrollTop = box.scrollHeight;
     }
@@ -3552,12 +4125,65 @@ function preguntaRapidaIA(texto) {
   enviarConsultaIA();
 }
 
+function ultimaPreguntaJimmi() {
+  const hist = window._jimmiHistorial || [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].rol === "usuario") return hist[i].texto || "";
+  }
+  return "";
+}
+
+function ultimaRespuestaJimmi() {
+  const hist = window._jimmiHistorial || [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].rol === "jimmi") return hist[i].texto || "";
+  }
+  return "";
+}
+
+function abrirCorregirJimmi() {
+  const preg = document.getElementById("cj-pregunta");
+  const dijo = document.getElementById("cj-dijo");
+  const corr = document.getElementById("cj-correcta");
+  if (preg) preg.value = ultimaPreguntaJimmi();
+  if (dijo) dijo.textContent = ultimaRespuestaJimmi() || "Aún no hay respuesta de Jimmi en este chat.";
+  if (corr) corr.value = "";
+  abrirModal("m-corregir-jimmi");
+  if (corr) corr.focus();
+}
+
+async function guardarCorreccionJimmi() {
+  const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
+  const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
+  if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const modo = modoJimmiActual();
+  const nota = pregunta
+    ? `[correccion][${modo}] Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `[correccion][${modo}] Respuesta correcta: ${correcta}`;
+  try {
+    const r = await fetch(`${getServerUrl()}/secretario/contexto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: nota, modo }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await r.json();
+    if (!data.ok) { toast(data.error || "No se pudo guardar", true); return; }
+    cerrarModal("m-corregir-jimmi");
+    toast("Jimmi ya tiene la corrección");
+  } catch (e) {
+    toast("No se pudo guardar la corrección", true);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // BOOK
 // ═══════════════════════════════════════════════════════════
 
 let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
 let bookDirHandle = null;
+let bookModoSel = false;
+const bookSel = new Set();
 
 async function añadirFotoBook(faenaId = null) {
   window._elegirDestinoFoto = true;
@@ -3588,37 +4214,136 @@ async function cargarFotosDeCarpetaBook() {
   bookCache = fotos; renderBookMovil();
 }
 
+function urlFotoBook(f) {
+  if (f && f.id) return `${getServerUrl()}/book/${f.id}/imagen`;
+  if (f && f.data && String(f.data).startsWith("/")) return `${location.origin}${f.data}`;
+  return (f && f.data) || "";
+}
+
+function fotosBookFiltradas() {
+  const q = (document.getElementById("q-book-mov")?.value || "").trim().toLowerCase();
+  if (!q) return bookCache.slice();
+  return bookCache.filter(f => {
+    const texto = [f.titulo, f.descripcion, f.faena_numero, f.cliente_nombre].map(x => String(x || "").toLowerCase()).join(" ");
+    return texto.includes(q);
+  });
+}
+
 function renderBookMovil() {
   const el = document.getElementById("book-movil-galeria");
-  const dirN = localStorage.getItem("book_dir_name");
-  if (dirN) { const inf = document.getElementById("book-carpeta-info"); if (inf) { inf.textContent = "📁 " + dirN; inf.style.display = "block"; } }
-  if (!bookDirHandle && !dirN) { el.innerHTML = `<div class="empty"><div class="empty-icon">📁</div>Configura la carpeta del book<br><small>Pulsa 📁 para elegir dónde guardar las fotos</small></div>`; return; }
-  if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos.<br><small>Pulsa + Foto para añadir</small></div>`; return; }
-  el.innerHTML = `<div class="book-grid">${bookCache.map((f,i) => `<div class="book-card"><img src="${f.data}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoGrande('${f.data}')" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`).join("")}</div>`;
+  if (!el) return;
+  const inf = document.getElementById("book-carpeta-info");
+  if (inf) inf.style.display = "none";
+  const acciones = document.getElementById("book-sel-acciones");
+  const btnSel = document.getElementById("btn-book-sel");
+  if (acciones) acciones.style.display = bookModoSel ? "flex" : "none";
+  if (btnSel) btnSel.textContent = bookModoSel ? "Listo" : "Seleccionar";
+  const lista = fotosBookFiltradas();
+  if (!bookCache.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos en el book.<br><small>Pulsa + Foto para añadir</small></div>`;
+    return;
+  }
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div>Ninguna foto coincide con la búsqueda</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="book-grid">${lista.map(f => {
+    const src = urlFotoBook(f);
+    const id = f.id || f.nombre || "";
+    const sel = bookSel.has(String(id));
+    const meta = [f.faena_numero, f.cliente_nombre].filter(Boolean).join(" · ") || "Sin faena";
+    const click = bookModoSel ? `toggleSelBook('${escHtml(String(id))}')` : `verFotoBook('${escHtml(String(id))}')`;
+    const fallback = f.id ? `/api/book/${f.id}/imagen` : "";
+    return `<div class="book-card${sel ? " sel" : ""}" onclick="${click}">
+      <span class="book-check">✓</span>
+      <img src="${escHtml(src)}" alt="${escHtml(f.titulo||"")}" loading="lazy" onerror="this.onerror=null;${fallback ? `this.src='${fallback}';` : "this.style.background='#d6cfc3';"}">
+      <div class="book-card-info">
+        <div class="book-card-titulo">${escHtml(f.titulo || "Sin título")}</div>
+        <div class="book-card-meta">${escHtml(meta)}</div>
+      </div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function fotoBookPorId(id) {
+  return bookCache.find(f => String(f.id || f.nombre || "") === String(id));
+}
+
+function verFotoBook(id) {
+  const f = fotoBookPorId(id);
+  if (!f) return;
+  verFotoGrande(urlFotoBook(f), f.titulo || "");
+}
+
+function alternarSeleccionBook() {
+  bookModoSel = !bookModoSel;
+  if (!bookModoSel) bookSel.clear();
+  renderBookMovil();
+}
+
+function toggleSelBook(id) {
+  const k = String(id);
+  if (bookSel.has(k)) bookSel.delete(k);
+  else bookSel.add(k);
+  renderBookMovil();
+}
+
+async function compartirFotosBookSel() {
+  const ids = [...bookSel];
+  if (!ids.length) { toast("Elige al menos una foto", true); return; }
+  for (const id of ids) {
+    const idx = bookCache.findIndex(f => String(f.id || f.nombre || "") === String(id));
+    if (idx >= 0) await compartirFotoBook(idx);
+  }
+}
+
+async function quitarFotosBookSel() {
+  const ids = [...bookSel];
+  if (!ids.length) { toast("Elige al menos una foto", true); return; }
+  if (!confirm(`¿Quitar ${ids.length} foto${ids.length === 1 ? "" : "s"} del book?`)) return;
+  for (const id of ids) {
+    const idx = bookCache.findIndex(f => String(f.id || f.nombre || "") === String(id));
+    if (idx >= 0) await quitarDelBook(idx, true);
+  }
+  bookSel.clear();
+  bookModoSel = false;
+  renderBookMovil();
 }
 
 async function compartirFotoBook(idx) {
   const f = bookCache[idx]; if (!f) return;
   try {
-    const blob = await (await fetch(f.data)).blob();
+    const blob = await (await fetch(urlFotoBook(f))).blob();
     const file = new File([blob], `${(f.titulo||"foto").replace(/\s+/g,"_")}.jpg`, {type:"image/jpeg"});
     if (navigator.share && navigator.canShare?.({files:[file]})) { await navigator.share({files:[file], title: f.titulo||"Trabajo"}); return; }
     const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = file.name; a.click(); URL.revokeObjectURL(url); toast("✓ Foto descargada");
   } catch(e) { if (e.name !== "AbortError") toast("Error al compartir", true); }
 }
 
-async function quitarDelBook(idx) {
-  if (!confirm("¿Quitar esta foto del book?")) return;
+async function quitarDelBook(idx, silencioso) {
   const f = bookCache[idx];
+  if (!f) return;
+  if (!silencioso && !confirm("¿Quitar esta foto del book?")) return;
   if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
+  if (f.id) {
+    try {
+      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      const cola = cargarCola();
+      cola.bookEliminar = cola.bookEliminar || [];
+      cola.bookEliminar.push(f.id);
+      guardarCola(cola);
+    }
+  }
   bookCache.splice(idx, 1);
   localStorage.setItem("book_cache", JSON.stringify(bookCache));
-  renderBookMovil(); toast("Foto quitada del book");
+  if (!silencioso) { renderBookMovil(); toast("Foto quitada del book"); }
 }
 
 async function compartirBook() {
-  if (!bookCache.length) { toast("El book está vacío", true); return; }
-  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.2rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 5px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:8px 10px}.t{font-size:.85rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${bookCache.map(f=>`<div class="card"><img src="${f.data}" alt="${f.titulo||""}"><div class="info"><div class="t">${f.titulo||""}</div></div></div>`).join("")}</div></body></html>`;
+  const lista = fotosBookFiltradas();
+  if (!lista.length) { toast("El book está vacío", true); return; }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.2rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 5px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:8px 10px}.t{font-size:.85rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${lista.map(f=>`<div class="card"><img src="${urlFotoBook(f)}" alt="${escHtml(f.titulo||"")}"><div class="info"><div class="t">${escHtml(f.titulo||"")}</div></div></div>`).join("")}</div></body></html>`;
   const blob = new Blob([html], {type:"text/html"});
   const file = new File([blob],"book_trabajos.html",{type:"text/html"});
   if (navigator.share && navigator.canShare?.({files:[file]})) { try { await navigator.share({title:"Book de trabajos",files:[file]}); return; } catch(e) {} }
@@ -3628,9 +4353,13 @@ async function compartirBook() {
 async function sincronizarBook(API) {
   try {
     const cola = cargarCola();
+    for (const id of (cola.bookEliminar || [])) {
+      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: AbortSignal.timeout(10000) }); } catch (e) {}
+    }
+    cola.bookEliminar = [];
     for (const foto of (cola.bookPendiente||[])) {
       try {
-        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:null, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(10000) });
+        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(30000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch(e) { console.error("Error subiendo foto book:", e); }
     }
@@ -3638,25 +4367,18 @@ async function sincronizarBook(API) {
     const r = await fetch(`${API}/sync/book`, {signal: AbortSignal.timeout(60000)});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    if (d.ok && d.data.length > 0) {
-      bookCache = d.data;
-      if (bookDirHandle) {
-        for (const foto of bookCache) {
-          if (foto.data) {
-            const nombre = `${(foto.faena_numero||"foto").replace(/[^a-zA-Z0-9]/g,"_")}_${foto.id}.jpg`;
-            foto.nombre = nombre;
-            try {
-              const fh = await bookDirHandle.getFileHandle(nombre, {create:true});
-              const w = await fh.createWritable();
-              const data = foto.data.split(",")[1];
-              await w.write(Uint8Array.from(atob(data), c => c.charCodeAt(0)));
-              await w.close();
-            } catch(e) {}
-          }
-        }
-      }
+    if (d.ok && Array.isArray(d.data)) {
+      bookCache = d.data.map(f => ({
+        id: f.id,
+        titulo: f.titulo,
+        descripcion: f.descripcion,
+        faena_id: f.faena_id,
+        faena_numero: f.faena_numero,
+        cliente_nombre: f.cliente_nombre,
+        data: f.data || (f.id ? `/api/book/${f.id}/imagen` : "")
+      }));
       localStorage.setItem("book_cache", JSON.stringify(bookCache));
-
+      renderBookMovil();
     }
   } catch(e) { console.error("Error sync book:", e); }
 }
@@ -3692,13 +4414,14 @@ function limpiarCacheLocal() {
 
 async function sincronizar() {
   const btn = document.getElementById("btn-sync");
-  const estado = document.getElementById("sync-estado");
+  const estado = document.getElementById("sync-estado") || { textContent: "", className: "" };
   let API = getServerUrl();
-  btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...';
-  btn.disabled = true; estado.textContent = ""; estado.className = "sync-estado";
+  if (btn) { btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...'; btn.disabled = true; }
+  if (estado) { estado.textContent = ""; estado.className = "sync-estado"; }
 
   const cola = cargarCola();
   try {
+    await enviarFaenasEliminadas();
     let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
@@ -3792,7 +4515,9 @@ async function sincronizar() {
           const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
           if (r.ok) {
             const d = await r.json();
-            if (d.ok) {
+            if (d.omitida || /no encontrada/i.test(d.error || "")) {
+              fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
+            } else if (d.ok) {
               fotosEnviadas++;
               fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
             } else {
@@ -3830,7 +4555,7 @@ async function sincronizar() {
       fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
       fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
     ]);
-    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) { state.faenas = d.data; localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } }
+    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
     if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
     if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
 
@@ -3847,6 +4572,7 @@ async function sincronizar() {
     await sincronizarBook(API);
 
     // Limpiar cola (las fotos que no subieron se quedan en el móvil)
+    const colaFinal = cargarCola();
     guardarCola({
       clientes:[],
       faenas:[],
@@ -3859,11 +4585,12 @@ async function sincronizar() {
       faenasEditar:[],
       definicionesPendientes:[],
       bookEliminar:[],
-      bookPendiente:[]
+      bookPendiente:[],
+      faenasEliminar: colaFinal.faenasEliminar || []
     });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
-    document.getElementById("ultima-sync").textContent = ahora;
+    document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
 
     renderFaenas();
     renderMateriales();
@@ -3887,15 +4614,16 @@ async function sincronizar() {
     estado.className = "sync-estado sync-ok";
     toast("✓ Sincronización completada");
   } catch(e) {
-    estado.textContent = `✗ Error: ${e.message}`;
-    estado.className = "sync-estado sync-error";
+    if (estado) {
+      estado.textContent = `✗ Error: ${e.message}`;
+      estado.className = "sync-estado sync-error";
+    }
     toast("Error: " + e.message, true);
   }
-  btn.innerHTML = "⟳ &nbsp; Sincronizar ahora";
-  btn.disabled = false;
+  if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
 }
 
-async function cargarDatosIniciales() {
+async function cargarDatosIniciales(silencioso) {
   const API = getServerUrl();
   const optsTimeout = (ms) => {
     try {
@@ -3907,13 +4635,14 @@ async function cargarDatosIniciales() {
   };
   let faenasCargadas = false;
 
+  await enviarFaenasEliminadas();
+
   try {
     const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
     if (rFaenas.ok) {
       const d = await rFaenas.json();
       if (d.ok && Array.isArray(d.data)) {
-        state.faenas = d.data;
-        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        aplicarRespuestaFaenas(d);
         faenasCargadas = true;
       }
     }
@@ -3928,14 +4657,23 @@ async function cargarDatosIniciales() {
       if (rFaenasSimple.ok) {
         const d = await rFaenasSimple.json();
         if (d.ok && Array.isArray(d.data)) {
-          state.faenas = d.data;
-          localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+          aplicarRespuestaFaenas(d);
           faenasCargadas = true;
         }
       }
     } catch (e) {
       console.error("Error en fallback /faenas:", e);
     }
+  }
+
+  if (!state._terminadasDeSync) {
+    try {
+      const rT = await fetch(`${API}/faenas/archivadas`, optsTimeout(12000));
+      if (rT.ok) {
+        const dT = await rT.json();
+        if (dT.ok && Array.isArray(dT.data)) aplicarTerminadasServidor(dT.data);
+      }
+    } catch (e) {}
   }
 
   const [matResult, cliResult] = await Promise.allSettled([
@@ -3963,48 +4701,106 @@ async function cargarDatosIniciales() {
   }
 
   if (!faenasCargadas) {
-    toast("No se pudo cargar faenas del servidor", true);
+    if (!silencioso && !state.faenas.length) toast("No se pudo cargar faenas del servidor", true);
+    incorporarFaenasPendientes();
   }
+  const subidas = await enviarFaenasPendientes();
+  if (subidas) {
+    try {
+      const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
+      if (rFaenas.ok) {
+        const d = await rFaenas.json();
+        if (d.ok && Array.isArray(d.data)) {
+          aplicarRespuestaFaenas(d);
+        }
+      }
+    } catch (e) {}
+  }
+  await sincronizarBook(API);
+}
+
+function leerJSONLocal(clave, fallback) {
+  try {
+    const v = JSON.parse(localStorage.getItem(clave) || "null");
+    return v == null ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function hidratarDesdeCache() {
+  const faenas = leerJSONLocal("faenas_cache", []);
+  const terminadas = leerJSONLocal("terminadas_cache", []);
+  const clientes = leerJSONLocal("clientes_cache", []);
+  const materiales = leerJSONLocal("materiales_cache", []);
+  if (Array.isArray(faenas) && faenas.length) {
+    state.faenas = filtrarFaenasEliminadas(faenas.filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada"));
+  }
+  if (Array.isArray(terminadas)) state.terminadas = filtrarFaenasEliminadas(terminadas);
+  if (Array.isArray(clientes) && clientes.length) state.clientes = clientes;
+  if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
+  incorporarFaenasPendientes();
+  purgarRegistrosDeFaenasInactivas();
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+}
+
+function refrescarPantallaActual() {
+  renderFaenas();
+  renderMateriales();
+  renderBookMovil();
+  actualizarPanelConsultaIA();
+  if (!state.faenaActualId) return;
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+  if (f && document.getElementById("faena-overlay")?.classList.contains("open")) {
+    renderPanelDatos(f);
+    renderPanelPresupuesto(f);
+    renderPanelDocumentos(f);
+    renderPanelFotos(f);
+    renderPanelGastos(f);
+  }
+}
+
+let _fondoEnCurso = false;
+async function actualizarEnSegundoPlano() {
+  if (_fondoEnCurso) return;
+  _fondoEnCurso = true;
+  try {
+    await cargarDatosIniciales(true);
+    await enviarFotosPendientes();
+    state._cargando = false;
+    refrescarPantallaActual();
+  } catch (e) {
+    console.warn("Actualización en segundo plano:", e);
+    state._cargando = false;
+  }
+  _fondoEnCurso = false;
 }
 
 async function recargarDatos() {
-  state._cargando = true;
-  renderFaenas();
-  await cargarDatosIniciales();
-  await enviarFotosPendientes();
-  state._cargando = false;
-  renderFaenas();
-  renderMateriales();
+  await actualizarEnSegundoPlano();
   toast("✓ Datos actualizados");
 }
 
-// ═══════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════
-
 async function init() {
-  const apiEl = document.getElementById("api-url-actual");
-  if (apiEl) apiEl.textContent = getServerUrl();
-  actualizarPanelConsultaIA();
-  resetearConsultaIA();
-  // Mostrar cargando y cargar desde la nube
-  state._cargando = true;
-  renderFaenas();
-  renderMateriales();
-  await cargarDatosIniciales();
-  await enviarFotosPendientes();
-  state._cargando = false;
-  renderFaenas();
-  renderMateriales();
-  actualizarPanelConsultaIA();
-  // Service Worker
+  hidratarDesdeCache();
+  state._cargando = !state.faenas.length;
+  refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=28", { updateViaCache: "none" }).catch(() => {});
   }
-  // Offline indicator
-  window.addEventListener("online",  () => document.getElementById("offline-ind").classList.remove("show"));
-  window.addEventListener("offline", () => document.getElementById("offline-ind").classList.add("show"));
-  if (!navigator.onLine) document.getElementById("offline-ind").classList.add("show");
+  window.addEventListener("online",  () => {
+    document.getElementById("offline-ind")?.classList.remove("show");
+    actualizarEnSegundoPlano();
+  });
+  window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
+  if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") actualizarEnSegundoPlano();
+  });
+  window.addEventListener("pageshow", ev => {
+    if (ev.persisted) actualizarEnSegundoPlano();
+  });
+  actualizarEnSegundoPlano();
 }
 
 init();

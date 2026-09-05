@@ -1,3 +1,4 @@
 @echo off
 title Gestion de Faenas
-start "" "https://faenas-app.onrender.com/"
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch_faenas.ps1"

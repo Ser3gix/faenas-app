@@ -6,26 +6,29 @@
 <title>Gestión de Faenas</title>
 <script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap');
-
 :root {
-  --wood: #c8a96e;
-  --wood-dark: #8b6914;
-  --wood-light: #f0deb4;
-  --ink: #1a1208;
-  --paper: #faf6ee;
-  --paper-dark: #ede8dc;
-  --sawdust: #e8d9b8;
-  --accent: #5c3d0e;
-  --green: #3a6b3a;
-  --red: #8b2020;
-  --blue: #1e3a5f;
+  --paper: #F4EFE6;
+  --paper-2: #E7E0D4;
+  --paper-dark: #E7E0D4;
+  --sawdust: #E7E0D4;
+  --ink: #1C1917;
+  --muted: #78716C;
+  --line: #D6CFC3;
+  --accent: #8F4F2A;
+  --green: #3F6B4A;
+  --red: #9B2C2C;
+  --blue: #5b6d8a;
+  --wood: #D6CFC3;
+  --wood-dark: #8F4F2A;
+  --wood-light: #F4EFE6;
+  --radius: 8px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-sans);
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
@@ -34,54 +37,48 @@ body {
 /* HEADER */
 header {
   background: var(--accent);
-  color: var(--wood-light);
-  padding: 14px 24px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 3px solid var(--wood);
+  color: #fff;
+  padding: 12px 24px 0;
   position: sticky;
   top: 0;
   z-index: 50;
 }
-header h1 { font-family: 'Fraunces', serif; font-size: 1.3rem; }
-header span { font-size: 1.5rem; }
-.header-sub { font-size: 0.7rem; opacity: 0.7; margin-top: 2px; }
+.header-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+header h1 { font-size: 1.15rem; font-weight: 700; }
+header span { font-size: 1.4rem; }
+.header-sub { font-size: 0.72rem; opacity: 0.8; margin-top: 2px; }
 
 /* NAV */
 nav {
-  background: var(--paper-dark);
-  border-bottom: 2px solid var(--sawdust);
   display: flex;
   overflow-x: auto;
-  position: sticky;
-  top: 57px;
-  z-index: 40;
+  margin-top: 8px;
+  gap: 2px;
 }
 nav button {
-  padding: 11px 18px;
+  padding: 8px 12px 10px;
   border: none;
   background: none;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--accent);
+  font-family: inherit;
+  font-size: 14px;
+  color: rgba(255,255,255,.82);
   cursor: pointer;
-  border-bottom: 3px solid transparent;
+  border-bottom: 2px solid transparent;
   white-space: nowrap;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition: all 0.15s;
 }
-nav button:hover { background: var(--sawdust); }
+nav button:hover { color: #fff; }
 nav button.active {
-  border-bottom-color: var(--wood-dark);
-  color: var(--wood-dark);
-  font-weight: 500;
-  background: var(--paper);
+  color: #fff;
+  border-bottom-color: #fff;
+  font-weight: 600;
 }
 
 /* MAIN */
-main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+main { padding: 22px 20px 80px; max-width: 1280px; margin: 0 auto; }
 .section { display: none; }
 .section.active { display: block; }
 
@@ -90,9 +87,9 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
-.sec-header h2 { font-family: 'Fraunces', serif; font-size: 1.3rem; color: var(--accent); }
+.sec-header h2 { font-size: 1.2rem; font-weight: 700; color: var(--ink); }
 
 /* SEARCH BAR */
 .search-bar { display: flex; gap: 8px; margin-bottom: 18px; }
@@ -102,16 +99,13 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 /* CARDS */
 .card {
   background: white;
-  border: 1px solid var(--sawdust);
-  border-radius: 6px;
-  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
   margin-bottom: 12px;
-  box-shadow: 2px 2px 0 var(--sawdust);
-  transition: box-shadow 0.15s;
 }
-.card:hover { box-shadow: 3px 3px 0 var(--wood); }
 .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.card-title { font-family: 'Fraunces', serif; font-size: 1rem; color: var(--accent); }
+.card-title { font-size: 1rem; color: var(--accent); font-weight: 600; }
 .card-id { font-size: 0.7rem; color: #999; margin-bottom: 4px; }
 .card-info { font-size: 0.8rem; color: #555; line-height: 1.7; }
 .card-info strong { color: var(--ink); }
@@ -119,12 +113,10 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 
 /* BADGES */
 .badge {
-  font-size: 0.67rem;
-  padding: 3px 8px;
-  border-radius: 3px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .b-direct { background: var(--wood-light); color: var(--wood-dark); }
@@ -133,15 +125,57 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .b-orange { background: #fdecd0; color: #8b5000; }
 .b-gray   { background: #e8e8e8; color: #555; }
 
+.fase-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fase-tab {
+  padding: 8px 12px 9px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.fase-tab:hover { color: var(--ink); }
+.fase-tab.active { font-weight: 600; color: var(--ink); }
+.fase-tab.active[data-fase="medicion"] { border-bottom-color: #5b6d8a; color: #5b6d8a; }
+.fase-tab.active[data-fase="presupuestada"] { border-bottom-color: #b45309; color: #b45309; }
+.fase-tab.active[data-fase="en_proceso"] { border-bottom-color: var(--accent); color: var(--accent); }
+.fase-tab.active[data-fase="terminada"] { border-bottom-color: var(--green); color: var(--green); }
+.fase-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--muted);
+}
+.fase-chip.medicion { background: #dce4f0; color: #3d4f6a; }
+.fase-chip.presupuestada { background: #f3e6c4; color: #7a5a12; }
+.fase-chip.en_proceso { background: #f0dcc8; color: var(--accent); }
+.fase-chip.terminada { background: #d4e8d8; color: var(--green); }
+.fase-sel {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+
 /* NUM FAENA */
 .num-faena {
   font-size: 0.75rem;
   background: var(--ink);
-  color: var(--wood-light);
-  padding: 3px 8px;
-  border-radius: 3px;
-  letter-spacing: 0.1em;
-  font-family: 'DM Mono', monospace;
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* FORMS */
@@ -153,8 +187,8 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
   margin-bottom: 20px;
 }
 .form-title {
-  font-family: 'Fraunces', serif;
   font-size: 0.95rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 14px;
   padding-bottom: 8px;
@@ -165,34 +199,30 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .form-grid.g1 { grid-template-columns: 1fr; }
 @media(max-width:700px) { .form-grid, .form-grid.g3 { grid-template-columns: 1fr; } }
 
-label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #666; margin-bottom: 4px; }
+label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
 input, select, textarea {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.82rem;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 14px;
   background: white;
   color: var(--ink);
-  transition: border-color 0.15s;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
 textarea { resize: vertical; min-height: 70px; }
 
 /* BUTTONS */
 .btn {
-  padding: 8px 16px;
+  padding: 8px 14px;
   border: none;
-  border-radius: 4px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.77rem;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 13px;
   cursor: pointer;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition: all 0.15s;
 }
-.btn-p { background: var(--accent); color: var(--wood-light); }
+.btn-p { background: var(--accent); color: #fff; }
 .btn-p:hover { background: var(--wood-dark); }
 .btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
 .btn-s:hover { background: var(--wood-light); }
@@ -225,8 +255,8 @@ textarea { resize: vertical; min-height: 70px; }
   box-shadow: 0 10px 40px rgba(0,0,0,0.3);
 }
 .modal-title {
-  font-family: 'Fraunces', serif;
   font-size: 1.05rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 16px;
   padding-bottom: 8px;
@@ -242,7 +272,7 @@ textarea { resize: vertical; min-height: 70px; }
   font-size: 0.8rem;
 }
 .det-row:last-child { border-bottom: none; }
-.det-k { color: #888; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; }
+.det-k { color: var(--muted); font-size: 0.72rem; }
 .det-v { color: var(--ink); font-weight: 500; max-width: 60%; text-align: right; }
 
 /* PROMPT BOX */
@@ -263,15 +293,37 @@ textarea { resize: vertical; min-height: 70px; }
 /* TABLA MATERIALES */
 .mat-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .mat-table th {
-  background: var(--accent);
-  color: var(--wood-light);
+  background: var(--paper-2);
+  color: var(--muted);
   padding: 8px 12px;
   text-align: left;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
 }
-.mat-table td { padding: 8px 12px; font-size: 0.8rem; border-bottom: 1px solid var(--sawdust); }
+.mat-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.mat-table tr:nth-child(even) td { background: #fff; }
+
+.data-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.data-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.data-table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #faf8f3; }
+.data-table .acciones { white-space: nowrap; }
+.data-table .acciones .btn, .data-table .acciones .fase-sel { margin: 2px 4px 2px 0; }
+.table-wrap { overflow-x: auto; }
 .mat-table tr:nth-child(even) td { background: var(--paper-dark); }
 .mat-table .precio-min { color: var(--green); font-weight: 500; }
 
@@ -285,7 +337,7 @@ textarea { resize: vertical; min-height: 70px; }
   bottom: 24px;
   right: 24px;
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 12px 20px;
   border-radius: 6px;
   font-size: 0.82rem;
@@ -300,18 +352,18 @@ textarea { resize: vertical; min-height: 70px; }
 
 /* GASTOS TABLE */
 .gastos-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.8rem; }
-.gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.68rem; text-transform: uppercase; color: #666; border-bottom: 2px solid var(--sawdust); }
+.gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.72rem; color: var(--muted); border-bottom: 2px solid var(--sawdust); }
 .gastos-table td { padding: 7px 10px; border-bottom: 1px solid var(--sawdust); }
-.gastos-total { text-align: right; font-family: 'Fraunces', serif; color: var(--accent); font-size: 1rem; margin-top: 8px; }
+.gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 /* POLYBOARD */
 .pb-mat-header {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 8px 14px;
-  font-family: 'Fraunces', serif;
   font-size: 0.95rem;
+  font-weight: 600;
   border-radius: 4px 4px 0 0;
   margin-top: 16px;
 }
@@ -355,13 +407,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 }
 .book-card {
   background: white;
-  border: 1px solid var(--sawdust);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 2px 2px 0 var(--sawdust);
-  transition: box-shadow 0.15s;
 }
-.book-card:hover { box-shadow: 3px 3px 0 var(--wood); }
+.book-card:hover { border-color: var(--accent); }
 .book-card img {
   width: 100%;
   aspect-ratio: 4/3;
@@ -372,8 +422,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   padding: 10px 12px;
 }
 .book-card-titulo {
-  font-family: 'Fraunces', serif;
   font-size: 0.9rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 3px;
 }
@@ -438,7 +488,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 }
 .chat-msg.usuario .chat-burbuja {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   border-bottom-right-radius: 2px;
 }
 .chat-msg.asistente .chat-burbuja {
@@ -489,36 +539,59 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   object-fit: contain;
   border-radius: 4px;
 }
-.foto-overlay-nombre {
-  color: #ccc;
-  font-size: 0.8rem;
+.foto-viewer {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.96);
+  z-index: 9999; display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+.foto-viewer img {
+  max-width: 90%; max-height: 90%; object-fit: contain;
+  cursor: zoom-in;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.foto-viewer img.zoomed { cursor: grab; }
+.foto-viewer img.panning { cursor: grabbing; }
+.foto-viewer .close-btn {
+  position: absolute; top: 18px; right: 18px;
+  background: rgba(255,255,255,0.2); border: 1px solid white;
+  color: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 13px;
 }
 </style>
 </head>
 <body>
 
 <header>
-  <span>🪵</span>
-  <div>
-    <h1>Gestión de Faenas</h1>
-    <div class="header-sub">Carpintería · Gestión local</div>
+  <div class="header-bar">
+    <span>🪵</span>
+    <div>
+      <h1>Gestión de Faenas</h1>
+      <div class="header-sub">Carpintería · Gestión local</div>
+    </div>
+    <div id="ip-banner" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer" onclick="copiarIP()" title="Pulsa para copiar">
+      📱 IP móvil: <span id="ip-valor" style="font-weight:500">cargando...</span>
+    </div>
+    <div id="r2-banner" style="margin-left:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer" onclick="abrirConfigR2()" title="Cloudflare R2">
+      ☁ <span id="r2-valor">Cloudflare...</span>
+    </div>
   </div>
-  <div id="ip-banner" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:6px 12px;font-size:0.72rem;color:var(--wood-light);cursor:pointer" onclick="copiarIP()" title="Pulsa para copiar">
-    📱 IP móvil: <span id="ip-valor" style="font-weight:500">cargando...</span>
-  </div>
+  <nav>
+    <button class="active" onclick="nav('faenas')">Faenas</button>
+    <button onclick="nav('clientes')">Clientes</button>
+    <button onclick="nav('intermediarios')">Intermediarios</button>
+    <button onclick="nav('materiales')">Materiales</button>
+    <button onclick="nav('tickets')">Tickets</button>
+    <button onclick="nav('polyboard')">PolyBoard</button>
+    <button onclick="nav('presupuesto')">Presupuesto</button>
+    <button onclick="nav('book')">Book</button>
+    <button onclick="nav('asistente')">Jimmi</button>
+  </nav>
 </header>
-
-<nav>
-  <button class="active" onclick="nav('faenas')">🔨 Faenas</button>
-  <button onclick="nav('clientes')">👤 Clientes</button>
-  <button onclick="nav('intermediarios')">🤝 Intermediarios</button>
-  <button onclick="nav('materiales')">📦 Materiales</button>
-  <button onclick="nav('prompts')">💬 Prompts IA</button>
-  <button onclick="nav('polyboard')">🪵 PolyBoard</button>
-  <button onclick="nav('presupuesto')">📋 Presupuesto</button>
-  <button onclick="nav('book')">📸 Book</button>
-  <button onclick="nav('asistente')">Jimmi</button>
-</nav>
 
 <main>
 
@@ -527,9 +600,15 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div class="sec-header">
     <h2>Faenas</h2>
     <div class="btn-row">
-      <button class="btn btn-s btn-sm" id="btn-archivadas" onclick="toggleArchivadas()">Ver archivadas</button>
+      <button class="btn btn-s btn-sm" onclick="sincronizarArchivosPC()">↻ Archivos del PC</button>
       <button class="btn btn-p btn-sm" onclick="abrirModal('m-faena')">+ Nueva faena</button>
     </div>
+  </div>
+  <div class="fase-tabs" id="fase-tabs">
+    <button class="fase-tab" data-fase="medicion" onclick="seleccionarFase('medicion')">Medición</button>
+    <button class="fase-tab" data-fase="presupuestada" onclick="seleccionarFase('presupuestada')">Presupuestada</button>
+    <button class="fase-tab active" data-fase="en_proceso" onclick="seleccionarFase('en_proceso')">En proceso</button>
+    <button class="fase-tab" data-fase="terminada" onclick="seleccionarFase('terminada')">Terminadas</button>
   </div>
   <div class="search-bar">
     <input id="q-faena" placeholder="Buscar por cliente, número, tipo..." oninput="renderFaenas()">
@@ -609,101 +688,89 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div id="lista-materiales"></div>
 </div>
 
-<!-- ===== PROMPTS IA ===== -->
-<div id="s-prompts" class="section">
-  <div class="sec-header"><h2>Prompts para Claude.ai</h2></div>
-
-  <div class="form-box">
-    <div class="form-title">🎫 Prompt de ticket de compra</div>
-    <p style="font-size:0.82rem;color:#666;margin-bottom:12px">
-      Selecciona la foto del ticket, copia el prompt, ve a Claude.ai,
-      adjunta la misma foto y pega el prompt. Luego pega el JSON aquí.
-    </p>
-
-    <!-- Selector de foto -->
-    <div class="form-grid g1" style="margin-bottom:12px">
-      <div>
-        <label>Foto del ticket</label>
-        <input type="file" id="ticket-foto-input" accept="image/*"
-               onchange="previewTicket(event)"
-               style="padding:6px;font-size:0.8rem">
-      </div>
-    </div>
-
-    <!-- Preview de la foto -->
-    <div id="ticket-preview" style="display:none;margin-bottom:12px">
-      <img id="ticket-img" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--sawdust);object-fit:contain">
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-s" id="btn-procesar-ticket" onclick="procesarTicketLocal()">Procesar con IA local</button>
-    </div>
-
-    <div id="ticket-ocr-resumen" style="display:none;margin-top:10px;background:#eef6ee;border:1px solid #cde6cd;border-radius:6px;padding:10px 14px;font-size:0.78rem;color:#2f5f2f;white-space:pre-wrap"></div>
+<!-- ===== TICKETS ===== -->
+<div id="s-tickets" class="section">
+  <div class="sec-header">
+    <h2>Tickets</h2>
+    <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
   </div>
 
   <div class="form-box">
-    <div class="form-title">📦 Prompt de actualización de materiales</div>
-    <p style="font-size:0.82rem;color:#666;margin-bottom:12px">
-      Genera un prompt con tu tabla actual de materiales. Si tienes un ticket,
-      selecciona la foto. Cópialo en Claude.ai, adjunta la foto si la hay,
-      y pega el JSON de respuesta para actualizar precios.
-    </p>
-
-    <!-- Foto opcional -->
-    <div class="form-grid g1" style="margin-bottom:12px">
-      <div>
-        <label>Foto de ticket (opcional)</label>
-        <input type="file" id="mat-foto-input" accept="image/*"
-               onchange="previewMatFoto(event)"
-               style="padding:6px;font-size:0.8rem">
-      </div>
-    </div>
-    <div id="mat-preview" style="display:none;margin-bottom:12px">
-      <img id="mat-img" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--sawdust);object-fit:contain">
-    </div>
-
+    <div class="form-title">Paso 1 — Foto del ticket</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Una foto cada vez. Jimmi la lee y tú revisas la lista antes de guardar.</p>
+    <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <div class="btn-row">
-      <button class="btn btn-p" onclick="generarPromptMateriales()">Generar prompt</button>
+      <button class="btn btn-p" onclick="document.getElementById('ticket-foto-input').click()">Elegir foto</button>
     </div>
-    <div id="prompt-mat-box" style="display:none">
-      <div class="prompt-box" id="prompt-mat-txt"></div>
-      <div class="btn-row">
-        <button class="btn btn-g" onclick="copiar('prompt-mat-txt')">📋 Copiar prompt</button>
-      </div>
-      <div id="mat-foto-aviso" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px 14px;font-size:0.78rem;color:#8b6914;margin-top:8px">
-        💡 Adjunta también la foto del ticket en Claude.ai antes de pegar el prompt
-      </div>
-      <hr>
-      <div class="form-title" style="margin-top:8px">Pega aquí el JSON de respuesta</div>
-      <div class="form-grid g1">
-        <div><label>JSON de Claude</label><textarea id="json-materiales" rows="6" placeholder='{"actualizaciones": [...]}'></textarea></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-p" onclick="cargarJsonMateriales()">Actualizar precios</button>
+    <div id="ticket-preview" style="display:none;margin-top:12px">
+      <img id="ticket-img" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid var(--line);object-fit:contain">
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-d btn-sm" type="button" onclick="limpiarImagenTicket()">Quitar imagen</button>
       </div>
     </div>
   </div>
 
-  <div class="form-box">
-    <div class="form-title">🔨 Prompt de consulta de faena</div>
-    <p style="font-size:0.82rem;color:#666;margin-bottom:12px">
-      Selecciona una faena, genera el prompt con sus datos y añade tu pregunta antes de copiarlo.
-    </p>
+  <div class="form-box" id="ticket-paso2" style="display:none">
+    <div class="form-title">Paso 2 — Procesar ticket</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Jimmi analiza el ticket. Después revisas la lista y eliges faena o almacén.</p>
+    <div class="btn-row">
+      <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">Pedir a Jimmi</button>
+      <button class="btn btn-s" type="button" onclick="cancelarTicket()">Resetear ticket</button>
+    </div>
+    <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem"></div>
+  </div>
+
+  <div class="form-box" id="ticket-paso3" style="display:none">
+    <div class="form-title">Paso 3 — Revisar y asignar</div>
+    <div id="ticket-cruzar-notas" style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;line-height:1.5"></div>
     <div class="form-grid">
       <div>
-        <label>Seleccionar faena</label>
-        <select id="prompt-faena-sel"></select>
+        <label>Destino</label>
+        <select id="ticket-destino" onchange="actualizarDestinoTicket()">
+          <option value="almacen">Almacén de materiales</option>
+          <option value="faena">Gastos de una faena</option>
+        </select>
+      </div>
+      <div id="ticket-destino-faena-wrap" style="display:none">
+        <label>Faena</label>
+        <select id="ticket-destino-faena"></select>
+      </div>
+    </div>
+    <div id="ticket-tabla-wrap"></div>
+    <textarea id="ticket-json-pc" style="display:none"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarTicketPc()">Aceptar y guardar</button>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-s" onclick="mostrarTextoManual()">Texto manual</button>
+  </div>
+  <div class="form-box" id="ticket-paso4" style="display:none">
+    <div class="form-title">Entrada manual</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:8px">Añade los materiales con los mismos campos de la tabla.</p>
+    <div class="table-wrap" style="margin-bottom:8px">
+      <table class="data-table">
+        <thead><tr>
+          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Faena</th>
+        </tr></thead>
+        <tbody id="ticket-formulario-manual"></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-s btn-sm" onclick="anadirFilaManual()">Añadir material</button>
+      <button class="btn btn-p btn-sm" onclick="usarFormularioManual()">Usar formulario</button>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin:12px 0 6px">O pega una lista y deja que Jimmi la convierta:</p>
+    <div class="form-grid g1">
+      <div>
+        <label>Lista de materiales</label>
+        <textarea id="ticket-texto-manual" rows="5" placeholder="Ej: 2x Bisagra 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€"></textarea>
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-p" onclick="generarPromptFaena()">Generar prompt</button>
-    </div>
-    <div id="prompt-faena-box" style="display:none">
-      <div class="prompt-box" id="prompt-faena-txt"></div>
-      <div class="btn-row">
-        <button class="btn btn-g" onclick="copiar('prompt-faena-txt')">📋 Copiar prompt</button>
-      </div>
+      <button class="btn btn-p" onclick="procesarTextoManual()">Procesar con Jimmi</button>
+      <button class="btn btn-s" onclick="document.getElementById('ticket-paso4').style.display='none'">Cancelar</button>
     </div>
   </div>
 </div>
@@ -807,7 +874,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </thead>
       <tbody id="tbody-materiales"></tbody>
     </table>
-    <div style="text-align:right;font-family:'Fraunces',serif;color:var(--accent);font-size:1rem;margin-top:8px">
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
       Subtotal materiales: <strong id="subtotal-mat">0.00 €</strong>
     </div>
   </div>
@@ -831,7 +898,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </thead>
       <tbody id="tbody-mo"></tbody>
     </table>
-    <div style="text-align:right;font-family:'Fraunces',serif;color:var(--accent);font-size:1rem;margin-top:8px">
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
       Subtotal mano de obra: <strong id="subtotal-mo">0.00 €</strong>
     </div>
   </div>
@@ -839,8 +906,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <!-- TOTAL Y ACCIONES -->
   <div class="form-box" style="border:2px solid var(--wood)">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-family:'Fraunces',serif;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
-      <span style="font-family:'Fraunces',serif;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
+      <span style="font-weight:600;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
+      <span style="font-weight:600;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
     </div>
     <div class="btn-row" style="margin-top:14px">
       <button class="btn btn-p" onclick="guardarPresupuesto()">💾 Guardar TXT en carpeta</button>
@@ -849,17 +916,14 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
-<!-- ===== COPILOT EXTERNO ===== -->
+<!-- ===== BOOK ===== -->
 <div id="s-book" class="section">
   <div class="sec-header">
-    <h2>🤖 Copilot externo</h2>
+    <h2>Book</h2>
+    <button class="btn btn-p btn-sm" onclick="abrirModalAñadirBook()">+ Foto</button>
   </div>
-  <p style="font-size:0.82rem;color:#888;margin-bottom:16px">
-    Selecciona las mejores fotos de tus faenas para mostrar a clientes.
-  </p>
-  <div class="form-title">Generar prompt</div>
-  <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
-    Copilot no se ejecuta dentro de esta app. Genera el prompt con el contexto de la faena, cópialo y pégalo en Copilot Chat.
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px">
+    Selecciona las mejores fotos para mostrar a clientes. Pulsa una para verla a pantalla completa.
   </p>
   <div id="book-galeria"></div>
 </div>
@@ -891,9 +955,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <div class="form-title">Filtrar consulta</div>
     <div class="form-grid">
       <div><label>Contexto</label><select id="ia-contexto-index">
-        <option value="general">General</option>
+        <option value="todo">Todo</option>
+        <option value="faenas">Faenas</option>
         <option value="materiales">Materiales</option>
-        <option value="trabajos">Trabajos</option>
       </select></div>
       <div><label>Faena opcional</label><select id="ia-faena-index"><option value="">— Todas —</option></select></div>
     </div>
@@ -921,6 +985,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </button>
       <button class="btn btn-s" onclick="limpiarChat()" style="height:32px;padding:0 14px;font-size:0.7rem">
         Limpiar
+      </button>
+      <button class="btn btn-g" onclick="abrirCorregirJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem">
+        Corregir a Jimmi
       </button>
     </div>
   </div>
@@ -973,26 +1040,75 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <!-- Modal añadir foto al book -->
 <div class="overlay" id="m-book-añadir">
   <div class="modal" style="max-width:680px">
-    <div class="modal-title">📸 Añadir foto al book</div>
-    <div class="form-grid">
-      <div>
-        <label>Seleccionar faena</label>
-        <select id="book-faena-sel" onchange="cargarFotosParaBook()"></select>
+    <div class="modal-title">Añadir foto al book</div>
+    <div class="fase-tabs" style="margin-bottom:14px">
+      <button type="button" class="fase-tab active" id="book-tab-pc" onclick="mostrarOrigenBook('pc')">Desde el PC</button>
+      <button type="button" class="fase-tab" id="book-tab-faena" onclick="mostrarOrigenBook('faena')">Desde una faena</button>
+    </div>
+    <div id="book-origen-pc">
+      <div class="form-grid g1">
+        <div>
+          <label>Fotos del PC</label>
+          <input type="file" id="book-pc-input" accept="image/*" multiple onchange="previewFotosPcBook(event)">
+        </div>
+      </div>
+      <div id="book-pc-preview" class="foto-sel-grid" style="display:none;margin:10px 0"></div>
+      <div class="form-grid">
+        <div>
+          <label>Faena (opcional)</label>
+          <select id="book-pc-faena"></select>
+        </div>
       </div>
     </div>
-    <div id="book-fotos-sel" style="margin:12px 0"></div>
-    <div class="form-grid g1" id="book-form-datos" style="display:none">
+    <div id="book-origen-faena" style="display:none">
+      <div class="form-grid">
+        <div>
+          <label>Seleccionar faena</label>
+          <select id="book-faena-sel" onchange="cargarFotosParaBook()"></select>
+        </div>
+      </div>
+      <div id="book-fotos-sel" style="margin:12px 0"></div>
+    </div>
+    <div class="form-grid g1" id="book-form-datos">
       <div><label>Título (opcional)</label><input id="book-titulo" placeholder="Cocina en roble, armario a medida..."></div>
     </div>
-    <div class="form-grid g1" id="book-form-desc" style="display:none">
+    <div class="form-grid g1" id="book-form-desc">
       <div><label>Descripción (opcional)</label><textarea id="book-desc" rows="2" placeholder="Breve descripción del trabajo..."></textarea></div>
     </div>
-    <div class="btn-row" id="book-btn-guardar" style="display:none">
+    <div class="btn-row">
       <button class="btn btn-p" onclick="guardarEnBook()">Añadir al book</button>
       <button class="btn btn-s" onclick="cerrarModal('m-book-añadir')">Cancelar</button>
     </div>
-    <div class="btn-row" style="margin-top:4px" id="book-btn-cancelar">
-      <button class="btn btn-s" onclick="cerrarModal('m-book-añadir')">Cerrar</button>
+  </div>
+</div>
+
+<!-- Modal editar foto del book -->
+<div class="overlay" id="m-book-editar">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">Editar foto</div>
+    <img id="book-editar-preview" alt="" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff;margin-bottom:12px">
+    <input type="hidden" id="book-editar-id">
+    <div class="form-grid g1">
+      <div><label>Título</label><input id="book-editar-titulo" placeholder="Título de la foto"></div>
+    </div>
+    <div class="form-grid g1">
+      <div><label>Descripción</label><textarea id="book-editar-desc" rows="2" placeholder="Breve descripción..."></textarea></div>
+    </div>
+    <div class="form-grid">
+      <div>
+        <label>Faena</label>
+        <select id="book-editar-faena"></select>
+      </div>
+    </div>
+    <div class="form-grid g1">
+      <div>
+        <label>Sustituir foto (opcional)</label>
+        <input type="file" id="book-editar-archivo" accept="image/*">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarEdicionBook()">Guardar cambios</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-book-editar')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1012,6 +1128,29 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 </div>
 
 <!-- Modal Nueva Faena -->
+<div class="overlay" id="m-corregir-jimmi">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">Corregir a Jimmi</div>
+    <p style="font-size:0.78rem;color:#888;margin-bottom:12px;line-height:1.5">Escribe la respuesta correcta. Jimmi la guardará en su memoria.</p>
+    <div class="form-grid g1">
+      <div><label>Pregunta</label><textarea id="cj-pregunta" rows="2" placeholder="¿Qué faenas están terminadas?"></textarea></div>
+    </div>
+    <div class="form-grid g1">
+      <div>
+        <label>Lo que dijo Jimmi</label>
+        <div id="cj-dijo" style="font-size:0.85rem;background:#faf6ee;border:1px solid var(--sawdust);border-radius:6px;padding:10px;min-height:48px;white-space:pre-wrap;color:#555"></div>
+      </div>
+    </div>
+    <div class="form-grid g1">
+      <div><label>Respuesta correcta *</label><textarea id="cj-correcta" rows="4" placeholder="Las faenas terminadas son…"></textarea></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarCorreccionJimmi()">Guardar para Jimmi</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-corregir-jimmi')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="m-faena">
   <div class="modal">
     <div class="modal-title">🔨 Nueva Faena</div>
@@ -1284,6 +1423,25 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
+<!-- Modal Cloudflare R2 -->
+<div class="overlay" id="m-r2">
+  <div class="modal">
+    <div class="modal-title">☁ Cloudflare R2</div>
+    <p style="font-size:0.82rem;color:#666;margin-bottom:12px;line-height:1.6">
+      En el PC se guarda en <code>.env</code> (junto a la app). Así el ordenador sube fotos y documentos a Cloudflare.
+    </p>
+    <div class="form-grid g1"><div><label>Endpoint</label><input id="r2-endpoint" placeholder="https://xxxxx.r2.cloudflarestorage.com"></div></div>
+    <div class="form-grid g1"><div><label>Bucket</label><input id="r2-bucket" placeholder="faenas"></div></div>
+    <div class="form-grid g1"><div><label>URL pública (opcional)</label><input id="r2-public" placeholder="https://pub-xxxxx.r2.dev"></div></div>
+    <div class="form-grid g1"><div><label>Access key</label><input id="r2-access" placeholder="Token R2"></div></div>
+    <div class="form-grid g1"><div><label>Secret key</label><input id="r2-secret" type="password" placeholder="Se conserva si lo dejas vacío"></div></div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarConfigR2()">Probar y guardar</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-r2')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Añadir Precio -->
 <div class="overlay" id="m-precio">
   <div class="modal">
@@ -1317,8 +1475,8 @@ function esc(value) {
 
 // ===== ESTADO =====
 let state = {
-  faenas: [], clientes: [], intermediarios: [], materiales: [],
-  verArchivadas: false,
+  faenas: [], terminadas: [], clientes: [], intermediarios: [], materiales: [],
+  faseVista: "en_proceso",
   detalleId: null,
   detalleActual: { gastos: [], presupuesto: [] }
 };
@@ -1338,6 +1496,7 @@ async function init() {
   poblarSelectPolyboard();
   poblarSelectPresupuesto();
   cargarIP();
+  cargarEstadoR2();
 }
 
 async function cargarEstadoDb() {
@@ -1378,21 +1537,110 @@ function copiarIP() {
     .catch(() => toast("IP: " + ip));
 }
 
+async function cargarEstadoR2() {
+  try {
+    const r = await api("GET", "/info/storage");
+    const el = document.getElementById("r2-valor");
+    if (!r.ok || !el) return;
+    const d = r.data || {};
+    window._r2info = d;
+    if (d.r2_conectado) el.textContent = "Cloudflare OK";
+    else if (d.r2_activo) el.textContent = "Cloudflare error";
+    else el.textContent = "Cloudflare off";
+    document.getElementById("r2-endpoint").value = d.endpoint || "";
+    document.getElementById("r2-bucket").value = d.bucket || "";
+    document.getElementById("r2-public").value = d.public_url || "";
+  } catch (e) {}
+}
+
+function abrirConfigR2() {
+  const d = window._r2info || {};
+  if (d.configurable === false) {
+    toast("En Render las claves van en Environment. Arranca el PC con Arrancar_Faenas.bat", true);
+    return;
+  }
+  abrirModal("m-r2");
+}
+
+async function guardarConfigR2() {
+  const r = await api("POST", "/config/r2", {
+    endpoint: document.getElementById("r2-endpoint").value,
+    bucket: document.getElementById("r2-bucket").value,
+    public_url: document.getElementById("r2-public").value,
+    access_key: document.getElementById("r2-access").value,
+    secret_key: document.getElementById("r2-secret").value
+  });
+  if (!r.ok) { toast(r.error || "No se pudo conectar a Cloudflare", true); return; }
+  toast("✓ PC conectado a Cloudflare R2");
+  document.getElementById("r2-secret").value = "";
+  cerrarModal("m-r2");
+  await cargarEstadoR2();
+}
+
 // ===== API CALLS =====
+async function parsearRespuesta(r) {
+  const texto = await r.text();
+  if (!texto) return { ok: false, error: r.ok ? "Respuesta vacía" : ("Error del servidor (" + r.status + ")") };
+  try { return JSON.parse(texto); } catch (e) {
+    return { ok: false, error: r.status === 413 ? "La foto es demasiado grande" : ("Error del servidor (" + r.status + ")") };
+  }
+}
+
 async function api(method, path, body) {
   try {
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
-    return await r.json();
+    return await parsearRespuesta(r);
   } catch (e) {
     return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al conectar con el servidor" : "Error de conexión con el servidor" };
   }
 }
 
+async function sincronizarArchivosPC() {
+  toast("Actualizando archivos desde el PC...");
+  try {
+    const r = await fetch(API + "/faenas/sincronizar-pc", { method: "POST", signal: AbortSignal.timeout(180000) });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudieron actualizar los archivos", true); return; }
+    const n = d.data?.subidos || 0;
+    const omitidos = d.data?.omitidos || 0;
+    const err = (d.data?.errores || []).length;
+    if (!n && !omitidos) {
+      const raices = (d.data?.raices || []).join(" · ") || "datos / faenas-datos";
+      toast("No hay carpetas de faena en " + raices, true);
+    } else {
+      toast(`✓ ${n} archivo${n===1?"":"s"} del PC. ${omitidos ? omitidos + " ya estaban. " : ""}${err ? err + " con error." : ""}`);
+    }
+    await cargarFaenas();
+    renderFaenas();
+  } catch (e) {
+    toast("Error al actualizar archivos del PC", true);
+  }
+}
+
 async function cargarFaenas() {
-  const r = await api("GET", state.verArchivadas ? "/faenas/archivadas" : "/faenas");
-  if (r.ok) state.faenas = r.data;
+  const [rAct, rTer] = await Promise.all([
+    api("GET", "/faenas"),
+    api("GET", "/faenas/archivadas")
+  ]);
+  if (rAct.ok) state.faenas = rAct.data || [];
+  if (rTer.ok) state.terminadas = rTer.data || [];
+}
+
+function faseDeFaena(f) {
+  if (Number(f.archivada) === 1 || f.fase === "terminada") return "terminada";
+  const fase = f.fase || "en_proceso";
+  if (fase === "medicion" || fase === "presupuestada" || fase === "en_proceso") return fase;
+  return "en_proceso";
+}
+
+function seleccionarFase(fase) {
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
 }
 async function cargarClientes() {
   const r = await api("GET", "/clientes");
@@ -1413,7 +1661,7 @@ function nav(id) {
   document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
   document.getElementById("s-" + id).classList.add("active");
   event.target.classList.add("active");
-  if (id === "prompts") poblarSelectsPrompts();
+  if (id === "tickets") rellenarFaenasTicketDestino();
   if (id === "polyboard") poblarSelectPolyboard();
   if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
@@ -1447,19 +1695,18 @@ function poblarSelects() {
   if (si) si.innerHTML = state.intermediarios.map(i => `<option value="${i.id}">${i.id === 0 ? "— Directo —" : i.nombre}</option>`).join("");
   const sci = document.getElementById("c-inter");
   if (sci) sci.innerHTML = state.intermediarios.map(i => `<option value="${i.id}">${i.id === 0 ? "— Directo —" : i.nombre}</option>`).join("");
-  const sf = document.getElementById("ticket-faena-sel");
-  if (sf) sf.innerHTML = '<option value="">— Sin asignar —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
 }
 
 function poblarSelectsPrompts() {
-  const sel = document.getElementById("prompt-faena-sel");
-  if (sel) sel.innerHTML = state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+  rellenarFaenasTicketDestino();
 }
 
 // ===== RENDER FAENAS =====
 function renderFaenas() {
   const q = document.getElementById("q-faena").value.toLowerCase();
-  const lista = state.faenas.filter(f => {
+  const origen = state.faseVista === "terminada" ? (state.terminadas || []) : (state.faenas || []);
+  const lista = origen.filter(f => {
+    if (state.faseVista !== "terminada" && faseDeFaena(f) !== state.faseVista) return false;
     if (!q) return true;
     return (f.numero || "").toLowerCase().includes(q) ||
            (f.cliente_nombre || "").toLowerCase().includes(q) ||
@@ -1467,34 +1714,46 @@ function renderFaenas() {
            (f.direccion || "").toLowerCase().includes(q);
   });
   const el = document.getElementById("lista-faenas");
-  el.innerHTML = lista.length ? lista.map(f => {
-    const esDirecto = f.intermediario_id === 0;
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-id"><span class="num-faena">${f.numero}</span></div>
-            <div class="card-title">${f.tipo_trabajo || "Sin descripción"}</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-            <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre}</span>
-            ${f.importe > 0 ? `<span style="font-family:'Fraunces',serif;color:var(--green);font-size:0.95rem">${parseFloat(f.importe).toFixed(2)} €</span>` : ""}
-          </div>
-        </div>
-        <div class="card-info">
-          <strong>${f.cliente_nombre}</strong>
-          ${f.direccion ? ` · ${f.direccion}` : ""}
-          ${f.fecha_inicio ? ` · <span style="color:#aaa">${f.fecha_inicio}</span>` : ""}
-        </div>
-        <div class="card-actions">
-          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Ver detalle</button>
-          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">✏️ Editar</button>
-          <button class="btn btn-s btn-sm" onclick="abrirGasto(${f.id})">+ Gasto</button>
-          <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">📂 Documentos</button>
-          ${!state.verArchivadas ? `<button class="btn btn-d btn-sm" onclick="archivar(${f.id})">Archivar</button>` : ""}
-        </div>
-      </div>`;
-  }).join("") : `<div class="empty"><div class="empty-icon">🔨</div>${state.verArchivadas ? "No hay faenas archivadas" : "No hay faenas activas"}</div>`;
+  const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
+    return;
+  }
+  const etiquetaFase = { medicion: "Medición", presupuestada: "Presupuestada", en_proceso: "En proceso", terminada: "Terminada" };
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Número</th><th>Cliente</th><th>Tipo</th><th>Dirección</th><th>Importe</th><th>Fase</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${lista.map(f => {
+      const esDirecto = f.intermediario_id === 0;
+      const fase = faseDeFaena(f);
+      const precio = parseFloat(f.importe) || 0;
+      const acciones = fase !== "terminada" ? `
+          <select class="fase-sel" onchange="cambiarFase(${f.id}, this.value)">
+            <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
+            <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
+            <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
+            <option value="terminada">Terminada</option>
+          </select>
+          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
+          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
+          <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
+          <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
+        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
+      return `<tr>
+        <td><span class="num-faena">${f.numero}</span></td>
+        <td>
+          <strong>${f.cliente_nombre || ""}</strong>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esDirecto ? "Directo" : (f.intermediario_nombre || "")}</div>
+        </td>
+        <td>${f.tipo_trabajo || "—"}</td>
+        <td>${f.direccion || "—"}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
+        <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
+        <td class="acciones">${acciones}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER CLIENTES =====
@@ -1502,65 +1761,63 @@ function renderClientes() {
   const q = document.getElementById("q-cliente").value.toLowerCase();
   const lista = state.clientes.filter(c => !q || c.nombre.toLowerCase().includes(q));
   const el = document.getElementById("lista-clientes");
-  el.innerHTML = lista.length ? lista.map(c => {
-    const trabajos = state.faenas.filter(f => f.cliente_id === c.id);
-    const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">👤 ${c.nombre}</div>
-            ${c.telefono ? `<div style="font-size:0.78rem;color:var(--green);margin-top:2px">📞 <a href="tel:${c.telefono}" style="color:var(--green)">${c.telefono}</a></div>` : ""}
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-start">
-            <span class="badge b-direct">${trabajos.length} faena${trabajos.length !== 1 ? "s" : ""}</span>
-            <button class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">✏️</button>
-          </div>
-        </div>
-        <div class="card-info">
-          ${c.email ? "✉️ " + c.email + " &nbsp; " : ""}
-          ${total > 0 ? `<strong style="color:var(--green)">${total.toFixed(2)} € total</strong>` : ""}
-          ${c.intermediario_nombre && c.intermediario_id !== 0 ? `<br><span class="badge b-inter">${c.intermediario_nombre}</span>` : ""}
-          ${c.notas ? `<br><em style="color:#aaa">${c.notas}</em>` : ""}
-        </div>
-        ${trabajos.length > 0 ? `
-          <div style="margin-top:10px;border-top:1px solid var(--sawdust);padding-top:8px">
-            <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#aaa;margin-bottom:6px">Faenas</div>
-            ${trabajos.map(f => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dashed var(--sawdust);cursor:pointer" onclick="verDetalle(${f.id})">
-                <div>
-                  <span class="num-faena" style="font-size:0.65rem">${f.numero}</span>
-                  <span style="font-size:0.78rem;margin-left:6px">${f.tipo_trabajo || "Sin descripción"}</span>
-                </div>
-                <span style="font-size:0.75rem;color:var(--green)">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : ""}</span>
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
-      </div>`;
-  }).join("") : `<div class="empty"><div class="empty-icon">👤</div>No hay clientes</div>`;
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">👤</div>No hay clientes</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Nombre</th><th>Teléfono</th><th>Faenas</th><th>Total</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${lista.map(c => {
+      const trabajos = state.faenas.filter(f => f.cliente_id === c.id);
+      const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
+      const extra = [
+        c.email || "",
+        c.intermediario_nombre && c.intermediario_id !== 0 ? c.intermediario_nombre : "",
+        c.notas || ""
+      ].filter(Boolean).join(" · ");
+      return `<tr>
+        <td>
+          <strong>${c.nombre}</strong>
+          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>` : ""}
+        </td>
+        <td>${c.telefono ? `<a href="tel:${c.telefono}" style="color:var(--green)">${c.telefono}</a>` : "—"}</td>
+        <td>${trabajos.length}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
+        <td class="acciones"><button class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">Editar</button></td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER INTERMEDIARIOS =====
 function renderInter() {
   const el = document.getElementById("lista-inter");
-  el.innerHTML = state.intermediarios.map(i => {
-    const clientes = state.clientes.filter(c => c.intermediario_id === i.id);
-    const faenas = state.faenas.filter(f => f.intermediario_id === i.id);
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${i.id === 0 ? "🏠" : "🤝"} ${i.nombre}</div>
-          <span class="badge b-inter">${faenas.length} faena${faenas.length !== 1 ? "s" : ""}</span>
-        </div>
-        <div class="card-info">
-          ${i.id === 0 ? '<em style="color:#aaa">Trabajos sin intermediario</em><br>' : ""}
-          ${i.telefono ? "📞 " + i.telefono + " &nbsp; " : ""}
-          ${i.email ? "✉️ " + i.email : ""}
-          ${clientes.length > 0 ? `<br>Clientes: ${clientes.map(c => c.nombre).join(", ")}` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Nombre</th><th>Teléfono</th><th>Faenas</th><th>Total</th>
+    </tr></thead>
+    <tbody>${state.intermediarios.map(i => {
+      const clientes = state.clientes.filter(c => c.intermediario_id === i.id);
+      const faenas = state.faenas.filter(f => f.intermediario_id === i.id);
+      const total = faenas.reduce((s, f) => s + (f.importe || 0), 0);
+      const extra = [
+        i.id === 0 ? "Trabajos sin intermediario" : "",
+        i.email || "",
+        clientes.length ? "Clientes: " + clientes.map(c => c.nombre).join(", ") : ""
+      ].filter(Boolean).join(" · ");
+      return `<tr>
+        <td>
+          <strong>${i.nombre}</strong>
+          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>` : ""}
+        </td>
+        <td>${i.telefono || "—"}</td>
+        <td>${faenas.length}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER MATERIALES (con definición) =====
@@ -1577,7 +1834,7 @@ function renderMateriales() {
   el.innerHTML = Object.entries(cats).map(([cat, mats]) => `
     <div class="form-box" style="margin-bottom:16px">
       <div class="form-title">${cat}</div>
-      <table class="mat-table">
+      <table class="data-table">
         <thead>
           <tr><th>Material</th><th>Unidad</th><th>Definición</th><th>Proveedores y precios</th><th></th></tr>
         </thead>
@@ -1654,7 +1911,7 @@ async function eliminarMaterialDesdeModal() {
 
 // ===== DETALLE FAENA =====
 async function verDetalle(id) {
-  const f = state.faenas.find(x => x.id === id);
+  let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
   if (!f) return;
   const [rAnot, rConceptos, rDocs, rFotos] = await Promise.all([
     api("GET", `/faenas/${id}/anotaciones`),
@@ -1693,7 +1950,7 @@ async function verDetalle(id) {
     <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${f.tipo_trabajo || "—"}</span></div>
     <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre}${tel ? `<br><a href="tel:${tel}" style="color:var(--green);font-size:0.78rem">📞 ${tel}</a>` : ""}</span></div>
     <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion || "—"}</span></div>
-    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-family:'Fraunces',serif">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
+    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1802,11 +2059,112 @@ async function verDetalle(id) {
 
 // ===== FOTOS PC =====
 function verFotoPC(src, nombre) {
-  const o = document.createElement("div");
-  o.className = "foto-overlay";
-  o.innerHTML = `<img src="${src}" alt="${nombre}"><div class="foto-overlay-nombre">${nombre}</div><button class="btn btn-s btn-sm" onclick="this.parentNode.remove()">Cerrar</button>`;
-  o.addEventListener("click", e => { if (e.target === o) o.remove(); });
-  document.body.appendChild(o);
+  verFotoGrande(src, nombre);
+}
+
+function verFotoGrande(src, nombre) {
+  if (!src) return;
+  const existing = document.querySelector(".foto-viewer");
+  if (existing) existing.remove();
+  const viewer = document.createElement("div");
+  viewer.className = "foto-viewer";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = nombre || "";
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "Cerrar";
+  closeBtn.className = "close-btn";
+  closeBtn.onclick = ev => { ev.stopPropagation(); viewer.remove(); };
+  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
+  if (nombre) {
+    const cap = document.createElement("div");
+    cap.className = "foto-overlay-nombre";
+    cap.style.cssText = "position:absolute;bottom:18px;color:#ccc;font-size:0.85rem";
+    cap.textContent = nombre;
+    viewer.appendChild(cap);
+  }
+  document.body.appendChild(viewer);
+
+  let scale = 1, x = 0, y = 0;
+  const pointers = new Map();
+  let pinch0 = 0;
+  let pinchScale0 = 1;
+  let startX = 0, startY = 0, startAt = 0;
+  let moved = false;
+  let pinched = false;
+
+  const aplicar = () => {
+    if (scale < 1.05) { scale = 1; x = 0; y = 0; }
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    img.classList.toggle("zoomed", scale > 1);
+  };
+  const limitar = () => {
+    const extra = (scale - 1) * 320;
+    const max = Math.max(120, extra);
+    x = Math.max(-max, Math.min(max, x));
+    y = Math.max(-max, Math.min(max, y));
+  };
+
+  viewer.addEventListener("pointerdown", e => {
+    if (e.target === closeBtn) return;
+    e.preventDefault();
+    try { viewer.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      startX = e.clientX; startY = e.clientY; startAt = Date.now(); moved = false; pinched = false;
+    }
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchScale0 = scale;
+    }
+  });
+  viewer.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) moved = true;
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinch0 > 8) {
+        scale = Math.min(4, Math.max(1, pinchScale0 * (d / pinch0)));
+        limitar(); aplicar();
+      }
+      return;
+    }
+    if (scale > 1 && pointers.size === 1) {
+      x += e.clientX - prev.x;
+      y += e.clientY - prev.y;
+      limitar(); aplicar();
+      img.classList.add("panning");
+    }
+  });
+  const soltar = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch0 = 0;
+    img.classList.remove("panning");
+  };
+  viewer.addEventListener("pointerup", e => {
+    soltar(e);
+    if (pointers.size > 0) return;
+    const tapRapido = !moved && !pinched && (Date.now() - startAt) < 350;
+    if (pinched || moved) return;
+    if (e.target === viewer && scale <= 1) { viewer.remove(); return; }
+    if (e.target !== img || !tapRapido) return;
+    if (scale <= 1) scale = 2.2;
+    else { scale = 1; x = 0; y = 0; }
+    aplicar();
+  });
+  viewer.addEventListener("pointercancel", soltar);
+  viewer.addEventListener("wheel", e => {
+    e.preventDefault();
+    scale = Math.min(4, Math.max(1, scale * (e.deltaY < 0 ? 1.12 : 0.9)));
+    limitar(); aplicar();
+  }, { passive: false });
 }
 async function eliminarFotoPC(faenaId, nombre) {
   if (!confirm(`¿Eliminar la foto "${nombre}"?`)) return;
@@ -1906,8 +2264,11 @@ async function crearFaena() {
   if (r.ok) { toast(`✓ Faena ${r.data.numero} creada`); cerrarModal("m-faena"); document.getElementById("f-dir").value = ""; document.getElementById("f-tipo").value = ""; document.getElementById("f-importe").value = ""; await cargarFaenas(); renderFaenas(); poblarSelects(); }
   else toast(r.error, true);
 }
-async function archivar(id) {
-  if (!confirm("¿Archivar esta faena? Se queda en la base y se descarga un ZIP al PC.")) return;
+async function terminarFaena(id) {
+  if (!confirm("¿Terminar esta faena? Se guarda en el PC y se descarga un ZIP.")) {
+    renderFaenas();
+    return;
+  }
   const r = await api("POST", `/faenas/${id}/archivar`);
   if (!r.ok) { toast(r.error, true); return; }
   const enlace = document.createElement("a");
@@ -1916,13 +2277,33 @@ async function archivar(id) {
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
-  toast("Faena archivada. Guarda el ZIP en el PC.");
-  await cargarFaenas(); renderFaenas();
+  toast("Faena terminada. Guarda el ZIP en el PC.");
+  if (String(state.detalleId) === String(id)) {
+    cerrarModal("m-detalle");
+    state.detalleId = null;
+  }
+  await cargarFaenas();
+  state.faseVista = "terminada";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "terminada");
+  });
+  renderFaenas();
 }
-async function toggleArchivadas() {
-  state.verArchivadas = !state.verArchivadas;
-  document.getElementById("btn-archivadas").textContent = state.verArchivadas ? "Ver activas" : "Ver archivadas";
-  await cargarFaenas(); renderFaenas();
+
+async function cambiarFase(id, fase) {
+  if (fase === "terminada") {
+    await terminarFaena(id);
+    return;
+  }
+  const r = await api("PUT", `/faenas/${id}/fase`, { fase });
+  if (!r.ok) { toast(r.error || "No se pudo cambiar la fase", true); await cargarFaenas(); renderFaenas(); return; }
+  toast("✓ Fase actualizada");
+  await cargarFaenas();
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
 }
 async function abrirCursor(id, carpeta) {
   const r = await api("POST", "/cursor/abrir", { carpeta });
@@ -2096,189 +2477,380 @@ async function guardarPrecio() {
   else toast(r.error, true);
 }
 
-// ===== PROMPTS =====
-let ultimaRutaTicketProcesada = "";
+// ===== TICKETS =====
+let ticketFotoBase64 = null;
+let ticketAnalisisActual = null;
 
-function previewTicket(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  document.getElementById("ticket-img").src = url;
-  document.getElementById("ticket-preview").style.display = "block";
-  const promptBox = document.getElementById("prompt-ticket-box");
-  if (promptBox) promptBox.style.display = "none";
-}
-async function generarPromptTicket() {
-  const r = await api("GET", "/prompts/ticket");
-  if (r.ok) { document.getElementById("prompt-ticket-txt").textContent = r.data.prompt; document.getElementById("prompt-ticket-box").style.display = "block"; document.getElementById("prompt-ticket-box").scrollIntoView({ behavior: "smooth", block: "nearest" }); }
-
-async function cargarJsonMateriales() {
-  const raw = document.getElementById("json-materiales").value.trim();
-  if (!raw) { toast("Pega el JSON primero", true); return; }
-
-  let datos;
+async function apiLargo(method, path, body, ms) {
   try {
-    const limpio = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    datos = JSON.parse(limpio);
+    const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(ms || 50000) };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(API + path, opts);
+    return await parsearRespuesta(r);
   } catch (e) {
-    toast("JSON no válido — revísalo", true);
-    return;
+    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado" : "Error de conexión con el servidor" };
   }
-
-  const materiales = datos.materiales || datos.actualizaciones || [];
-  const proveedor = datos.proveedor || "";
-  if (!materiales.length) { toast("No se encontraron materiales en el JSON", true); return; }
-
-  let insertados = 0;
-  let actualizados = 0;
-
-  for (const mat of materiales) {
-    if (!mat.nombre) continue;
-
-    let existente = state.materiales.find(m => m.nombre.toLowerCase() === mat.nombre.toLowerCase());
-    if (!existente) {
-      const r = await api("POST", "/materiales", {
-        nombre: mat.nombre,
-        unidad: mat.unidad || "ud",
-        categoria: mat.categoria || "Otro"
-      });
-      if (r.ok) {
-        existente = { id: r.data.id };
-        insertados++;
-      }
-    }
-
-    if (existente && proveedor && mat.precio_unitario != null) {
-      await api("POST", `/materiales/${existente.id}/precio`, {
-        proveedor,
-        precio_unitario: mat.precio_unitario
-      });
-      actualizados++;
-    }
-  }
-
-  await cargarMateriales();
-  renderMateriales();
-  toast(`✓ ${insertados} nuevo${insertados !== 1 ? "s" : ""} · ${actualizados} precio${actualizados !== 1 ? "s" : ""} actualizado${actualizados !== 1 ? "s" : ""}`);
-  document.getElementById("json-materiales").value = "";
 }
 
-function archivoADataUrl(file) {
-  return new Promise((resolve, reject) => {
+async function apiForm(method, path, formData, ms) {
+  try {
+    const r = await fetch(API + path, { method, body: formData, signal: AbortSignal.timeout(ms || 120000) });
+    return await parsearRespuesta(r);
+  } catch (e) {
+    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al subir la foto" : "Error de conexión con el servidor" };
+  }
+}
+
+function dataUrlABlob(dataUrl) {
+  const partes = String(dataUrl || "").split(",");
+  const b64 = partes.length > 1 ? partes[1] : partes[0];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: "image/jpeg" });
+}
+
+async function comprimirImagenParaTicket(dataUrl, maxWidth = 1900, quality = 0.82) {
+  if (!dataUrl || typeof dataUrl !== "string") return dataUrl;
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+    const ratio = Math.min(1, maxWidth / Math.max(img.width, 1));
+    const width = Math.max(1, Math.round(img.width * ratio));
+    const height = Math.max(1, Math.round(img.height * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch (e) {
+    return dataUrl;
+  }
+}
+
+async function comprimirArchivoParaBook(file) {
+  const original = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+  const dataUrl = await comprimirImagenParaTicket(original, 1400, 0.72);
+  return dataUrlABlob(dataUrl);
 }
 
-async function procesarTicketLocal() {
-  const input = document.getElementById("ticket-foto-input");
-  const file = input?.files?.[0];
-  if (!file) { toast("Selecciona una foto primero", true); return; }
+function _ticketOpcionesFaena(valueSeleccionado) {
+  const base = '<option value="">— Sin faena —</option>';
+  const opciones = (state.faenas || []).map(f => {
+    const id = String(f.id || "");
+    const selected = String(valueSeleccionado || "") === id ? " selected" : "";
+    return `<option value="${id}"${selected}>${esc((f.numero ? f.numero + " · " : "") + (f.cliente_nombre || ""))}</option>`;
+  }).join("");
+  return base + opciones;
+}
 
-  const btn = document.getElementById("btn-procesar-ticket");
-  if (btn) { btn.disabled = true; btn.textContent = "Procesando..."; }
+function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
+  const proveedorBase = (data && data.proveedor) ? String(data.proveedor).trim() : "";
+  const fechaBase = (data && data.fecha) ? String(data.fecha).trim() : "";
+  const articulos = (data && Array.isArray(data.articulos)) ? data.articulos : [];
+  return {
+    proveedor: proveedorBase,
+    fecha: fechaBase,
+    articulos: articulos.filter(a => a && typeof a === "object").map(a => {
+      const cantidad = Number(a.cantidad || 0) || 0;
+      const precio = Number(a.precio_unitario || 0) || 0;
+      const faena_id = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
+        ? (faenaPorDefecto != null ? String(faenaPorDefecto) : null)
+        : String(a.faena_id).trim();
+      return {
+        nombre: String(a.nombre || "").trim(),
+        unidad: String(a.unidad || "ud").trim() || "ud",
+        categoria: String(a.categoria || "Otro").trim() || "Otro",
+        proveedor: String(a.proveedor || proveedorBase || "").trim(),
+        cantidad,
+        precio_unitario: precio,
+        total: Number(a.total || (cantidad * precio)) || 0,
+        faena_id
+      };
+    }).filter(a => a.nombre)
+  };
+}
 
-  try {
-    const data = await archivoADataUrl(file);
-    const faenaId = document.getElementById("ticket-faena-sel")?.value || "";
-    const r = await api("POST", "/tickets/procesar", {
-      faena_id: faenaId ? parseInt(faenaId) : null,
-      nombre: file.name,
-      data
+function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
+  const wrap = document.getElementById(containerId || "ticket-tabla-wrap");
+  if (!wrap) return;
+  const normalizado = _normalizarAnalisisParaTablaMateriales(data || {}, faenaPorDefecto);
+  const articulos = normalizado.articulos.length ? normalizado.articulos : [{
+    nombre: "", unidad: "ud", categoria: "Otro", proveedor: normalizado.proveedor,
+    cantidad: 1, precio_unitario: 0, total: 0,
+    faena_id: faenaPorDefecto != null ? String(faenaPorDefecto) : null
+  }];
+  const rows = articulos.map((a, i) => {
+    const cantidad = Number(a.cantidad || 0);
+    const precio = Number(a.precio_unitario || 0);
+    const total = Number(a.total || (cantidad * precio));
+    const faena = a.faena_id ? String(a.faena_id) : "";
+    return `<tr data-i="${i}">
+      <td><input type="text" data-k="categoria" value="${esc(a.categoria || "Otro")}"></td>
+      <td><input type="text" data-k="nombre" value="${esc(a.nombre || "")}"></td>
+      <td><input type="text" data-k="proveedor" value="${esc(a.proveedor || normalizado.proveedor || "")}"></td>
+      <td><input type="number" step="0.01" data-k="cantidad" value="${Number.isFinite(cantidad) ? cantidad : 0}"></td>
+      <td><input type="number" step="0.01" data-k="precio_unitario" value="${Number.isFinite(precio) ? precio : 0}"></td>
+      <td><input type="number" step="0.01" data-k="total" value="${Number.isFinite(total) ? total : 0}"></td>
+      <td><input type="text" data-k="unidad" value="${esc(a.unidad || "ud")}"></td>
+      <td><select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select></td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML = `
+    <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">Proveedor: <strong>${esc(normalizado.proveedor) || "(sin proveedor)"}</strong>${normalizado.fecha ? ` · Fecha: <strong>${esc(normalizado.fecha)}</strong>` : ""}</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Faena</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function _leerTablaAnalisisTicket(containerId) {
+  const wrap = document.getElementById(containerId || "ticket-tabla-wrap");
+  if (!wrap || !ticketAnalisisActual) return null;
+  const articulos = [];
+  let proveedorComun = "";
+  wrap.querySelectorAll("tbody tr").forEach(tr => {
+    const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
+    if (!nombre) return;
+    const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
+    if (!proveedorComun && proveedor) proveedorComun = proveedor;
+    const cantidad = Number((tr.querySelector('[data-k="cantidad"]')?.value || "0").replace(",", "."));
+    const precio = Number((tr.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
+    const totalNum = Number((tr.querySelector('[data-k="total"]')?.value || "").replace(",", "."));
+    const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
+    articulos.push({
+      nombre,
+      categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otro").trim() || "Otro",
+      proveedor,
+      cantidad: Number.isFinite(cantidad) ? cantidad : 0,
+      precio_unitario: Number.isFinite(precio) ? precio : 0,
+      total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
+      unidad: (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud",
+      faena_id: faenaRaw || null
     });
-
-    if (!r.ok) {
-      toast(r.error || "No se pudo procesar el ticket", true);
-      return;
-    }
-
-    const ticket = r.data || {};
-    ultimaRutaTicketProcesada = ticket.ruta || "";
-
-    const resumen = [
-      `Proveedor: ${ticket.proveedor || "—"}`,
-      `Fecha: ${ticket.fecha || "—"}`,
-      `Artículos detectados: ${(ticket.articulos || []).length}`,
-      `Gastos creados: ${ticket.gastos_creados || 0}`,
-      `Total estimado: ${parseFloat(ticket.total_ticket || 0).toFixed(2)} €`
-    ].join("\n");
-    const resumenEl = document.getElementById("ticket-ocr-resumen");
-    resumenEl.textContent = resumen;
-    resumenEl.style.display = "block";
-    toast("✓ Ticket procesado y guardado en la faena");
-  } catch (e) {
-    toast("Error al procesar la imagen", true);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "Procesar con IA local"; }
-  }
+  });
+  return { proveedor: proveedorComun || ticketAnalisisActual.proveedor || "", fecha: ticketAnalisisActual.fecha || "", articulos };
 }
 
-function previewMatFoto(event) {
+function ticketPreview(event) {
   const file = event.target.files[0];
   if (!file) return;
+  _leerFotoTicket(file);
+}
+
+async function _leerFotoTicket(file) {
   const url = URL.createObjectURL(file);
-  document.getElementById("mat-img").src = url;
-  document.getElementById("mat-preview").style.display = "block";
-  document.getElementById("prompt-mat-box").style.display = "none";
-}
-async function generarPromptMateriales() {
-  const r = await api("GET", "/prompts/materiales");
-  if (r.ok) { document.getElementById("prompt-mat-txt").textContent = r.data.prompt; document.getElementById("prompt-mat-box").style.display = "block"; const hayFoto = document.getElementById("mat-foto-input").files.length > 0; document.getElementById("mat-foto-aviso").style.display = hayFoto ? "block" : "none"; document.getElementById("prompt-mat-box").scrollIntoView({ behavior: "smooth", block: "nearest" }); }
-}
-  document.getElementById("json-materiales").value = "";
-}
-
-async function cargarJsonMateriales() {
-  const raw = document.getElementById("json-materiales").value.trim();
-  if (!raw) { toast("Pega el JSON primero", true); return; }
-
-  let datos;
+  document.getElementById("ticket-img").src = url;
+  document.getElementById("ticket-preview").style.display = "block";
   try {
-    const limpio = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    datos = JSON.parse(limpio);
+    const original = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    ticketFotoBase64 = await comprimirImagenParaTicket(original, 1900, 0.82);
   } catch (e) {
-    toast("JSON no válido — revísalo", true);
+    toast("No se pudo leer la imagen", true);
     return;
   }
+  URL.revokeObjectURL(url);
+  document.getElementById("ticket-paso2").style.display = "block";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+}
 
-  const materiales = datos.materiales || datos.actualizaciones || [];
-  const proveedor = datos.proveedor || "";
-  if (!materiales.length) { toast("No se encontraron materiales en el JSON", true); return; }
+function cancelarTicket(mostrarMensaje) {
+  if (mostrarMensaje === undefined) mostrarMensaje = true;
+  const jsonEl = document.getElementById("ticket-json-pc");
+  if (jsonEl) jsonEl.value = "";
+  const input = document.getElementById("ticket-foto-input");
+  if (input) input.value = "";
+  document.getElementById("ticket-preview").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "none";
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) tabla.innerHTML = "";
+  document.getElementById("ticket-paso4").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  ticketFotoBase64 = null;
+  ticketAnalisisActual = null;
+  if (mostrarMensaje) toast("Ticket cancelado");
+}
 
-  let insertados = 0;
-  let actualizados = 0;
+function limpiarImagenTicket() {
+  cancelarTicket(false);
+  toast("Imagen eliminada");
+}
 
-  for (const mat of materiales) {
-    if (!mat.nombre) continue;
-
-    let existente = state.materiales.find(m => m.nombre.toLowerCase() === mat.nombre.toLowerCase());
-    if (!existente) {
-      const r = await api("POST", "/materiales", {
-        nombre: mat.nombre,
-        unidad: mat.unidad || "ud",
-        categoria: mat.categoria || "Otro"
-      });
-      if (r.ok) {
-        existente = { id: r.data.id };
-        insertados++;
-      }
-    }
-
-    if (existente && proveedor && mat.precio_unitario != null) {
-      await api("POST", `/materiales/${existente.id}/precio`, {
-        proveedor,
-        precio_unitario: mat.precio_unitario
-      });
-      actualizados++;
-    }
+async function procesarTicketConIA() {
+  if (!ticketFotoBase64) { toast("Elige una foto del ticket primero", true); return; }
+  const btn = document.getElementById("btn-ai-ticket");
+  const estado = document.getElementById("ticket-ai-estado");
+  if (btn) { btn.disabled = true; btn.textContent = "Jimmi leyendo..."; }
+  if (estado) {
+    estado.style.display = "block";
+    estado.style.color = "var(--muted)";
+    estado.textContent = "Jimmi está leyendo el ticket…";
   }
+  try {
+    const data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
+    if (data.ok && data.data) {
+      ticketAnalisisActual = data.data;
+      const jsonEl = document.getElementById("ticket-json-pc");
+      if (jsonEl) jsonEl.value = JSON.stringify(data.data, null, 2);
+      _renderTablaAnalisisTicket(data.data);
+      document.getElementById("ticket-paso3").style.display = "block";
+      rellenarFaenasTicketDestino();
+      await mostrarCruceTicket(data.data.articulos || []);
+      const n = (data.data.articulos || []).length;
+      if (estado) {
+        estado.style.color = "var(--green)";
+        estado.textContent = `Jimmi encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa, elige destino y acepta.`;
+      }
+      toast("Revisa la lista y acepta");
+    } else {
+      if (estado) { estado.style.color = "var(--red)"; estado.textContent = data.error || "Jimmi no pudo leer el ticket"; }
+      toast(data.error || "Error al procesar con Jimmi", true);
+    }
+  } catch (e) {
+    if (estado) { estado.style.color = "var(--red)"; estado.textContent = "Error: " + (e.message || "desconocido"); }
+    toast("Error: " + (e.message || "desconocido"), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Pedir a Jimmi"; }
+  }
+}
 
+function rellenarFaenasTicketDestino() {
+  const sel = document.getElementById("ticket-destino-faena");
+  if (!sel) return;
+  sel.innerHTML = (state.faenas || []).map(f =>
+    `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre || "")}</option>`
+  ).join("");
+}
+
+function actualizarDestinoTicket() {
+  const dest = document.getElementById("ticket-destino")?.value || "almacen";
+  const wrap = document.getElementById("ticket-destino-faena-wrap");
+  if (wrap) wrap.style.display = dest === "faena" ? "block" : "none";
+}
+
+async function mostrarCruceTicket(articulos) {
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (!notas) return;
+  try {
+    const d = await apiLargo("POST", "/secretario/cruzar", { articulos }, 15000);
+    if (!d.ok) { notas.textContent = ""; return; }
+    const lineas = (d.data || []).map(a => {
+      const acc = a.accion_almacen === "crear" ? "nuevo" : (a.accion_almacen === "mantener" ? "ya está" : "actualizar");
+      return `· ${a.nombre}: ${acc}${a.nota_almacen ? " — " + a.nota_almacen : ""}`;
+    });
+    notas.innerHTML = lineas.length ? ("Jimmi comparado con tu almacén:<br>" + lineas.map(x => esc(x)).join("<br>")) : "";
+  } catch (e) {
+    notas.textContent = "";
+  }
+}
+
+async function guardarTicketPc() {
+  const datos = _leerTablaAnalisisTicket();
+  if (!datos) { toast("No hay análisis para guardar", true); return; }
+  const articulos = datos.articulos || [];
+  if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+  const dest = document.getElementById("ticket-destino")?.value || "almacen";
+  let faenaId = null;
+  if (dest === "faena") {
+    faenaId = document.getElementById("ticket-destino-faena")?.value || "";
+    if (!faenaId) { toast("Elige una faena", true); return; }
+    articulos.forEach(a => { if (!a.faena_id) a.faena_id = faenaId; });
+    datos.articulos = articulos;
+  } else {
+    articulos.forEach(a => { a.faena_id = null; });
+    datos.articulos = articulos;
+  }
+  const d = await apiLargo("POST", "/secretario/aplicar", { tipo: dest === "faena" ? "ticket" : "almacen", faena_id: faenaId, data: datos }, 30000);
+  if (!d.ok) { toast(d.error || "No se pudo guardar", true); return; }
+  const resumen = d.data || {};
+  toast(`Guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales, ${resumen.precios_actualizados || 0} precios`);
+  cancelarTicket(false);
   await cargarMateriales();
   renderMateriales();
-  toast(`✓ ${insertados} nuevo${insertados !== 1 ? "s" : ""} · ${actualizados} precio${actualizados !== 1 ? "s" : ""} actualizado${actualizados !== 1 ? "s" : ""}`);
-  document.getElementById("json-materiales").value = "";
+}
+
+function filaFormularioManualHtml() {
+  return `<tr>
+    <td><input type="text" data-manual="categoria" value="Otro"></td>
+    <td><input type="text" data-manual="nombre"></td>
+    <td><input type="text" data-manual="proveedor"></td>
+    <td><input type="number" step="0.01" data-manual="cantidad" value="1"></td>
+    <td><input type="number" step="0.01" data-manual="precio_unitario" value="0"></td>
+    <td><input type="number" step="0.01" data-manual="total" value="0"></td>
+    <td><input type="text" data-manual="unidad" value="ud"></td>
+    <td><select data-manual="faena_id">${_ticketOpcionesFaena("")}</select></td>
+  </tr>`;
+}
+
+function renderFormularioManual() {
+  const tbody = document.getElementById("ticket-formulario-manual");
+  if (tbody && !tbody.children.length) tbody.innerHTML = filaFormularioManualHtml();
+}
+
+function anadirFilaManual() {
+  const tbody = document.getElementById("ticket-formulario-manual");
+  if (tbody) tbody.insertAdjacentHTML("beforeend", filaFormularioManualHtml());
+}
+
+function usarFormularioManual() {
+  const filas = Array.from(document.querySelectorAll("#ticket-formulario-manual tr"));
+  const articulos = filas.map(tr => {
+    const valor = clave => (tr.querySelector(`[data-manual="${clave}"]`)?.value || "").trim();
+    const cantidad = Number(valor("cantidad").replace(",", ".")) || 0;
+    const precio = Number(valor("precio_unitario").replace(",", ".")) || 0;
+    const total = Number(valor("total").replace(",", ".")) || cantidad * precio;
+    return { nombre: valor("nombre"), categoria: valor("categoria") || "Otro", proveedor: valor("proveedor"), cantidad, precio_unitario: precio, total, unidad: valor("unidad") || "ud", faena_id: valor("faena_id") || null };
+  }).filter(a => a.nombre);
+  if (!articulos.length) { toast("Escribe al menos un material", true); return; }
+  ticketAnalisisActual = { proveedor: articulos[0].proveedor || "", fecha: "", articulos };
+  const jsonEl = document.getElementById("ticket-json-pc");
+  if (jsonEl) jsonEl.value = JSON.stringify(ticketAnalisisActual, null, 2);
+  _renderTablaAnalisisTicket(ticketAnalisisActual);
+  document.getElementById("ticket-paso3").style.display = "block";
+  document.getElementById("ticket-paso4").style.display = "none";
+  toast("Formulario preparado para revisar y guardar");
+}
+
+function mostrarTextoManual() {
+  renderFormularioManual();
+  document.getElementById("ticket-paso4").style.display = "block";
+}
+
+async function procesarTextoManual() {
+  const texto = document.getElementById("ticket-texto-manual").value.trim();
+  if (!texto) { toast("Escribe o pega el texto primero", true); return; }
+  toast("Enviando a Jimmi...");
+  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000);
+  if (d.ok) {
+    ticketAnalisisActual = d.data;
+    const jsonEl = document.getElementById("ticket-json-pc");
+    if (jsonEl) jsonEl.value = JSON.stringify(d.data, null, 2);
+    _renderTablaAnalisisTicket(d.data);
+    document.getElementById("ticket-paso3").style.display = "block";
+    toast(`✓ ${(d.data.articulos || []).length} artículos. Revisa la tabla y guarda.`);
+    document.getElementById("ticket-texto-manual").value = "";
+    document.getElementById("ticket-paso4").style.display = "none";
+  } else toast(d.error || "Error al procesar", true);
 }
 
 // ===== POLYBOARD =====
@@ -2375,7 +2947,7 @@ function renderTablasManoObra() {
   const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
   const tbody = document.getElementById("tbody-mo");
   if (!presState.manoObra.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin mano de obra — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:'DM Mono',monospace" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
+  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:inherit" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
 }
 function actualizarTotales() {
   renderTablasMateriales(); renderTablasManoObra();
@@ -2461,35 +3033,176 @@ async function eliminarPresupuestoItem(itemId, faenaId) {
 }
 
 // ===== BOOK DE FOTOS =====
-let bookState = { fotosDisponibles: [], fotoSeleccionada: null };
+let bookState = { fotosDisponibles: [], fotoSeleccionada: null, origen: "pc", pcFiles: [] };
+let bookCache = [];
+
+function urlFotoBook(f) {
+  if (f && f.id) return API + "/book/" + f.id + "/imagen";
+  return (f && f.data) || "";
+}
+
 async function renderBook() {
   const r = await api("GET", "/book");
   if (!r.ok) return;
-  const fotos = r.data;
+  bookCache = r.data || [];
   const el = document.getElementById("book-galeria");
-  if (!fotos.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>No hay fotos en el book aún.<br><small>Añade las mejores fotos de tus faenas</small></div>`; return; }
-  el.innerHTML = `<div class="book-grid">${fotos.map(f => `<div class="book-card"><img src="${f.data}" alt="${f.titulo || f.tipo_trabajo || ""}" loading="lazy"><div class="book-card-info"><div class="book-card-titulo">${f.titulo || f.tipo_trabajo || "Sin título"}</div><div class="book-card-meta">${f.faena_numero} · ${f.cliente_nombre || "—"}</div>${f.descripcion ? `<div class="book-card-desc">${f.descripcion}</div>` : ""}<div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div></div></div>`).join("")}</div>`;
+  if (!bookCache.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>No hay fotos en el book aún.<br><small>Añade fotos del PC o de una faena</small></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="book-grid">${bookCache.map((f, i) => {
+    const src = urlFotoBook(f);
+    const titulo = esc(f.titulo || f.tipo_trabajo || "Sin título");
+    const meta = esc((f.faena_numero || "PC") + " · " + (f.cliente_nombre || "—"));
+    const desc = f.descripcion ? `<div class="book-card-desc">${esc(f.descripcion)}</div>` : "";
+    return `<div class="book-card">
+      <img src="${esc(src)}" alt="${titulo}" loading="lazy" style="cursor:zoom-in" onclick="verFotoBook(${i})">
+      <div class="book-card-info">
+        <div class="book-card-titulo">${titulo}</div>
+        <div class="book-card-meta">${meta}</div>
+        ${desc}
+        <div class="btn-row"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrirEditarBook(${f.id})">Editar</button><button class="btn btn-d btn-sm" onclick="event.stopPropagation();eliminarDeBook(${f.id})">Quitar</button></div>
+      </div>
+    </div>`;
+  }).join("")}</div>`;
 }
+
+function verFotoBook(idx) {
+  const f = bookCache[idx];
+  if (!f) return;
+  verFotoGrande(urlFotoBook(f), f.titulo || f.tipo_trabajo || "");
+}
+
+function mostrarOrigenBook(origen) {
+  bookState.origen = origen;
+  document.getElementById("book-origen-pc").style.display = origen === "pc" ? "block" : "none";
+  document.getElementById("book-origen-faena").style.display = origen === "faena" ? "block" : "none";
+  document.getElementById("book-tab-pc").classList.toggle("active", origen === "pc");
+  document.getElementById("book-tab-faena").classList.toggle("active", origen === "faena");
+}
+
 function abrirModalAñadirBook() {
-  const sel = document.getElementById("book-faena-sel"); sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
-  document.getElementById("book-fotos-sel").innerHTML = ""; document.getElementById("book-form-datos").style.display = "none"; document.getElementById("book-form-desc").style.display = "none"; document.getElementById("book-btn-guardar").style.display = "none"; document.getElementById("book-btn-cancelar").style.display = "flex"; bookState.fotoSeleccionada = null; abrirModal("m-book-añadir");
+  bookState.fotoSeleccionada = null;
+  bookState.pcFiles = [];
+  mostrarOrigenBook("pc");
+  const sel = document.getElementById("book-faena-sel");
+  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
+  const selPc = document.getElementById("book-pc-faena");
+  selPc.innerHTML = '<option value="">— Sin faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
+  document.getElementById("book-fotos-sel").innerHTML = "";
+  document.getElementById("book-pc-preview").style.display = "none";
+  document.getElementById("book-pc-preview").innerHTML = "";
+  document.getElementById("book-pc-input").value = "";
+  document.getElementById("book-titulo").value = "";
+  document.getElementById("book-desc").value = "";
+  abrirModal("m-book-añadir");
 }
+
+async function previewFotosPcBook(event) {
+  const files = [...(event.target.files || [])].filter(f => f.type.startsWith("image/"));
+  bookState.pcFiles = files;
+  const el = document.getElementById("book-pc-preview");
+  if (!files.length) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "grid";
+  el.innerHTML = files.map((f, i) => `<div class="foto-sel-item selected"><img id="book-pc-thumb-${i}" alt="${esc(f.name)}"></div>`).join("");
+  files.forEach((f, i) => {
+    const url = URL.createObjectURL(f);
+    const img = document.getElementById("book-pc-thumb-" + i);
+    if (img) { img.src = url; img.onload = () => URL.revokeObjectURL(url); }
+  });
+}
+
 async function cargarFotosParaBook() {
   const faenaId = document.getElementById("book-faena-sel").value; if (!faenaId) return;
   const el = document.getElementById("book-fotos-sel"); el.innerHTML = '<div style="font-size:0.8rem;color:#aaa;padding:8px">Cargando fotos...</div>';
   const r = await api("GET", `/book/fotos-faena/${faenaId}`); if (!r.ok || !r.data.length) { el.innerHTML = '<div style="font-size:0.8rem;color:#aaa;padding:8px">No hay fotos en esta faena</div>'; return; }
   bookState.fotosDisponibles = r.data;
-  el.innerHTML = `<div style="font-size:0.78rem;color:#666;margin-bottom:8px">Toca una foto para seleccionarla:</div><div class="foto-sel-grid">${r.data.map((f, i) => `<div class="foto-sel-item" id="foto-sel-${i}" onclick="seleccionarFotoBook(${i})"><img src="${f.data}" alt="${f.nombre}" loading="lazy"><div class="check">✓</div></div>`).join("")}</div>`;
+  el.innerHTML = `<div style="font-size:0.78rem;color:#666;margin-bottom:8px">Toca una foto para seleccionarla:</div><div class="foto-sel-grid">${r.data.map((f, i) => `<div class="foto-sel-item" id="foto-sel-${i}" onclick="seleccionarFotoBook(${i})"><img src="${f.data}" alt="${esc(f.nombre)}" loading="lazy"><div class="check">✓</div></div>`).join("")}</div>`;
 }
 function seleccionarFotoBook(idx) {
-  document.querySelectorAll(".foto-sel-item").forEach(el => el.classList.remove("selected")); document.getElementById(`foto-sel-${idx}`).classList.add("selected"); bookState.fotoSeleccionada = idx;
-  document.getElementById("book-form-datos").style.display = "block"; document.getElementById("book-form-desc").style.display = "block"; document.getElementById("book-btn-guardar").style.display = "flex"; document.getElementById("book-btn-cancelar").style.display = "none";
+  document.querySelectorAll("#book-fotos-sel .foto-sel-item").forEach(el => el.classList.remove("selected"));
+  document.getElementById(`foto-sel-${idx}`).classList.add("selected");
+  bookState.fotoSeleccionada = idx;
 }
 async function guardarEnBook() {
-  const faenaId = document.getElementById("book-faena-sel").value; if (!faenaId || bookState.fotoSeleccionada === null) { toast("Selecciona una foto", true); return; }
+  const titulo = document.getElementById("book-titulo").value;
+  const descripcion = document.getElementById("book-desc").value;
+  const btn = document.querySelector("#m-book-añadir .btn-p");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+  try {
+  if (bookState.origen === "pc") {
+    const files = bookState.pcFiles || [];
+    if (!files.length) { toast("Elige una o más fotos del PC", true); return; }
+    const faenaId = document.getElementById("book-pc-faena").value;
+    let ok = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      let blob;
+      try { blob = await comprimirArchivoParaBook(file); }
+      catch (e) { toast("No se pudo leer " + file.name, true); continue; }
+      const fd = new FormData();
+      fd.append("archivo", blob, (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg");
+      fd.append("titulo", titulo || file.name.replace(/\.[^.]+$/, "").replace(/_/g, " "));
+      fd.append("descripcion", descripcion);
+      fd.append("faena_id", faenaId || "0");
+      const r = await apiForm("POST", "/book", fd, 120000);
+      if (r.ok) ok++;
+      else toast(r.error || ("Error al subir " + file.name), true);
+    }
+    if (ok) {
+      toast(ok === 1 ? "✓ Foto añadida al book" : `✓ ${ok} fotos añadidas al book`);
+      cerrarModal("m-book-añadir");
+      renderBook();
+    }
+    return;
+  }
+  const faenaId = document.getElementById("book-faena-sel").value;
+  if (!faenaId || bookState.fotoSeleccionada === null) { toast("Selecciona una foto", true); return; }
   const foto = bookState.fotosDisponibles[bookState.fotoSeleccionada];
-  const r = await api("POST", "/book", { faena_id: parseInt(faenaId), ruta_foto: foto.ruta, titulo: document.getElementById("book-titulo").value, descripcion: document.getElementById("book-desc").value });
-  if (r.ok) { toast("✓ Foto añadida al book"); cerrarModal("m-book-añadir"); document.getElementById("book-titulo").value = ""; document.getElementById("book-desc").value = ""; renderBook(); } else { toast(r.error, true); }
+  const fd = new FormData();
+  fd.append("faena_id", faenaId);
+  fd.append("titulo", titulo);
+  fd.append("descripcion", descripcion);
+  fd.append("ruta_foto", foto.ruta || "");
+  const r = await apiForm("POST", "/book", fd, 60000);
+  if (r.ok) { toast("✓ Foto añadida al book"); cerrarModal("m-book-añadir"); renderBook(); }
+  else toast(r.error, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Añadir al book"; }
+  }
+}
+function abrirEditarBook(id) {
+  const f = (bookCache || []).find(x => String(x.id) === String(id));
+  if (!f) return;
+  document.getElementById("book-editar-id").value = f.id;
+  document.getElementById("book-editar-titulo").value = f.titulo || "";
+  document.getElementById("book-editar-desc").value = f.descripcion || "";
+  document.getElementById("book-editar-preview").src = urlFotoBook(f);
+  document.getElementById("book-editar-archivo").value = "";
+  const sel = document.getElementById("book-editar-faena");
+  sel.innerHTML = '<option value="">— Sin faena —</option>' + state.faenas.map(x => `<option value="${x.id}">${esc(x.numero)} · ${esc(x.cliente_nombre)}</option>`).join("");
+  sel.value = f.faena_id ? String(f.faena_id) : "";
+  abrirModal("m-book-editar");
+}
+async function guardarEdicionBook() {
+  const id = document.getElementById("book-editar-id").value;
+  const fd = new FormData();
+  fd.append("titulo", document.getElementById("book-editar-titulo").value);
+  fd.append("descripcion", document.getElementById("book-editar-desc").value);
+  fd.append("faena_id", document.getElementById("book-editar-faena").value || "0");
+  const archivo = document.getElementById("book-editar-archivo").files[0];
+  if (archivo) {
+    try { fd.append("archivo", await comprimirArchivoParaBook(archivo), "foto.jpg"); }
+    catch (e) { toast("No se pudo leer la foto", true); return; }
+  }
+  const btn = document.querySelector("#m-book-editar .btn-p");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+  const r = await apiForm("PUT", `/book/${id}`, fd, 120000);
+  if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  toast("✓ Foto actualizada");
+  cerrarModal("m-book-editar");
+  renderBook();
 }
 async function eliminarDeBook(id) { if (!confirm("¿Quitar esta foto del book?")) return; const r = await api("DELETE", `/book/${id}`); if (r.ok) { toast("Foto eliminada del book"); renderBook(); } }
 
@@ -2512,16 +3225,11 @@ function quitarTyping() { const el = document.getElementById("typing-indicator")
 async function enviarConsulta() {
   const input = document.getElementById("chat-input"); const pregunta = input.value.trim(); if (!pregunta) return;
   const faenaId = document.getElementById("ia-faena-index")?.value || document.getElementById("asistente-faena-sel")?.value || null;
-  const contextoTipo = document.getElementById("ia-contexto-index")?.value || "general";
-  const faenas = state.faenas.map(f => ({ id: f.id, numero: f.numero, cliente_nombre: f.cliente_nombre, tipo_trabajo: f.tipo_trabajo, trabajo: f.tipo_trabajo, importe: f.importe, direccion: f.direccion, archivada: f.archivada, presupuesto: f.presupuesto || [], gastos: f.gastos || [], gastos_reales: f.gastos_reales || [], anotaciones: f.anotaciones || [], documentos: f.documentos || [] }));
-  const clientes = state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono, direccion: c.direccion, email: c.email }));
-  const materiales = state.materiales.map(m => ({ nombre: m.nombre, categoria: m.categoria, unidad: m.unidad, definicion: m.definicion, precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario, precio_unitario: p.precio_unitario, fecha_actualizacion: p.fecha_actualizacion })) }));
-  const contexto = { faenas: contextoTipo === "materiales" ? [] : faenas, clientes: contextoTipo === "materiales" ? [] : clientes, materiales: contextoTipo === "trabajos" ? [] : materiales };
-  if (faenaId && contexto.faenas.length) contexto.faenas = contexto.faenas.filter(f => String(f.id) === String(faenaId));
+  const modo = modoJimmiActual();
   const btn = document.getElementById("btn-consulta");
   añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
   try {
-    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial }) });
+    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial, modo }) });
     quitarTyping(); const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });
@@ -2555,11 +3263,18 @@ async function cargarContextoJimmi() {
   </tr>`).join("");
 }
 
+function modoJimmiActual() {
+  const v = (document.getElementById("ia-contexto-index")?.value || "todo").trim().toLowerCase();
+  if (v === "materiales" || v === "material") return "materiales";
+  if (v === "faenas" || v === "trabajos" || v === "trabajo") return "faenas";
+  return "todo";
+}
+
 async function añadirContextoJimmi() {
   const el = document.getElementById("jimmi-ctx-nuevo");
   const texto = ((el && el.value) || "").trim();
   if (!texto) { toast("Escribe una nota", true); return; }
-  const r = await api("POST", "/secretario/contexto", { texto });
+  const r = await api("POST", "/secretario/contexto", { texto, modo: modoJimmiActual() });
   if (!r.ok) { toast(r.error || "No se pudo añadir", true); return; }
   if (el) el.value = "";
   toast("Nota añadida");
@@ -2579,6 +3294,46 @@ async function vaciarContextoJimmi() {
   const r = await api("DELETE", "/secretario/contexto");
   if (!r.ok) { toast(r.error || "No se pudo vaciar", true); return; }
   toast("Memoria vaciada");
+  cargarContextoJimmi();
+}
+
+function ultimaPreguntaJimmi() {
+  for (let i = chatHistorial.length - 1; i >= 0; i--) {
+    if (chatHistorial[i].rol === "usuario") return chatHistorial[i].texto || "";
+  }
+  return "";
+}
+
+function ultimaRespuestaJimmi() {
+  for (let i = chatHistorial.length - 1; i >= 0; i--) {
+    if (chatHistorial[i].rol === "jimmi") return chatHistorial[i].texto || "";
+  }
+  return "";
+}
+
+function abrirCorregirJimmi() {
+  const preg = document.getElementById("cj-pregunta");
+  const dijo = document.getElementById("cj-dijo");
+  const corr = document.getElementById("cj-correcta");
+  if (preg) preg.value = ultimaPreguntaJimmi();
+  if (dijo) dijo.textContent = ultimaRespuestaJimmi() || "Aún no hay respuesta de Jimmi en este chat.";
+  if (corr) corr.value = "";
+  abrirModal("m-corregir-jimmi");
+  if (corr) corr.focus();
+}
+
+async function guardarCorreccionJimmi() {
+  const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
+  const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
+  if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const modo = modoJimmiActual();
+  const nota = pregunta
+    ? `[correccion][${modo}] Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `[correccion][${modo}] Respuesta correcta: ${correcta}`;
+  const r = await api("POST", "/secretario/contexto", { texto: nota, modo });
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  cerrarModal("m-corregir-jimmi");
+  toast("Jimmi ya tiene la corrección");
   cargarContextoJimmi();
 }
 
