@@ -10,6 +10,7 @@ import urllib.request
 import urllib.error
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 import shutil
 try:
@@ -89,6 +90,16 @@ def after_request(response):
 @app.errorhandler(413)
 def archivo_demasiado_grande(_e):
     return jsonify({"ok": False, "error": "La foto es demasiado grande (máx. 25 MB)"}), 413
+
+
+@app.errorhandler(Exception)
+def error_api(e):
+    if isinstance(e, HTTPException):
+        return e
+    if request.path.startswith("/api/"):
+        print("api error:", e)
+        return jsonify({"ok": False, "error": str(e) or "Error interno"}), 500
+    raise e
 
 
 def limpiar_data_b64(data_b64):
@@ -3793,7 +3804,8 @@ def guardar_presupuesto(id):
 
 
 def _campos_book_request():
-    datos = request.get_json(silent=True) or {}
+    ctype = (request.content_type or "").lower()
+    datos = request.get_json(silent=True) or {} if "application/json" in ctype else {}
     form = request.form
 
     def campo(nombre, defecto=None):
@@ -3805,8 +3817,8 @@ def _campos_book_request():
 
     return {
         "faena_id": campo("faena_id", 0),
-        "titulo": campo("titulo", "") or "",
-        "descripcion": campo("descripcion", "") or "",
+        "titulo": (campo("titulo", "") or "")[:255],
+        "descripcion": (campo("descripcion", "") or "")[:5000],
         "orden": campo("orden", None),
         "ruta_foto": (campo("ruta_foto", "") or "").strip(),
         "data": campo("data", "") or "",
@@ -3838,14 +3850,16 @@ def _jpeg_book(img_bytes, max_lado=1600, calidad=78):
         return img_bytes
     try:
         im = Image.open(io.BytesIO(img_bytes))
-        im = ImageOps.exif_transpose(im)
+        if ImageOps is not None:
+            im = ImageOps.exif_transpose(im)
         if im.mode != "RGB":
             im = im.convert("RGB")
         w, h = im.size
         lado = max(w, h)
         if lado > max_lado:
             ratio = max_lado / float(lado)
-            im = im.resize((max(1, int(w * ratio)), max(1, int(h * ratio))), Image.Resampling.LANCZOS)
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
+            im = im.resize((max(1, int(w * ratio)), max(1, int(h * ratio))), resample)
         out = io.BytesIO()
         im.save(out, format="JPEG", quality=calidad, optimize=True)
         return out.getvalue()
@@ -3878,93 +3892,104 @@ def _guardar_archivo_book(img_bytes, numero_faena):
     if not img_bytes:
         return {"ok": False, "error": "No se pudo leer la imagen"}
     nombre_foto = f"book_{numero_faena}_{int(time.time() * 1000)}.jpg"
-    if r2_activo():
-        key = clave_objeto("_book", nombre_foto)
-        res = subir_bytes(key, img_bytes, "image/jpeg")
-        if not res.get("ok"):
-            return {"ok": False, "error": res.get("error") or "No se pudo subir al book"}
-        return {"ok": True, "ruta": res.get("url") or key}
-    carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
-    os.makedirs(carpeta_book, exist_ok=True)
-    ruta_foto = os.path.join(carpeta_book, nombre_foto)
-    with open(ruta_foto, "wb") as f:
-        f.write(img_bytes)
-    return {"ok": True, "ruta": ruta_foto}
+    try:
+        if r2_activo():
+            key = clave_objeto("_book", nombre_foto)
+            res = subir_bytes(key, img_bytes, "image/jpeg")
+            if not res.get("ok"):
+                return {"ok": False, "error": res.get("error") or "No se pudo subir al book"}
+            return {"ok": True, "ruta": res.get("url") or key}
+        carpeta_book = os.path.join(CARPETA_RAIZ, "_book")
+        os.makedirs(carpeta_book, exist_ok=True)
+        ruta_foto = os.path.join(carpeta_book, nombre_foto)
+        with open(ruta_foto, "wb") as f:
+            f.write(img_bytes)
+        return {"ok": True, "ruta": ruta_foto}
+    except Exception as e:
+        return {"ok": False, "error": str(e) or "No se pudo guardar la foto"}
 
 
 @app.route("/api/book", methods=["POST"])
 def crear_book():
-    campos = _campos_book_request()
     try:
-        img_bytes = _bytes_imagen_book_request(campos)
-    except Exception:
-        return jsonify({"ok": False, "error": "La foto no es válida"}), 400
-    if not img_bytes:
-        return jsonify({"ok": False, "error": "Se requiere una foto"}), 400
-    conn = get_connection()
-    faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
-    try:
-        guardado = _guardar_archivo_book(img_bytes, numero_faena)
-        if not guardado.get("ok"):
+        campos = _campos_book_request()
+        try:
+            img_bytes = _bytes_imagen_book_request(campos)
+        except Exception:
+            return jsonify({"ok": False, "error": "La foto no es válida"}), 400
+        if not img_bytes:
+            return jsonify({"ok": False, "error": "Se requiere una foto"}), 400
+        conn = get_connection()
+        try:
+            faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
+            guardado = _guardar_archivo_book(img_bytes, numero_faena)
+            if not guardado.get("ok"):
+                return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
+            ruta_foto = guardado["ruta"]
+            max_fila = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()
+            max_orden = int((max_fila["max_orden"] if max_fila else 0) or 0)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
+                (int(faena_id or 0), ruta_foto, campos.get("titulo") or "", campos.get("descripcion") or "", max_orden + 1)
+            )
+            conn.commit()
+            nuevo_id = cursor.lastrowid
+        finally:
             conn.close()
-            return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
-        ruta_foto = guardado["ruta"]
+        return jsonify({"ok": True, "data": {"id": nuevo_id}})
     except Exception as e:
-        conn.close()
-        return jsonify({"ok": False, "error": str(e)}), 500
-    cursor = conn.cursor()
-    max_orden = conn.execute("SELECT COALESCE(MAX(orden),0) AS max_orden FROM book_fotos").fetchone()["max_orden"]
-    cursor.execute(
-        "INSERT INTO book_fotos (faena_id, ruta_foto, titulo, descripcion, orden) VALUES (?,?,?,?,?)",
-        (faena_id or None, ruta_foto, campos.get("titulo") or "", campos.get("descripcion") or "", max_orden + 1)
-    )
-    conn.commit()
-    nuevo_id = cursor.lastrowid
-    conn.close()
-    return jsonify({"ok": True, "data": {"id": nuevo_id}})
+        print("crear_book:", e)
+        return jsonify({"ok": False, "error": str(e) or "No se pudo guardar la foto"}), 500
 
 @app.route("/api/book/<int:id>", methods=["PUT"])
 def editar_book(id):
-    campos = _campos_book_request()
-    conn = get_connection()
-    fila = conn.execute("SELECT * FROM book_fotos WHERE id=?", (id,)).fetchone()
-    if not fila:
-        conn.close()
-        return jsonify({"ok": False, "error": "Foto no encontrada"}), 404
-    actual = fila_a_dict(fila)
-    json_body = request.get_json(silent=True) or {}
-    titulo = campos.get("titulo") if ("titulo" in request.form or "titulo" in json_body) else (actual.get("titulo") or "")
-    descripcion = campos.get("descripcion") if ("descripcion" in request.form or "descripcion" in json_body) else (actual.get("descripcion") or "")
-    if campos.get("orden") is not None and str(campos.get("orden")) != "":
-        try:
-            orden = int(campos.get("orden"))
-        except (TypeError, ValueError):
-            orden = actual.get("orden") or 0
-    else:
-        orden = actual.get("orden") or 0
-    if "faena_id" in request.form or "faena_id" in json_body:
-        faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
-    else:
-        faena_id, numero_faena = _resolver_faena_book(conn, actual.get("faena_id") or 0)
-    ruta_foto = actual.get("ruta_foto")
     try:
-        img_bytes = _bytes_imagen_book_request(campos, solo_nueva=True)
-    except Exception:
-        conn.close()
-        return jsonify({"ok": False, "error": "La foto no es válida"}), 400
-    if img_bytes:
-        guardado = _guardar_archivo_book(img_bytes, numero_faena)
-        if not guardado.get("ok"):
+        campos = _campos_book_request()
+        conn = get_connection()
+        try:
+            fila = conn.execute("SELECT * FROM book_fotos WHERE id=?", (id,)).fetchone()
+            if not fila:
+                return jsonify({"ok": False, "error": "Foto no encontrada"}), 404
+            actual = fila_a_dict(fila)
+            json_body = {}
+            ctype = (request.content_type or "").lower()
+            if "application/json" in ctype:
+                json_body = request.get_json(silent=True) or {}
+            titulo = campos.get("titulo") if ("titulo" in request.form or "titulo" in json_body) else (actual.get("titulo") or "")
+            descripcion = campos.get("descripcion") if ("descripcion" in request.form or "descripcion" in json_body) else (actual.get("descripcion") or "")
+            if campos.get("orden") is not None and str(campos.get("orden")) != "":
+                try:
+                    orden = int(campos.get("orden"))
+                except (TypeError, ValueError):
+                    orden = actual.get("orden") or 0
+            else:
+                orden = actual.get("orden") or 0
+            if "faena_id" in request.form or "faena_id" in json_body:
+                faena_id, numero_faena = _resolver_faena_book(conn, campos.get("faena_id"))
+            else:
+                faena_id, numero_faena = _resolver_faena_book(conn, actual.get("faena_id") or 0)
+            ruta_foto = actual.get("ruta_foto")
+            try:
+                img_bytes = _bytes_imagen_book_request(campos, solo_nueva=True)
+            except Exception:
+                return jsonify({"ok": False, "error": "La foto no es válida"}), 400
+            if img_bytes:
+                guardado = _guardar_archivo_book(img_bytes, numero_faena)
+                if not guardado.get("ok"):
+                    return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
+                ruta_foto = guardado["ruta"]
+            conn.execute(
+                "UPDATE book_fotos SET faena_id=?, ruta_foto=?, titulo=?, descripcion=?, orden=? WHERE id=?",
+                (int(faena_id or 0), ruta_foto or "", (titulo or "")[:255], (descripcion or "")[:5000], int(orden or 0), id)
+            )
+            conn.commit()
+        finally:
             conn.close()
-            return jsonify({"ok": False, "error": guardado.get("error") or "No se pudo guardar"}), 500
-        ruta_foto = guardado["ruta"]
-    conn.execute(
-        "UPDATE book_fotos SET faena_id=?, ruta_foto=?, titulo=?, descripcion=?, orden=? WHERE id=?",
-        (faena_id or None, ruta_foto, titulo or "", descripcion or "", orden, id)
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
+        return jsonify({"ok": True})
+    except Exception as e:
+        print("editar_book:", e)
+        return jsonify({"ok": False, "error": str(e) or "No se pudo guardar los cambios"}), 500
 
 @app.route("/api/book/<int:id>", methods=["DELETE"])
 def eliminar_book(id):
