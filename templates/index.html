@@ -1082,6 +1082,37 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
+<!-- Modal editar foto del book -->
+<div class="overlay" id="m-book-editar">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">Editar foto</div>
+    <img id="book-editar-preview" alt="" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff;margin-bottom:12px">
+    <input type="hidden" id="book-editar-id">
+    <div class="form-grid g1">
+      <div><label>Título</label><input id="book-editar-titulo" placeholder="Título de la foto"></div>
+    </div>
+    <div class="form-grid g1">
+      <div><label>Descripción</label><textarea id="book-editar-desc" rows="2" placeholder="Breve descripción..."></textarea></div>
+    </div>
+    <div class="form-grid">
+      <div>
+        <label>Faena</label>
+        <select id="book-editar-faena"></select>
+      </div>
+    </div>
+    <div class="form-grid g1">
+      <div>
+        <label>Sustituir foto (opcional)</label>
+        <input type="file" id="book-editar-archivo" accept="image/*">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarEdicionBook()">Guardar cambios</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-book-editar')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal consulta de materiales -->
 <div class="overlay" id="m-consulta-mat">
   <div class="modal" style="max-width:700px">
@@ -1547,12 +1578,20 @@ async function guardarConfigR2() {
 }
 
 // ===== API CALLS =====
+async function parsearRespuesta(r) {
+  const texto = await r.text();
+  if (!texto) return { ok: false, error: r.ok ? "Respuesta vacía" : ("Error del servidor (" + r.status + ")") };
+  try { return JSON.parse(texto); } catch (e) {
+    return { ok: false, error: r.status === 413 ? "La foto es demasiado grande" : ("Error del servidor (" + r.status + ")") };
+  }
+}
+
 async function api(method, path, body) {
   try {
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
-    return await r.json();
+    return await parsearRespuesta(r);
   } catch (e) {
     return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al conectar con el servidor" : "Error de conexión con el servidor" };
   }
@@ -2447,10 +2486,28 @@ async function apiLargo(method, path, body, ms) {
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(ms || 50000) };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
-    return await r.json();
+    return await parsearRespuesta(r);
   } catch (e) {
     return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado" : "Error de conexión con el servidor" };
   }
+}
+
+async function apiForm(method, path, formData, ms) {
+  try {
+    const r = await fetch(API + path, { method, body: formData, signal: AbortSignal.timeout(ms || 120000) });
+    return await parsearRespuesta(r);
+  } catch (e) {
+    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al subir la foto" : "Error de conexión con el servidor" };
+  }
+}
+
+function dataUrlABlob(dataUrl) {
+  const partes = String(dataUrl || "").split(",");
+  const b64 = partes.length > 1 ? partes[1] : partes[0];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: "image/jpeg" });
 }
 
 async function comprimirImagenParaTicket(dataUrl, maxWidth = 1900, quality = 0.82) {
@@ -2473,6 +2530,17 @@ async function comprimirImagenParaTicket(dataUrl, maxWidth = 1900, quality = 0.8
   } catch (e) {
     return dataUrl;
   }
+}
+
+async function comprimirArchivoParaBook(file) {
+  const original = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const dataUrl = await comprimirImagenParaTicket(original, 1400, 0.72);
+  return dataUrlABlob(dataUrl);
 }
 
 function _ticketOpcionesFaena(valueSeleccionado) {
@@ -2993,7 +3061,7 @@ async function renderBook() {
         <div class="book-card-titulo">${titulo}</div>
         <div class="book-card-meta">${meta}</div>
         ${desc}
-        <div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div>
+        <div class="btn-row"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrirEditarBook(${f.id})">Editar</button><button class="btn btn-d btn-sm" onclick="event.stopPropagation();eliminarDeBook(${f.id})">Quitar</button></div>
       </div>
     </div>`;
   }).join("")}</div>`;
@@ -3059,6 +3127,9 @@ function seleccionarFotoBook(idx) {
 async function guardarEnBook() {
   const titulo = document.getElementById("book-titulo").value;
   const descripcion = document.getElementById("book-desc").value;
+  const btn = document.querySelector("#m-book-añadir .btn-p");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+  try {
   if (bookState.origen === "pc") {
     const files = bookState.pcFiles || [];
     if (!files.length) { toast("Elige una o más fotos del PC", true); return; }
@@ -3066,25 +3137,15 @@ async function guardarEnBook() {
     let ok = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      let data;
-      try {
-        const original = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-        data = await comprimirImagenParaTicket(original, 1900, 0.82);
-      } catch (e) {
-        toast("No se pudo leer " + file.name, true);
-        continue;
-      }
-      const r = await apiLargo("POST", "/book", {
-        faena_id: faenaId ? parseInt(faenaId) : 0,
-        titulo: titulo || file.name.replace(/\.[^.]+$/, "").replace(/_/g, " "),
-        descripcion,
-        data
-      }, 60000);
+      let blob;
+      try { blob = await comprimirArchivoParaBook(file); }
+      catch (e) { toast("No se pudo leer " + file.name, true); continue; }
+      const fd = new FormData();
+      fd.append("archivo", blob, (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg");
+      fd.append("titulo", titulo || file.name.replace(/\.[^.]+$/, "").replace(/_/g, " "));
+      fd.append("descripcion", descripcion);
+      fd.append("faena_id", faenaId || "0");
+      const r = await apiForm("POST", "/book", fd, 120000);
       if (r.ok) ok++;
       else toast(r.error || ("Error al subir " + file.name), true);
     }
@@ -3098,9 +3159,50 @@ async function guardarEnBook() {
   const faenaId = document.getElementById("book-faena-sel").value;
   if (!faenaId || bookState.fotoSeleccionada === null) { toast("Selecciona una foto", true); return; }
   const foto = bookState.fotosDisponibles[bookState.fotoSeleccionada];
-  const r = await apiLargo("POST", "/book", { faena_id: parseInt(faenaId), ruta_foto: foto.ruta, titulo, descripcion }, 30000);
+  const fd = new FormData();
+  fd.append("faena_id", faenaId);
+  fd.append("titulo", titulo);
+  fd.append("descripcion", descripcion);
+  fd.append("ruta_foto", foto.ruta || "");
+  const r = await apiForm("POST", "/book", fd, 60000);
   if (r.ok) { toast("✓ Foto añadida al book"); cerrarModal("m-book-añadir"); renderBook(); }
   else toast(r.error, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Añadir al book"; }
+  }
+}
+function abrirEditarBook(id) {
+  const f = (bookCache || []).find(x => String(x.id) === String(id));
+  if (!f) return;
+  document.getElementById("book-editar-id").value = f.id;
+  document.getElementById("book-editar-titulo").value = f.titulo || "";
+  document.getElementById("book-editar-desc").value = f.descripcion || "";
+  document.getElementById("book-editar-preview").src = urlFotoBook(f);
+  document.getElementById("book-editar-archivo").value = "";
+  const sel = document.getElementById("book-editar-faena");
+  sel.innerHTML = '<option value="">— Sin faena —</option>' + state.faenas.map(x => `<option value="${x.id}">${esc(x.numero)} · ${esc(x.cliente_nombre)}</option>`).join("");
+  sel.value = f.faena_id ? String(f.faena_id) : "";
+  abrirModal("m-book-editar");
+}
+async function guardarEdicionBook() {
+  const id = document.getElementById("book-editar-id").value;
+  const fd = new FormData();
+  fd.append("titulo", document.getElementById("book-editar-titulo").value);
+  fd.append("descripcion", document.getElementById("book-editar-desc").value);
+  fd.append("faena_id", document.getElementById("book-editar-faena").value || "0");
+  const archivo = document.getElementById("book-editar-archivo").files[0];
+  if (archivo) {
+    try { fd.append("archivo", await comprimirArchivoParaBook(archivo), "foto.jpg"); }
+    catch (e) { toast("No se pudo leer la foto", true); return; }
+  }
+  const btn = document.querySelector("#m-book-editar .btn-p");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+  const r = await apiForm("PUT", `/book/${id}`, fd, 120000);
+  if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  toast("✓ Foto actualizada");
+  cerrarModal("m-book-editar");
+  renderBook();
 }
 async function eliminarDeBook(id) { if (!confirm("¿Quitar esta foto del book?")) return; const r = await api("DELETE", `/book/${id}`); if (r.ok) { toast("Foto eliminada del book"); renderBook(); } }
 
