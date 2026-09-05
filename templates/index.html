@@ -961,6 +961,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <button class="btn btn-s" onclick="limpiarChat()" style="height:32px;padding:0 14px;font-size:0.7rem">
         Limpiar
       </button>
+      <button class="btn btn-g" onclick="abrirCorregirJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem">
+        Corregir a Jimmi
+      </button>
     </div>
   </div>
   <div style="font-size:0.7rem;color:#aaa;margin-top:6px">Ctrl+Enter para enviar</div>
@@ -1051,6 +1054,29 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 </div>
 
 <!-- Modal Nueva Faena -->
+<div class="overlay" id="m-corregir-jimmi">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">Corregir a Jimmi</div>
+    <p style="font-size:0.78rem;color:#888;margin-bottom:12px;line-height:1.5">Escribe la respuesta correcta. Jimmi la guardará en su memoria.</p>
+    <div class="form-grid g1">
+      <div><label>Pregunta</label><textarea id="cj-pregunta" rows="2" placeholder="¿Qué faenas están terminadas?"></textarea></div>
+    </div>
+    <div class="form-grid g1">
+      <div>
+        <label>Lo que dijo Jimmi</label>
+        <div id="cj-dijo" style="font-size:0.85rem;background:#faf6ee;border:1px solid var(--sawdust);border-radius:6px;padding:10px;min-height:48px;white-space:pre-wrap;color:#555"></div>
+      </div>
+    </div>
+    <div class="form-grid g1">
+      <div><label>Respuesta correcta *</label><textarea id="cj-correcta" rows="4" placeholder="Las faenas terminadas son…"></textarea></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarCorreccionJimmi()">Guardar para Jimmi</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-corregir-jimmi')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="m-faena">
   <div class="modal">
     <div class="modal-title">🔨 Nueva Faena</div>
@@ -2757,6 +2783,45 @@ async function vaciarContextoJimmi() {
   const r = await api("DELETE", "/secretario/contexto");
   if (!r.ok) { toast(r.error || "No se pudo vaciar", true); return; }
   toast("Memoria vaciada");
+  cargarContextoJimmi();
+}
+
+function ultimaPreguntaJimmi() {
+  for (let i = chatHistorial.length - 1; i >= 0; i--) {
+    if (chatHistorial[i].rol === "usuario") return chatHistorial[i].texto || "";
+  }
+  return "";
+}
+
+function ultimaRespuestaJimmi() {
+  for (let i = chatHistorial.length - 1; i >= 0; i--) {
+    if (chatHistorial[i].rol === "jimmi") return chatHistorial[i].texto || "";
+  }
+  return "";
+}
+
+function abrirCorregirJimmi() {
+  const preg = document.getElementById("cj-pregunta");
+  const dijo = document.getElementById("cj-dijo");
+  const corr = document.getElementById("cj-correcta");
+  if (preg) preg.value = ultimaPreguntaJimmi();
+  if (dijo) dijo.textContent = ultimaRespuestaJimmi() || "Aún no hay respuesta de Jimmi en este chat.";
+  if (corr) corr.value = "";
+  abrirModal("m-corregir-jimmi");
+  if (corr) corr.focus();
+}
+
+async function guardarCorreccionJimmi() {
+  const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
+  const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
+  if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const nota = pregunta
+    ? `Corrección del usuario. Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `Corrección del usuario. Respuesta correcta: ${correcta}`;
+  const r = await api("POST", "/secretario/contexto", { texto: nota });
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  cerrarModal("m-corregir-jimmi");
+  toast("Jimmi ya tiene la corrección");
   cargarContextoJimmi();
 }
 

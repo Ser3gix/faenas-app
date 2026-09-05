@@ -172,12 +172,36 @@ def cruzar_articulos(articulos):
 def snapshot_negocio(faena_id=None):
     conn = get_connection()
     try:
-        faenas = filas_a_lista(conn.execute(
-            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada,
-                      c.nombre AS cliente_nombre
-               FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
-               WHERE f.archivada=0 ORDER BY f.id DESC LIMIT 40"""
-        ).fetchall())
+        try:
+            faenas = filas_a_lista(conn.execute(
+                """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, f.fase,
+                          c.nombre AS cliente_nombre
+                   FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+                   WHERE f.archivada=0 AND COALESCE(f.fase,'')<>'terminada'
+                   ORDER BY f.id DESC LIMIT 40"""
+            ).fetchall())
+        except Exception:
+            faenas = filas_a_lista(conn.execute(
+                """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada,
+                          c.nombre AS cliente_nombre
+                   FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+                   WHERE f.archivada=0 ORDER BY f.id DESC LIMIT 40"""
+            ).fetchall())
+        try:
+            terminadas = filas_a_lista(conn.execute(
+                """SELECT f.id, f.numero, f.tipo_trabajo, f.importe,
+                          c.nombre AS cliente_nombre
+                   FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+                   WHERE f.archivada=1 OR f.fase='terminada'
+                   ORDER BY f.id DESC LIMIT 40"""
+            ).fetchall())
+        except Exception:
+            terminadas = filas_a_lista(conn.execute(
+                """SELECT f.id, f.numero, f.tipo_trabajo, f.importe,
+                          c.nombre AS cliente_nombre
+                   FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
+                   WHERE f.archivada=1 ORDER BY f.id DESC LIMIT 40"""
+            ).fetchall())
         mats = filas_a_lista(conn.execute(
             "SELECT m.id, m.nombre, m.unidad, m.categoria, p.proveedor, p.precio_unitario "
             "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
@@ -195,7 +219,7 @@ def snapshot_negocio(faena_id=None):
                 (faena_id,),
             ).fetchall())
             extra = {"presupuesto": pres, "gastos": gastos}
-        return {"faenas": faenas, "materiales": mats, "faena_detalle": extra}
+        return {"faenas": faenas, "faenas_terminadas": terminadas, "materiales": mats, "faena_detalle": extra}
     finally:
         conn.close()
 
@@ -217,6 +241,8 @@ def chat_jimmi(pregunta, historial=None, faena_id=None):
     system = (
         "Eres Jimmi, secretario de un taller de carpintería. Hablas español, claro y breve. "
         "Usa los datos de la app y tu memoria. No inventes precios ni faenas. "
+        "Las faenas en curso están en datos_app.faenas. Las terminadas están en datos_app.faenas_terminadas. "
+        "Si preguntan cuáles están terminadas, usa esa lista. Las correcciones del usuario en memoria_jimmi prevalecen. "
         "Si piden precios de tiendas, busca en internet si puedes y compara con el almacén. "
         "Si algo requiere cambiar datos, descríbelo y di que el usuario debe pulsar Aceptar. "
         "No borres faenas ni clientes."

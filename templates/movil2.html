@@ -901,9 +901,10 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div id="jimmi-mensajes" style="background:white;border:1px solid var(--sawdust);border-radius:8px;padding:12px;min-height:180px;max-height:42vh;overflow-y:auto;margin-bottom:10px;font-size:0.9rem;line-height:1.6"></div>
     <textarea id="ia-pregunta" rows="3" placeholder="Pregunta a Jimmi: presupuestos, precios, faenas..." style="font-size:0.95rem;margin-bottom:8px"></textarea>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="enviarConsultaIA()">Enviar</button>
       <button class="btn btn-s" onclick="resetearConsultaIA()">Limpiar</button>
+      <button class="btn btn-g" onclick="abrirCorregirJimmi()">Corregir a Jimmi</button>
     </div>
   </div>
 
@@ -1089,6 +1090,22 @@ textarea { resize: vertical; min-height: 80px; }
     <button class="btn btn-p" onclick="guardarGastoFabricacion()">💾 Guardar gasto</button>
     <button class="btn btn-d" id="gasto-fab-eliminar" onclick="eliminarGastoFabricacionDesdeModal()" style="display:none">🗑️ Eliminar gasto</button>
     <button class="btn btn-s" onclick="cerrarModal('m-gasto-fabricacion')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Corregir a Jimmi -->
+<div class="overlay-modal" id="m-corregir-jimmi">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">Corregir a Jimmi</div>
+    <p style="font-size:0.82rem;color:#888;margin-bottom:12px;line-height:1.5">Escribe la respuesta correcta. Jimmi la guardará en su memoria.</p>
+    <div class="field"><label>Pregunta</label><textarea id="cj-pregunta" rows="2" placeholder="¿Qué faenas están terminadas?"></textarea></div>
+    <div class="field">
+      <label>Lo que dijo Jimmi</label>
+      <div id="cj-dijo" style="font-size:0.85rem;background:white;border:1px solid var(--sawdust);border-radius:6px;padding:10px;min-height:48px;white-space:pre-wrap;color:#555"></div>
+    </div>
+    <div class="field"><label>Respuesta correcta *</label><textarea id="cj-correcta" rows="4" placeholder="Las faenas terminadas son…"></textarea></div>
+    <button class="btn btn-p" onclick="guardarCorreccionJimmi()">Guardar para Jimmi</button>
+    <button class="btn btn-s" onclick="cerrarModal('m-corregir-jimmi')">Cancelar</button>
   </div>
 </div>
 
@@ -3896,6 +3913,56 @@ function preguntaRapidaIA(texto) {
   enviarConsultaIA();
 }
 
+function ultimaPreguntaJimmi() {
+  const hist = window._jimmiHistorial || [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].rol === "usuario") return hist[i].texto || "";
+  }
+  return "";
+}
+
+function ultimaRespuestaJimmi() {
+  const hist = window._jimmiHistorial || [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].rol === "jimmi") return hist[i].texto || "";
+  }
+  return "";
+}
+
+function abrirCorregirJimmi() {
+  const preg = document.getElementById("cj-pregunta");
+  const dijo = document.getElementById("cj-dijo");
+  const corr = document.getElementById("cj-correcta");
+  if (preg) preg.value = ultimaPreguntaJimmi();
+  if (dijo) dijo.textContent = ultimaRespuestaJimmi() || "Aún no hay respuesta de Jimmi en este chat.";
+  if (corr) corr.value = "";
+  abrirModal("m-corregir-jimmi");
+  if (corr) corr.focus();
+}
+
+async function guardarCorreccionJimmi() {
+  const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
+  const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
+  if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const nota = pregunta
+    ? `Corrección del usuario. Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `Corrección del usuario. Respuesta correcta: ${correcta}`;
+  try {
+    const r = await fetch(`${getServerUrl()}/secretario/contexto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: nota }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await r.json();
+    if (!data.ok) { toast(data.error || "No se pudo guardar", true); return; }
+    cerrarModal("m-corregir-jimmi");
+    toast("Jimmi ya tiene la corrección");
+  } catch (e) {
+    toast("No se pudo guardar la corrección", true);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // BOOK
 // ═══════════════════════════════════════════════════════════
@@ -4423,7 +4490,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=21", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=22", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
