@@ -539,15 +539,34 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   object-fit: contain;
   border-radius: 4px;
 }
-.foto-overlay-nombre {
-  color: #ccc;
-  font-size: 0.8rem;
+.foto-viewer {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.96);
+  z-index: 9999; display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+.foto-viewer img {
+  max-width: 90%; max-height: 90%; object-fit: contain;
+  cursor: zoom-in;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.foto-viewer img.zoomed { cursor: grab; }
+.foto-viewer img.panning { cursor: grabbing; }
+.foto-viewer .close-btn {
+  position: absolute; top: 18px; right: 18px;
+  background: rgba(255,255,255,0.2); border: 1px solid white;
+  color: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 13px;
 }
 </style>
 </head>
 <body>
 
-<<header>
+<header>
   <div class="header-bar">
     <span>🪵</span>
     <div>
@@ -897,17 +916,14 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
-<!-- ===== COPILOT EXTERNO ===== -->
+<!-- ===== BOOK ===== -->
 <div id="s-book" class="section">
   <div class="sec-header">
-    <h2>🤖 Copilot externo</h2>
+    <h2>Book</h2>
+    <button class="btn btn-p btn-sm" onclick="abrirModalAñadirBook()">+ Foto</button>
   </div>
-  <p style="font-size:0.82rem;color:#888;margin-bottom:16px">
-    Selecciona las mejores fotos de tus faenas para mostrar a clientes.
-  </p>
-  <div class="form-title">Generar prompt</div>
-  <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
-    Copilot no se ejecuta dentro de esta app. Genera el prompt con el contexto de la faena, cópialo y pégalo en Copilot Chat.
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px">
+    Selecciona las mejores fotos para mostrar a clientes. Pulsa una para verla a pantalla completa.
   </p>
   <div id="book-galeria"></div>
 </div>
@@ -1024,26 +1040,44 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <!-- Modal añadir foto al book -->
 <div class="overlay" id="m-book-añadir">
   <div class="modal" style="max-width:680px">
-    <div class="modal-title">📸 Añadir foto al book</div>
-    <div class="form-grid">
-      <div>
-        <label>Seleccionar faena</label>
-        <select id="book-faena-sel" onchange="cargarFotosParaBook()"></select>
+    <div class="modal-title">Añadir foto al book</div>
+    <div class="fase-tabs" style="margin-bottom:14px">
+      <button type="button" class="fase-tab active" id="book-tab-pc" onclick="mostrarOrigenBook('pc')">Desde el PC</button>
+      <button type="button" class="fase-tab" id="book-tab-faena" onclick="mostrarOrigenBook('faena')">Desde una faena</button>
+    </div>
+    <div id="book-origen-pc">
+      <div class="form-grid g1">
+        <div>
+          <label>Fotos del PC</label>
+          <input type="file" id="book-pc-input" accept="image/*" multiple onchange="previewFotosPcBook(event)">
+        </div>
+      </div>
+      <div id="book-pc-preview" class="foto-sel-grid" style="display:none;margin:10px 0"></div>
+      <div class="form-grid">
+        <div>
+          <label>Faena (opcional)</label>
+          <select id="book-pc-faena"></select>
+        </div>
       </div>
     </div>
-    <div id="book-fotos-sel" style="margin:12px 0"></div>
-    <div class="form-grid g1" id="book-form-datos" style="display:none">
+    <div id="book-origen-faena" style="display:none">
+      <div class="form-grid">
+        <div>
+          <label>Seleccionar faena</label>
+          <select id="book-faena-sel" onchange="cargarFotosParaBook()"></select>
+        </div>
+      </div>
+      <div id="book-fotos-sel" style="margin:12px 0"></div>
+    </div>
+    <div class="form-grid g1" id="book-form-datos">
       <div><label>Título (opcional)</label><input id="book-titulo" placeholder="Cocina en roble, armario a medida..."></div>
     </div>
-    <div class="form-grid g1" id="book-form-desc" style="display:none">
+    <div class="form-grid g1" id="book-form-desc">
       <div><label>Descripción (opcional)</label><textarea id="book-desc" rows="2" placeholder="Breve descripción del trabajo..."></textarea></div>
     </div>
-    <div class="btn-row" id="book-btn-guardar" style="display:none">
+    <div class="btn-row">
       <button class="btn btn-p" onclick="guardarEnBook()">Añadir al book</button>
       <button class="btn btn-s" onclick="cerrarModal('m-book-añadir')">Cancelar</button>
-    </div>
-    <div class="btn-row" style="margin-top:4px" id="book-btn-cancelar">
-      <button class="btn btn-s" onclick="cerrarModal('m-book-añadir')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -1986,11 +2020,112 @@ async function verDetalle(id) {
 
 // ===== FOTOS PC =====
 function verFotoPC(src, nombre) {
-  const o = document.createElement("div");
-  o.className = "foto-overlay";
-  o.innerHTML = `<img src="${src}" alt="${nombre}"><div class="foto-overlay-nombre">${nombre}</div><button class="btn btn-s btn-sm" onclick="this.parentNode.remove()">Cerrar</button>`;
-  o.addEventListener("click", e => { if (e.target === o) o.remove(); });
-  document.body.appendChild(o);
+  verFotoGrande(src, nombre);
+}
+
+function verFotoGrande(src, nombre) {
+  if (!src) return;
+  const existing = document.querySelector(".foto-viewer");
+  if (existing) existing.remove();
+  const viewer = document.createElement("div");
+  viewer.className = "foto-viewer";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = nombre || "";
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "Cerrar";
+  closeBtn.className = "close-btn";
+  closeBtn.onclick = ev => { ev.stopPropagation(); viewer.remove(); };
+  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
+  if (nombre) {
+    const cap = document.createElement("div");
+    cap.className = "foto-overlay-nombre";
+    cap.style.cssText = "position:absolute;bottom:18px;color:#ccc;font-size:0.85rem";
+    cap.textContent = nombre;
+    viewer.appendChild(cap);
+  }
+  document.body.appendChild(viewer);
+
+  let scale = 1, x = 0, y = 0;
+  const pointers = new Map();
+  let pinch0 = 0;
+  let pinchScale0 = 1;
+  let startX = 0, startY = 0, startAt = 0;
+  let moved = false;
+  let pinched = false;
+
+  const aplicar = () => {
+    if (scale < 1.05) { scale = 1; x = 0; y = 0; }
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    img.classList.toggle("zoomed", scale > 1);
+  };
+  const limitar = () => {
+    const extra = (scale - 1) * 320;
+    const max = Math.max(120, extra);
+    x = Math.max(-max, Math.min(max, x));
+    y = Math.max(-max, Math.min(max, y));
+  };
+
+  viewer.addEventListener("pointerdown", e => {
+    if (e.target === closeBtn) return;
+    e.preventDefault();
+    try { viewer.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      startX = e.clientX; startY = e.clientY; startAt = Date.now(); moved = false; pinched = false;
+    }
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchScale0 = scale;
+    }
+  });
+  viewer.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) moved = true;
+    if (pointers.size >= 2) {
+      pinched = true;
+      const pts = [...pointers.values()];
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinch0 > 8) {
+        scale = Math.min(4, Math.max(1, pinchScale0 * (d / pinch0)));
+        limitar(); aplicar();
+      }
+      return;
+    }
+    if (scale > 1 && pointers.size === 1) {
+      x += e.clientX - prev.x;
+      y += e.clientY - prev.y;
+      limitar(); aplicar();
+      img.classList.add("panning");
+    }
+  });
+  const soltar = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch0 = 0;
+    img.classList.remove("panning");
+  };
+  viewer.addEventListener("pointerup", e => {
+    soltar(e);
+    if (pointers.size > 0) return;
+    const tapRapido = !moved && !pinched && (Date.now() - startAt) < 350;
+    if (pinched || moved) return;
+    if (e.target === viewer && scale <= 1) { viewer.remove(); return; }
+    if (e.target !== img || !tapRapido) return;
+    if (scale <= 1) scale = 2.2;
+    else { scale = 1; x = 0; y = 0; }
+    aplicar();
+  });
+  viewer.addEventListener("pointercancel", soltar);
+  viewer.addEventListener("wheel", e => {
+    e.preventDefault();
+    scale = Math.min(4, Math.max(1, scale * (e.deltaY < 0 ? 1.12 : 0.9)));
+    limitar(); aplicar();
+  }, { passive: false });
 }
 async function eliminarFotoPC(faenaId, nombre) {
   if (!confirm(`¿Eliminar la foto "${nombre}"?`)) return;
@@ -2830,35 +2965,142 @@ async function eliminarPresupuestoItem(itemId, faenaId) {
 }
 
 // ===== BOOK DE FOTOS =====
-let bookState = { fotosDisponibles: [], fotoSeleccionada: null };
+let bookState = { fotosDisponibles: [], fotoSeleccionada: null, origen: "pc", pcFiles: [] };
+let bookCache = [];
+
+function urlFotoBook(f) {
+  if (f && f.id) return API + "/book/" + f.id + "/imagen";
+  return (f && f.data) || "";
+}
+
 async function renderBook() {
   const r = await api("GET", "/book");
   if (!r.ok) return;
-  const fotos = r.data;
+  bookCache = r.data || [];
   const el = document.getElementById("book-galeria");
-  if (!fotos.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>No hay fotos en el book aún.<br><small>Añade las mejores fotos de tus faenas</small></div>`; return; }
-  el.innerHTML = `<div class="book-grid">${fotos.map(f => `<div class="book-card"><img src="${f.id ? (API + "/book/" + f.id + "/imagen") : (f.data || "")}" alt="${f.titulo || f.tipo_trabajo || ""}" loading="lazy"><div class="book-card-info"><div class="book-card-titulo">${f.titulo || f.tipo_trabajo || "Sin título"}</div><div class="book-card-meta">${f.faena_numero} · ${f.cliente_nombre || "—"}</div>${f.descripcion ? `<div class="book-card-desc">${f.descripcion}</div>` : ""}<div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div></div></div>`).join("")}</div>`;
+  if (!bookCache.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>No hay fotos en el book aún.<br><small>Añade fotos del PC o de una faena</small></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="book-grid">${bookCache.map((f, i) => {
+    const src = urlFotoBook(f);
+    const titulo = esc(f.titulo || f.tipo_trabajo || "Sin título");
+    const meta = esc((f.faena_numero || "PC") + " · " + (f.cliente_nombre || "—"));
+    const desc = f.descripcion ? `<div class="book-card-desc">${esc(f.descripcion)}</div>` : "";
+    return `<div class="book-card">
+      <img src="${esc(src)}" alt="${titulo}" loading="lazy" style="cursor:zoom-in" onclick="verFotoBook(${i})">
+      <div class="book-card-info">
+        <div class="book-card-titulo">${titulo}</div>
+        <div class="book-card-meta">${meta}</div>
+        ${desc}
+        <div class="btn-row"><button class="btn btn-d btn-sm" onclick="eliminarDeBook(${f.id})">Quitar</button></div>
+      </div>
+    </div>`;
+  }).join("")}</div>`;
 }
+
+function verFotoBook(idx) {
+  const f = bookCache[idx];
+  if (!f) return;
+  verFotoGrande(urlFotoBook(f), f.titulo || f.tipo_trabajo || "");
+}
+
+function mostrarOrigenBook(origen) {
+  bookState.origen = origen;
+  document.getElementById("book-origen-pc").style.display = origen === "pc" ? "block" : "none";
+  document.getElementById("book-origen-faena").style.display = origen === "faena" ? "block" : "none";
+  document.getElementById("book-tab-pc").classList.toggle("active", origen === "pc");
+  document.getElementById("book-tab-faena").classList.toggle("active", origen === "faena");
+}
+
 function abrirModalAñadirBook() {
-  const sel = document.getElementById("book-faena-sel"); sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
-  document.getElementById("book-fotos-sel").innerHTML = ""; document.getElementById("book-form-datos").style.display = "none"; document.getElementById("book-form-desc").style.display = "none"; document.getElementById("book-btn-guardar").style.display = "none"; document.getElementById("book-btn-cancelar").style.display = "flex"; bookState.fotoSeleccionada = null; abrirModal("m-book-añadir");
+  bookState.fotoSeleccionada = null;
+  bookState.pcFiles = [];
+  mostrarOrigenBook("pc");
+  const sel = document.getElementById("book-faena-sel");
+  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
+  const selPc = document.getElementById("book-pc-faena");
+  selPc.innerHTML = '<option value="">— Sin faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
+  document.getElementById("book-fotos-sel").innerHTML = "";
+  document.getElementById("book-pc-preview").style.display = "none";
+  document.getElementById("book-pc-preview").innerHTML = "";
+  document.getElementById("book-pc-input").value = "";
+  document.getElementById("book-titulo").value = "";
+  document.getElementById("book-desc").value = "";
+  abrirModal("m-book-añadir");
 }
+
+async function previewFotosPcBook(event) {
+  const files = [...(event.target.files || [])].filter(f => f.type.startsWith("image/"));
+  bookState.pcFiles = files;
+  const el = document.getElementById("book-pc-preview");
+  if (!files.length) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "grid";
+  el.innerHTML = files.map((f, i) => `<div class="foto-sel-item selected"><img id="book-pc-thumb-${i}" alt="${esc(f.name)}"></div>`).join("");
+  files.forEach((f, i) => {
+    const url = URL.createObjectURL(f);
+    const img = document.getElementById("book-pc-thumb-" + i);
+    if (img) { img.src = url; img.onload = () => URL.revokeObjectURL(url); }
+  });
+}
+
 async function cargarFotosParaBook() {
   const faenaId = document.getElementById("book-faena-sel").value; if (!faenaId) return;
   const el = document.getElementById("book-fotos-sel"); el.innerHTML = '<div style="font-size:0.8rem;color:#aaa;padding:8px">Cargando fotos...</div>';
   const r = await api("GET", `/book/fotos-faena/${faenaId}`); if (!r.ok || !r.data.length) { el.innerHTML = '<div style="font-size:0.8rem;color:#aaa;padding:8px">No hay fotos en esta faena</div>'; return; }
   bookState.fotosDisponibles = r.data;
-  el.innerHTML = `<div style="font-size:0.78rem;color:#666;margin-bottom:8px">Toca una foto para seleccionarla:</div><div class="foto-sel-grid">${r.data.map((f, i) => `<div class="foto-sel-item" id="foto-sel-${i}" onclick="seleccionarFotoBook(${i})"><img src="${f.data}" alt="${f.nombre}" loading="lazy"><div class="check">✓</div></div>`).join("")}</div>`;
+  el.innerHTML = `<div style="font-size:0.78rem;color:#666;margin-bottom:8px">Toca una foto para seleccionarla:</div><div class="foto-sel-grid">${r.data.map((f, i) => `<div class="foto-sel-item" id="foto-sel-${i}" onclick="seleccionarFotoBook(${i})"><img src="${f.data}" alt="${esc(f.nombre)}" loading="lazy"><div class="check">✓</div></div>`).join("")}</div>`;
 }
 function seleccionarFotoBook(idx) {
-  document.querySelectorAll(".foto-sel-item").forEach(el => el.classList.remove("selected")); document.getElementById(`foto-sel-${idx}`).classList.add("selected"); bookState.fotoSeleccionada = idx;
-  document.getElementById("book-form-datos").style.display = "block"; document.getElementById("book-form-desc").style.display = "block"; document.getElementById("book-btn-guardar").style.display = "flex"; document.getElementById("book-btn-cancelar").style.display = "none";
+  document.querySelectorAll("#book-fotos-sel .foto-sel-item").forEach(el => el.classList.remove("selected"));
+  document.getElementById(`foto-sel-${idx}`).classList.add("selected");
+  bookState.fotoSeleccionada = idx;
 }
 async function guardarEnBook() {
-  const faenaId = document.getElementById("book-faena-sel").value; if (!faenaId || bookState.fotoSeleccionada === null) { toast("Selecciona una foto", true); return; }
+  const titulo = document.getElementById("book-titulo").value;
+  const descripcion = document.getElementById("book-desc").value;
+  if (bookState.origen === "pc") {
+    const files = bookState.pcFiles || [];
+    if (!files.length) { toast("Elige una o más fotos del PC", true); return; }
+    const faenaId = document.getElementById("book-pc-faena").value;
+    let ok = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      let data;
+      try {
+        const original = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        data = await comprimirImagenParaTicket(original, 1900, 0.82);
+      } catch (e) {
+        toast("No se pudo leer " + file.name, true);
+        continue;
+      }
+      const r = await apiLargo("POST", "/book", {
+        faena_id: faenaId ? parseInt(faenaId) : 0,
+        titulo: titulo || file.name.replace(/\.[^.]+$/, "").replace(/_/g, " "),
+        descripcion,
+        data
+      }, 60000);
+      if (r.ok) ok++;
+      else toast(r.error || ("Error al subir " + file.name), true);
+    }
+    if (ok) {
+      toast(ok === 1 ? "✓ Foto añadida al book" : `✓ ${ok} fotos añadidas al book`);
+      cerrarModal("m-book-añadir");
+      renderBook();
+    }
+    return;
+  }
+  const faenaId = document.getElementById("book-faena-sel").value;
+  if (!faenaId || bookState.fotoSeleccionada === null) { toast("Selecciona una foto", true); return; }
   const foto = bookState.fotosDisponibles[bookState.fotoSeleccionada];
-  const r = await api("POST", "/book", { faena_id: parseInt(faenaId), ruta_foto: foto.ruta, titulo: document.getElementById("book-titulo").value, descripcion: document.getElementById("book-desc").value });
-  if (r.ok) { toast("✓ Foto añadida al book"); cerrarModal("m-book-añadir"); document.getElementById("book-titulo").value = ""; document.getElementById("book-desc").value = ""; renderBook(); } else { toast(r.error, true); }
+  const r = await apiLargo("POST", "/book", { faena_id: parseInt(faenaId), ruta_foto: foto.ruta, titulo, descripcion }, 30000);
+  if (r.ok) { toast("✓ Foto añadida al book"); cerrarModal("m-book-añadir"); renderBook(); }
+  else toast(r.error, true);
 }
 async function eliminarDeBook(id) { if (!confirm("¿Quitar esta foto del book?")) return; const r = await api("DELETE", `/book/${id}`); if (r.ok) { toast("Foto eliminada del book"); renderBook(); } }
 
