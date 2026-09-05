@@ -1148,8 +1148,8 @@ def crear_faena():
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO faenas
-            (numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, carpeta)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, carpeta, fase)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         numero,
         cliente_id,
@@ -1158,7 +1158,8 @@ def crear_faena():
         datos.get("tipo_trabajo", ""),
         datos.get("importe", 0),
         datos.get("fecha_inicio", ""),
-        carpeta
+        carpeta,
+        datos.get("fase") or "medicion",
     ))
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -1199,17 +1200,81 @@ def eliminar_faena(id):
     conn.close()
     return jsonify({"ok": True})
 
-@app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
-def archivar_faena(id):
+FASES_ACTIVAS = ("medicion", "presupuestada", "en_proceso")
+FASES_VALIDAS = FASES_ACTIVAS + ("terminada",)
+
+
+def _importe_para_terminar(conn, faena_id, importe_actual):
+    try:
+        actual = float(importe_actual or 0)
+    except (TypeError, ValueError):
+        actual = 0
+    if actual > 0:
+        return actual
+    total = 0
+    try:
+        total = float(conn.execute(
+            "SELECT COALESCE(SUM(total),0) AS t FROM presupuestos_faena WHERE faena_id=?",
+            (faena_id,),
+        ).fetchone()["t"] or 0)
+    except Exception:
+        total = 0
+    if not total:
+        try:
+            total = float(conn.execute(
+                "SELECT COALESCE(SUM(total),0) AS t FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))='presupuesto'",
+                (faena_id,),
+            ).fetchone()["t"] or 0)
+        except Exception:
+            total = 0
+    return total
+
+
+def _terminar_faena(id):
     conn = get_connection()
     faena = conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
+    faena = fila_a_dict(faena)
+    importe = _importe_para_terminar(conn, id, faena.get("importe"))
+    try:
+        conn.execute(
+            "UPDATE faenas SET archivada=1, fase='terminada', importe=? WHERE id=?",
+            (importe, id),
+        )
+    except Exception:
+        conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
     conn.commit()
     conn.close()
-    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip"}})
+    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip", "importe": importe}})
+
+
+@app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
+def archivar_faena(id):
+    return _terminar_faena(id)
+
+
+@app.route("/api/faenas/<int:id>/fase", methods=["PUT"])
+def cambiar_fase_faena(id):
+    fase = ((request.json or {}).get("fase") or "").strip()
+    if fase not in FASES_VALIDAS:
+        return jsonify({"ok": False, "error": "Fase no válida"}), 400
+    if fase == "terminada":
+        return _terminar_faena(id)
+    conn = get_connection()
+    faena = conn.execute("SELECT id FROM faenas WHERE id=?", (id,)).fetchone()
+    if not faena:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    try:
+        conn.execute("UPDATE faenas SET fase=?, archivada=0 WHERE id=?", (fase, id))
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "error": "No se pudo guardar la fase"}), 500
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"fase": fase}})
 
 
 @app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
@@ -2959,8 +3024,27 @@ def sync_datos():
             por_faena.setdefault(fila.get("faena_id"), []).append(_payload_foto(fila))
         for faena in resultado:
             faena["fotos"] = por_faena.get(faena["id"], [])
+    terminadas = []
+    try:
+        filas_t = conn.execute("""
+            SELECT f.id, f.numero, f.tipo_trabajo, f.importe, c.nombre AS cliente_nombre
+            FROM faenas f
+            LEFT JOIN clientes c ON f.cliente_id = c.id
+            WHERE f.archivada = 1
+            ORDER BY f.id DESC
+        """).fetchall()
+        for fila in filas_a_lista(filas_t):
+            terminadas.append({
+                "id": fila.get("id"),
+                "numero": fila.get("numero") or "",
+                "cliente_nombre": fila.get("cliente_nombre") or "",
+                "tipo_trabajo": fila.get("tipo_trabajo") or "",
+                "importe": fila.get("importe") or 0,
+            })
+    except Exception:
+        terminadas = []
     conn.close()
-    return jsonify({"ok": True, "data": resultado})
+    return jsonify({"ok": True, "data": resultado, "terminadas": terminadas})
 
 @app.route("/api/sync/anotaciones", methods=["POST"])
 def sync_anotaciones():

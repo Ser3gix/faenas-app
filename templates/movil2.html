@@ -258,6 +258,37 @@ header h1 { font-family: var(--font-serif); font-size: 1.3rem; flex: 1; }
 }
 .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+.fase-tabs-mov {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  margin: 0 -4px 12px;
+  border-bottom: 2px solid var(--sawdust);
+  scrollbar-width: none;
+}
+.fase-tabs-mov::-webkit-scrollbar { display: none; }
+.fase-tab-mov {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #aaa;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+.fase-tab-mov.active { color: var(--accent); border-bottom-color: var(--accent); }
+.fase-sel-mov {
+  width: auto;
+  max-width: 42%;
+  padding: 4px 6px;
+  font-size: 0.72rem;
+  margin-left: auto;
+}
+
 /* ──────── PANEL CAROUSEL ──────── */
 #panel-carousel {
   flex: 1;
@@ -758,6 +789,12 @@ textarea { resize: vertical; min-height: 80px; }
     <div style="display:flex;justify-content:flex-start;margin-bottom:12px">
       <button class="btn btn-p btn-inline" onclick="abrirNuevaFaena()" style="white-space:nowrap;padding:11px 14px">+ Nueva</button>
     </div>
+    <div class="fase-tabs-mov" id="fase-tabs-mov">
+      <button class="fase-tab-mov" data-fase="medicion" onclick="seleccionarFaseMovil('medicion')">Medición</button>
+      <button class="fase-tab-mov" data-fase="presupuestada" onclick="seleccionarFaseMovil('presupuestada')">Presupuestada</button>
+      <button class="fase-tab-mov active" data-fase="en_proceso" onclick="seleccionarFaseMovil('en_proceso')">En proceso</button>
+      <button class="fase-tab-mov" data-fase="terminada" onclick="seleccionarFaseMovil('terminada')">Terminadas</button>
+    </div>
     <div id="lista-faenas"></div>
   </div>
 
@@ -1144,11 +1181,34 @@ function faenaIdSigueViva(id, vivos) {
 }
 
 function aplicarFaenasServidor(lista) {
-  const activas = (Array.isArray(lista) ? lista : []).filter(f => Number(f.archivada) !== 1);
+  const activas = (Array.isArray(lista) ? lista : []).filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada");
   state.faenas = activas;
   incorporarFaenasPendientes();
   purgarRegistrosDeFaenasInactivas();
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+}
+
+function aplicarTerminadasServidor(lista) {
+  if (!Array.isArray(lista)) return;
+  state.terminadas = lista.map(f => ({
+    id: f.id,
+    numero: f.numero,
+    cliente_nombre: f.cliente_nombre,
+    tipo_trabajo: f.tipo_trabajo,
+    importe: f.importe || 0
+  }));
+  localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
+}
+
+function aplicarRespuestaFaenas(d) {
+  if (!d || !d.ok) return false;
+  let ok = false;
+  if (Array.isArray(d.data)) { aplicarFaenasServidor(d.data); ok = true; }
+  if (Array.isArray(d.terminadas)) {
+    aplicarTerminadasServidor(d.terminadas);
+    state._terminadasDeSync = true;
+  }
+  return ok;
 }
 
 function purgarRegistrosDeFaenasInactivas() {
@@ -1228,6 +1288,7 @@ async function enviarFaenasPendientes() {
           direccion: f.direccion || "",
           tipo_trabajo: f.tipo_trabajo,
           importe: f.importe || 0,
+          fase: f.fase || "medicion",
           fecha_inicio: f.fecha_inicio || new Date().toISOString().slice(0, 10)
         }),
         signal: AbortSignal.timeout(8000)
@@ -1256,10 +1317,12 @@ async function enviarFaenasPendientes() {
 
 const state = {
   faenas:        [],
+  terminadas:    [],
   clientes:      [],
   materiales:    [],
   faenaActualId: null,
-  panelActual:   0
+  panelActual:   0,
+  faseVista:     "en_proceso"
 };
 
 function actualizarSelectorFaenasIA() {
@@ -2635,18 +2698,90 @@ function verFotoGrande(src) {
 // FAENAS — lista, crear, editar
 // ═══════════════════════════════════════════════════════════
 
+function faseDeFaena(f) {
+  if (!f) return "en_proceso";
+  if (Number(f.archivada) === 1 || f.fase === "terminada") return "terminada";
+  const fase = f.fase || "en_proceso";
+  if (fase === "medicion" || fase === "presupuestada" || fase === "en_proceso") return fase;
+  return "en_proceso";
+}
+
+function seleccionarFaseMovil(fase) {
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs-mov .fase-tab-mov").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
+}
+
+async function cambiarFaseMovil(event, id, fase) {
+  if (event) event.stopPropagation();
+  if (fase === "terminada") {
+    toast("Las faenas se terminan desde el PC para guardar el ZIP", true);
+    renderFaenas();
+    return;
+  }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (f && f._offline) {
+    f.fase = fase;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    toast("✓ Fase actualizada");
+    renderFaenas();
+    return;
+  }
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fase }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudo cambiar la fase", true); renderFaenas(); return; }
+    if (f) f.fase = fase;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+    toast("✓ Fase actualizada");
+    state.faseVista = fase;
+    seleccionarFaseMovil(fase);
+  } catch (e) {
+    toast("Sin conexión: no se pudo cambiar la fase", true);
+    renderFaenas();
+  }
+}
+
 function renderFaenas() {
   const cola = cargarCola();
-  const todas = [...state.faenas];
-  const lista = todas;
   const el = document.getElementById("lista-faenas");
   actualizarSelectorFaenasIA();
+  if (state.faseVista === "terminada") {
+    const lista = state.terminadas || [];
+    if (!lista.length) {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas terminadas"}</div>`;
+      return;
+    }
+    el.innerHTML = lista.map(f => {
+      const precio = parseFloat(f.importe) || 0;
+      return `<div class="faena-card">
+        <div class="fc-num"><span class="num-faena">${escHtml(f.numero || "")}</span></div>
+        <div class="fc-cliente">${escHtml(f.cliente_nombre || "—")}</div>
+        <div class="fc-tipo">${escHtml(f.tipo_trabajo || "Sin descripción")}</div>
+        <div class="fc-footer">
+          ${precio > 0 ? `<span class="fc-precio">${precio.toFixed(2)} €</span>` : `<span class="fc-precio">—</span>`}
+        </div>
+      </div>`;
+    }).join("");
+    return;
+  }
+  const todas = [...state.faenas];
+  const lista = todas.filter(f => faseDeFaena(f) === state.faseVista);
   if (!lista.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas.<br><small>Crea la primera faena</small>"}</div>`;
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas en esta fase.<br><small>Crea la primera faena</small>"}</div>`;
     return;
   }
   el.innerHTML = lista.map(f => {
     const esTemp = f._offline;
+    const id = f.id || f._tempId;
+    const fase = faseDeFaena(f);
     const presupuesto = (f.presupuesto && f.presupuesto.length)
       ? f.presupuesto
       : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
@@ -2654,10 +2789,10 @@ function renderFaenas() {
       ? f.gastos_reales
       : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
     const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
-    const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(f.id || f._tempId)).length;
-    const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(f.id || f._tempId)).length;
+    const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(id)).length;
+    const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(id)).length;
     const pend = pendAnot + pendFotos;
-    return `<div class="faena-card" onclick="abrirFaena('${f.id || f._tempId}')">
+    return `<div class="faena-card" onclick="abrirFaena('${id}')">
       <div class="fc-num">${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}</div>
       <div class="fc-cliente">${escHtml(f.cliente_nombre||"—")}</div>
       <div class="fc-tipo">${escHtml(f.tipo_trabajo||"Sin descripción")}</div>
@@ -2667,7 +2802,12 @@ function renderFaenas() {
         ${(f.anotaciones?.length||0) > 0 ? `<span class="badge b-gray">📝 ${f.anotaciones.length}</span>` : ""}
         ${gastosReales.length > 0 ? `<span class="badge b-green">💶 ${gastosReales.length}</span>` : ""}
         ${pend > 0 ? `<span class="badge b-orange">⏳ ${pend}</span>` : ""}
-        <button class="btn btn-d btn-inline" style="margin-left:auto;padding:4px 8px;font-size:0.7rem" onclick="eliminarFaenaDesdeTarjeta(event,'${f.id || f._tempId}')">🗑️</button>
+        <select class="fase-sel-mov" onclick="event.stopPropagation()" onchange="cambiarFaseMovil(event,'${id}',this.value)">
+          <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
+          <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
+          <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
+        </select>
+        <button class="btn btn-d btn-inline" style="padding:4px 8px;font-size:0.7rem" onclick="eliminarFaenaDesdeTarjeta(event,'${id}')">🗑️</button>
       </div>
     </div>`;
   }).join("");
@@ -2762,6 +2902,7 @@ async function crearFaena() {
     tipo_trabajo: tipo,
     importe: parseFloat(document.getElementById("nf-importe").value) || 0,
     fecha_inicio: new Date().toISOString().slice(0, 10),
+    fase: "medicion",
     archivada: 0, anotaciones: [], fotos: [], gastos: [], _offline: true
   };
   cola.faenas.push(faena);
@@ -3977,7 +4118,7 @@ async function sincronizar() {
       fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
       fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
     ]);
-    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarFaenasServidor(d.data); }
+    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
     if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
     if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
 
@@ -4060,7 +4201,7 @@ async function cargarDatosIniciales(silencioso) {
     if (rFaenas.ok) {
       const d = await rFaenas.json();
       if (d.ok && Array.isArray(d.data)) {
-        aplicarFaenasServidor(d.data);
+        aplicarRespuestaFaenas(d);
         faenasCargadas = true;
       }
     }
@@ -4075,13 +4216,23 @@ async function cargarDatosIniciales(silencioso) {
       if (rFaenasSimple.ok) {
         const d = await rFaenasSimple.json();
         if (d.ok && Array.isArray(d.data)) {
-          aplicarFaenasServidor(d.data);
+          aplicarRespuestaFaenas(d);
           faenasCargadas = true;
         }
       }
     } catch (e) {
       console.error("Error en fallback /faenas:", e);
     }
+  }
+
+  if (!state._terminadasDeSync) {
+    try {
+      const rT = await fetch(`${API}/faenas/archivadas`, optsTimeout(12000));
+      if (rT.ok) {
+        const dT = await rT.json();
+        if (dT.ok && Array.isArray(dT.data)) aplicarTerminadasServidor(dT.data);
+      }
+    } catch (e) {}
   }
 
   const [matResult, cliResult] = await Promise.allSettled([
@@ -4119,7 +4270,7 @@ async function cargarDatosIniciales(silencioso) {
       if (rFaenas.ok) {
         const d = await rFaenas.json();
         if (d.ok && Array.isArray(d.data)) {
-          aplicarFaenasServidor(d.data);
+          aplicarRespuestaFaenas(d);
         }
       }
     } catch (e) {}
@@ -4138,11 +4289,13 @@ function leerJSONLocal(clave, fallback) {
 
 function hidratarDesdeCache() {
   const faenas = leerJSONLocal("faenas_cache", []);
+  const terminadas = leerJSONLocal("terminadas_cache", []);
   const clientes = leerJSONLocal("clientes_cache", []);
   const materiales = leerJSONLocal("materiales_cache", []);
   if (Array.isArray(faenas) && faenas.length) {
-    state.faenas = faenas.filter(f => Number(f.archivada) !== 1);
+    state.faenas = faenas.filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada");
   }
+  if (Array.isArray(terminadas)) state.terminadas = terminadas;
   if (Array.isArray(clientes) && clientes.length) state.clientes = clientes;
   if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
   incorporarFaenasPendientes();
@@ -4192,7 +4345,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=19", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=20", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

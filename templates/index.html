@@ -133,6 +133,36 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .b-orange { background: #fdecd0; color: #8b5000; }
 .b-gray   { background: #e8e8e8; color: #555; }
 
+.fase-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.fase-tab {
+  padding: 8px 12px;
+  border: 1px solid var(--sawdust);
+  background: white;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.fase-tab.active {
+  background: var(--accent);
+  color: var(--wood-light);
+  border-color: var(--accent);
+}
+.fase-sel {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+
 /* NUM FAENA */
 .num-faena {
   font-size: 0.75rem;
@@ -530,10 +560,15 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div class="sec-header">
     <h2>Faenas</h2>
     <div class="btn-row">
-      <button class="btn btn-s btn-sm" id="btn-archivadas" onclick="toggleArchivadas()">Ver archivadas</button>
       <button class="btn btn-s btn-sm" onclick="sincronizarArchivosPC()">↻ Archivos del PC</button>
       <button class="btn btn-p btn-sm" onclick="abrirModal('m-faena')">+ Nueva faena</button>
     </div>
+  </div>
+  <div class="fase-tabs" id="fase-tabs">
+    <button class="fase-tab" data-fase="medicion" onclick="seleccionarFase('medicion')">Medición</button>
+    <button class="fase-tab" data-fase="presupuestada" onclick="seleccionarFase('presupuestada')">Presupuestada</button>
+    <button class="fase-tab active" data-fase="en_proceso" onclick="seleccionarFase('en_proceso')">En proceso</button>
+    <button class="fase-tab" data-fase="terminada" onclick="seleccionarFase('terminada')">Terminadas</button>
   </div>
   <div class="search-bar">
     <input id="q-faena" placeholder="Buscar por cliente, número, tipo..." oninput="renderFaenas()">
@@ -1340,8 +1375,8 @@ function esc(value) {
 
 // ===== ESTADO =====
 let state = {
-  faenas: [], clientes: [], intermediarios: [], materiales: [],
-  verArchivadas: false,
+  faenas: [], terminadas: [], clientes: [], intermediarios: [], materiales: [],
+  faseVista: "en_proceso",
   detalleId: null,
   detalleActual: { gastos: [], presupuesto: [] }
 };
@@ -1477,8 +1512,27 @@ async function sincronizarArchivosPC() {
 }
 
 async function cargarFaenas() {
-  const r = await api("GET", state.verArchivadas ? "/faenas/archivadas" : "/faenas");
-  if (r.ok) state.faenas = r.data;
+  const [rAct, rTer] = await Promise.all([
+    api("GET", "/faenas"),
+    api("GET", "/faenas/archivadas")
+  ]);
+  if (rAct.ok) state.faenas = rAct.data || [];
+  if (rTer.ok) state.terminadas = rTer.data || [];
+}
+
+function faseDeFaena(f) {
+  if (Number(f.archivada) === 1 || f.fase === "terminada") return "terminada";
+  const fase = f.fase || "en_proceso";
+  if (fase === "medicion" || fase === "presupuestada" || fase === "en_proceso") return fase;
+  return "en_proceso";
+}
+
+function seleccionarFase(fase) {
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
 }
 async function cargarClientes() {
   const r = await api("GET", "/clientes");
@@ -1545,7 +1599,9 @@ function poblarSelectsPrompts() {
 // ===== RENDER FAENAS =====
 function renderFaenas() {
   const q = document.getElementById("q-faena").value.toLowerCase();
-  const lista = state.faenas.filter(f => {
+  const origen = state.faseVista === "terminada" ? (state.terminadas || []) : (state.faenas || []);
+  const lista = origen.filter(f => {
+    if (state.faseVista !== "terminada" && faseDeFaena(f) !== state.faseVista) return false;
     if (!q) return true;
     return (f.numero || "").toLowerCase().includes(q) ||
            (f.cliente_nombre || "").toLowerCase().includes(q) ||
@@ -1553,8 +1609,11 @@ function renderFaenas() {
            (f.direccion || "").toLowerCase().includes(q);
   });
   const el = document.getElementById("lista-faenas");
+  const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
   el.innerHTML = lista.length ? lista.map(f => {
     const esDirecto = f.intermediario_id === 0;
+    const fase = faseDeFaena(f);
+    const precio = parseFloat(f.importe) || 0;
     return `
       <div class="card">
         <div class="card-header">
@@ -1563,8 +1622,8 @@ function renderFaenas() {
             <div class="card-title">${f.tipo_trabajo || "Sin descripción"}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-            <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre}</span>
-            ${f.importe > 0 ? `<span style="font-family:'Fraunces',serif;color:var(--green);font-size:0.95rem">${parseFloat(f.importe).toFixed(2)} €</span>` : ""}
+            <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre || ""}</span>
+            ${precio > 0 ? `<span style="font-family:'Fraunces',serif;color:var(--green);font-size:0.95rem">${precio.toFixed(2)} €</span>` : ""}
           </div>
         </div>
         <div class="card-info">
@@ -1573,14 +1632,24 @@ function renderFaenas() {
           ${f.fecha_inicio ? ` · <span style="color:#aaa">${f.fecha_inicio}</span>` : ""}
         </div>
         <div class="card-actions">
+          ${fase !== "terminada" ? `
+          <select class="fase-sel" onchange="cambiarFase(${f.id}, this.value)">
+            <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
+            <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
+            <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
+            <option value="terminada">Terminada</option>
+          </select>
           <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Ver detalle</button>
           <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">✏️ Editar</button>
           <button class="btn btn-s btn-sm" onclick="abrirGasto(${f.id})">+ Gasto</button>
           <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">📂 Documentos</button>
-          ${!state.verArchivadas ? `<button class="btn btn-d btn-sm" onclick="archivar(${f.id})">Archivar</button>` : ""}
+          <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
+          ` : `
+          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Ver detalle</button>
+          `}
         </div>
       </div>`;
-  }).join("") : `<div class="empty"><div class="empty-icon">🔨</div>${state.verArchivadas ? "No hay faenas archivadas" : "No hay faenas activas"}</div>`;
+  }).join("") : `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
 }
 
 // ===== RENDER CLIENTES =====
@@ -1740,7 +1809,7 @@ async function eliminarMaterialDesdeModal() {
 
 // ===== DETALLE FAENA =====
 async function verDetalle(id) {
-  const f = state.faenas.find(x => x.id === id);
+  let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
   if (!f) return;
   const [rAnot, rConceptos, rDocs, rFotos] = await Promise.all([
     api("GET", `/faenas/${id}/anotaciones`),
@@ -1992,8 +2061,11 @@ async function crearFaena() {
   if (r.ok) { toast(`✓ Faena ${r.data.numero} creada`); cerrarModal("m-faena"); document.getElementById("f-dir").value = ""; document.getElementById("f-tipo").value = ""; document.getElementById("f-importe").value = ""; await cargarFaenas(); renderFaenas(); poblarSelects(); }
   else toast(r.error, true);
 }
-async function archivar(id) {
-  if (!confirm("¿Archivar esta faena? Se queda en la base y se descarga un ZIP al PC.")) return;
+async function terminarFaena(id) {
+  if (!confirm("¿Terminar esta faena? Se guarda en el PC y se descarga un ZIP.")) {
+    renderFaenas();
+    return;
+  }
   const r = await api("POST", `/faenas/${id}/archivar`);
   if (!r.ok) { toast(r.error, true); return; }
   const enlace = document.createElement("a");
@@ -2002,17 +2074,33 @@ async function archivar(id) {
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
-  toast("Faena archivada. Guarda el ZIP en el PC.");
+  toast("Faena terminada. Guarda el ZIP en el PC.");
   if (String(state.detalleId) === String(id)) {
     cerrarModal("m-detalle");
     state.detalleId = null;
   }
-  await cargarFaenas(); renderFaenas();
+  await cargarFaenas();
+  state.faseVista = "terminada";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "terminada");
+  });
+  renderFaenas();
 }
-async function toggleArchivadas() {
-  state.verArchivadas = !state.verArchivadas;
-  document.getElementById("btn-archivadas").textContent = state.verArchivadas ? "Ver activas" : "Ver archivadas";
-  await cargarFaenas(); renderFaenas();
+
+async function cambiarFase(id, fase) {
+  if (fase === "terminada") {
+    await terminarFaena(id);
+    return;
+  }
+  const r = await api("PUT", `/faenas/${id}/fase`, { fase });
+  if (!r.ok) { toast(r.error || "No se pudo cambiar la fase", true); await cargarFaenas(); renderFaenas(); return; }
+  toast("✓ Fase actualizada");
+  await cargarFaenas();
+  state.faseVista = fase;
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === fase);
+  });
+  renderFaenas();
 }
 async function abrirCursor(id, carpeta) {
   const r = await api("POST", "/cursor/abrir", { carpeta });

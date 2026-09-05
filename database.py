@@ -299,6 +299,7 @@ def _crear_esquema_sqlite(cursor):
             importe REAL DEFAULT 0,
             fecha_inicio TEXT DEFAULT '',
             archivada INTEGER DEFAULT 0,
+            fase TEXT DEFAULT 'en_proceso',
             carpeta TEXT DEFAULT '',
             FOREIGN KEY (cliente_id) REFERENCES clientes(id),
             FOREIGN KEY (intermediario_id) REFERENCES intermediarios(id)
@@ -386,6 +387,8 @@ def _crear_esquema_sqlite(cursor):
         cursor.execute("ALTER TABLE fotos_faena ADD COLUMN data_base64 TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+
+    _asegurar_columna_fase(cursor, mysql=False)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS book_fotos (
@@ -494,6 +497,7 @@ def _crear_esquema_mysql(cursor):
             importe DOUBLE NOT NULL DEFAULT 0,
             fecha_inicio VARCHAR(32) NOT NULL DEFAULT '',
             archivada TINYINT(1) NOT NULL DEFAULT 0,
+            fase VARCHAR(32) NOT NULL DEFAULT 'en_proceso',
             carpeta VARCHAR(255) NOT NULL DEFAULT '',
             CONSTRAINT fk_faenas_clientes
                 FOREIGN KEY (cliente_id) REFERENCES clientes(id),
@@ -653,6 +657,28 @@ def _crear_esquema_mysql(cursor):
 
     try:
         cursor.execute("ALTER TABLE fotos_faena ADD COLUMN data_base64 LONGTEXT")
+    except Exception:
+        pass
+
+    _asegurar_columna_fase(cursor, mysql=True)
+
+
+def _asegurar_columna_fase(cursor, mysql=False):
+    """Añade fase sin romper datos ya guardados."""
+    try:
+        if mysql:
+            cursor.execute("ALTER TABLE faenas ADD COLUMN fase VARCHAR(32) NOT NULL DEFAULT 'en_proceso'")
+        else:
+            cursor.execute("ALTER TABLE faenas ADD COLUMN fase TEXT DEFAULT 'en_proceso'")
+    except Exception:
+        pass
+    try:
+        cursor.execute(
+            "UPDATE faenas SET fase='terminada' WHERE COALESCE(archivada,0)=1 AND (fase IS NULL OR fase='')"
+        )
+        cursor.execute(
+            "UPDATE faenas SET fase='en_proceso' WHERE COALESCE(archivada,0)=0 AND (fase IS NULL OR fase='')"
+        )
     except Exception:
         pass
 
