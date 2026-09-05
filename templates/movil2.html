@@ -1142,7 +1142,8 @@ function cargarCola() {
     faenasEditar:           JSON.parse(localStorage.getItem("cola_faenasEditar")|| "[]"),
     definicionesPendientes: JSON.parse(localStorage.getItem("cola_definicionesPendientes") || "[]"),
     bookEliminar:           JSON.parse(localStorage.getItem("cola_bookEliminar")|| "[]"),
-    bookPendiente:          JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]")
+    bookPendiente:          JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]"),
+    faenasEliminar:         JSON.parse(localStorage.getItem("cola_faenasEliminar")|| "[]")
   };
 }
 
@@ -1160,15 +1161,41 @@ function guardarCola(c) {
   localStorage.setItem("cola_definicionesPendientes",  JSON.stringify(c.definicionesPendientes || []));
   localStorage.setItem("cola_bookEliminar",            JSON.stringify(c.bookEliminar || []));
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
+  const eliminar = c.faenasEliminar !== undefined
+    ? (c.faenasEliminar || [])
+    : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
+  localStorage.setItem("cola_faenasEliminar", JSON.stringify(eliminar));
+}
+
+function esIdFaenaTemporal(id) {
+  const s = String(id || "");
+  return !s || s.startsWith("temp") || s.startsWith("TMP") || s.startsWith("TEMP");
+}
+
+function idsFaenasPendientesEliminar() {
+  const cola = cargarCola();
+  return new Set((cola.faenasEliminar || []).map(x => String(x)));
+}
+
+function filtrarFaenasEliminadas(lista) {
+  const ids = idsFaenasPendientesEliminar();
+  if (!ids.size) return Array.isArray(lista) ? lista : [];
+  return (lista || []).filter(f =>
+    !ids.has(String(f.id)) && !ids.has(String(f._tempId || ""))
+  );
 }
 
 function idsFaenasVivas() {
   const ids = new Set();
   const cola = cargarCola();
+  const pendientes = idsFaenasPendientesEliminar();
   for (const f of [...(state.faenas || []), ...(cola.faenas || [])]) {
     if (Number(f.archivada) === 1) continue;
-    if (f.id != null && f.id !== "") ids.add(String(f.id));
-    if (f._tempId) ids.add(String(f._tempId));
+    if (f.id != null && f.id !== "") {
+      const sid = String(f.id);
+      if (!pendientes.has(sid)) ids.add(sid);
+    }
+    if (f._tempId && !pendientes.has(String(f._tempId))) ids.add(String(f._tempId));
   }
   return ids;
 }
@@ -1182,7 +1209,7 @@ function faenaIdSigueViva(id, vivos) {
 
 function aplicarFaenasServidor(lista) {
   const activas = (Array.isArray(lista) ? lista : []).filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada");
-  state.faenas = activas;
+  state.faenas = filtrarFaenasEliminadas(activas);
   incorporarFaenasPendientes();
   purgarRegistrosDeFaenasInactivas();
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
@@ -1190,7 +1217,7 @@ function aplicarFaenasServidor(lista) {
 
 function aplicarTerminadasServidor(lista) {
   if (!Array.isArray(lista)) return;
-  state.terminadas = lista.map(f => ({
+  state.terminadas = filtrarFaenasEliminadas(lista).map(f => ({
     id: f.id,
     numero: f.numero,
     cliente_nombre: f.cliente_nombre,
@@ -2822,13 +2849,59 @@ function eliminarFaenaDesdeTarjeta(event, id) {
   eliminarFaenaLocal(id);
 }
 
-function eliminarFaenaLocal(id) {
-  if (!confirm("¿Eliminar esta faena del móvil? También se borrarán sus datos locales.")) return;
-  state.faenas = state.faenas.filter(f => String(f.id) !== String(id) && String(f._tempId || "") !== String(id));
+function quitarFaenaDeListasLocales(id) {
+  const sid = String(id);
+  const misma = f => String(f.id) !== sid && String(f._tempId || "") !== sid;
+  state.faenas = (state.faenas || []).filter(misma);
+  state.terminadas = (state.terminadas || []).filter(misma);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
+  const cola = cargarCola();
+  cola.faenas = (cola.faenas || []).filter(misma);
+  cola.faenasEditar = (cola.faenasEditar || []).filter(x => String(x.id) !== sid && String(x._tempId || "") !== sid);
+  if (!esIdFaenaTemporal(sid)) {
+    if (!(cola.faenasEliminar || []).some(x => String(x) === sid)) {
+      cola.faenasEliminar = [...(cola.faenasEliminar || []), sid];
+    }
+  }
+  guardarCola(cola);
+  purgarRegistrosDeFaenasInactivas();
+}
+
+async function enviarFaenasEliminadas() {
+  const cola = cargarCola();
+  const pendientes = [...(cola.faenasEliminar || [])];
+  if (!pendientes.length) return 0;
+  const okIds = [];
+  for (const id of pendientes) {
+    if (esIdFaenaTemporal(id)) {
+      okIds.push(id);
+      continue;
+    }
+    try {
+      const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
+        method: "DELETE",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (r.ok || r.status === 404) okIds.push(id);
+    } catch (e) {}
+  }
+  if (okIds.length) {
+    const cola2 = cargarCola();
+    const done = new Set(okIds.map(String));
+    cola2.faenasEliminar = (cola2.faenasEliminar || []).filter(x => !done.has(String(x)));
+    guardarCola(cola2);
+  }
+  return okIds.length;
+}
+
+async function eliminarFaenaLocal(id) {
+  if (!confirm("¿Eliminar esta faena? Se borrará también del registro (servidor/PC) y no se podrá recuperar.")) return;
+  quitarFaenaDeListasLocales(id);
   if (String(state.faenaActualId) === String(id)) cerrarFaena();
   renderFaenas();
-  toast("✓ Faena eliminada del móvil");
+  const enviadas = await enviarFaenasEliminadas();
+  toast(enviadas ? "✓ Faena eliminada del registro" : "✓ Faena quitada del móvil — se borrará del registro al conectar");
 }
 
 function abrirNuevaFaena() {
@@ -3985,6 +4058,7 @@ async function sincronizar() {
 
   const cola = cargarCola();
   try {
+    await enviarFaenasEliminadas();
     let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
@@ -4135,6 +4209,7 @@ async function sincronizar() {
     await sincronizarBook(API);
 
     // Limpiar cola (las fotos que no subieron se quedan en el móvil)
+    const colaFinal = cargarCola();
     guardarCola({
       clientes:[],
       faenas:[],
@@ -4147,7 +4222,8 @@ async function sincronizar() {
       faenasEditar:[],
       definicionesPendientes:[],
       bookEliminar:[],
-      bookPendiente:[]
+      bookPendiente:[],
+      faenasEliminar: colaFinal.faenasEliminar || []
     });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
@@ -4195,6 +4271,8 @@ async function cargarDatosIniciales(silencioso) {
     return {};
   };
   let faenasCargadas = false;
+
+  await enviarFaenasEliminadas();
 
   try {
     const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
@@ -4293,9 +4371,9 @@ function hidratarDesdeCache() {
   const clientes = leerJSONLocal("clientes_cache", []);
   const materiales = leerJSONLocal("materiales_cache", []);
   if (Array.isArray(faenas) && faenas.length) {
-    state.faenas = faenas.filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada");
+    state.faenas = filtrarFaenasEliminadas(faenas.filter(f => Number(f.archivada) !== 1 && f.fase !== "terminada"));
   }
-  if (Array.isArray(terminadas)) state.terminadas = terminadas;
+  if (Array.isArray(terminadas)) state.terminadas = filtrarFaenasEliminadas(terminadas);
   if (Array.isArray(clientes) && clientes.length) state.clientes = clientes;
   if (Array.isArray(materiales) && materiales.length) state.materiales = materiales;
   incorporarFaenasPendientes();
@@ -4345,7 +4423,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=20", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=21", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

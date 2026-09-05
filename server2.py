@@ -1192,6 +1192,14 @@ def eliminar_faena(id):
     conn.execute("DELETE FROM gastos_faena WHERE faena_id=?", (id,))
     conn.execute("DELETE FROM fotos_faena WHERE faena_id=?", (id,))
     try:
+        conn.execute("DELETE FROM presupuestos_faena WHERE faena_id=?", (id,))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM book_fotos WHERE faena_id=?", (id,))
+    except Exception:
+        pass
+    try:
         conn.execute("DELETE FROM archivos_faena WHERE faena_id=?", (id,))
     except Exception:
         pass
