@@ -6,26 +6,29 @@
 <title>Gestión de Faenas</title>
 <script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap');
-
 :root {
-  --wood: #c8a96e;
-  --wood-dark: #8b6914;
-  --wood-light: #f0deb4;
-  --ink: #1a1208;
-  --paper: #faf6ee;
-  --paper-dark: #ede8dc;
-  --sawdust: #e8d9b8;
-  --accent: #5c3d0e;
-  --green: #3a6b3a;
-  --red: #8b2020;
-  --blue: #1e3a5f;
+  --paper: #F4EFE6;
+  --paper-2: #E7E0D4;
+  --paper-dark: #E7E0D4;
+  --sawdust: #E7E0D4;
+  --ink: #1C1917;
+  --muted: #78716C;
+  --line: #D6CFC3;
+  --accent: #8F4F2A;
+  --green: #3F6B4A;
+  --red: #9B2C2C;
+  --blue: #5b6d8a;
+  --wood: #D6CFC3;
+  --wood-dark: #8F4F2A;
+  --wood-light: #F4EFE6;
+  --radius: 8px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-sans);
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
@@ -34,54 +37,48 @@ body {
 /* HEADER */
 header {
   background: var(--accent);
-  color: var(--wood-light);
-  padding: 14px 24px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 3px solid var(--wood);
+  color: #fff;
+  padding: 12px 24px 0;
   position: sticky;
   top: 0;
   z-index: 50;
 }
-header h1 { font-family: 'Fraunces', serif; font-size: 1.3rem; }
-header span { font-size: 1.5rem; }
-.header-sub { font-size: 0.7rem; opacity: 0.7; margin-top: 2px; }
+.header-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+header h1 { font-size: 1.15rem; font-weight: 700; }
+header span { font-size: 1.4rem; }
+.header-sub { font-size: 0.72rem; opacity: 0.8; margin-top: 2px; }
 
 /* NAV */
 nav {
-  background: var(--paper-dark);
-  border-bottom: 2px solid var(--sawdust);
   display: flex;
   overflow-x: auto;
-  position: sticky;
-  top: 57px;
-  z-index: 40;
+  margin-top: 8px;
+  gap: 2px;
 }
 nav button {
-  padding: 11px 18px;
+  padding: 8px 12px 10px;
   border: none;
   background: none;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--accent);
+  font-family: inherit;
+  font-size: 14px;
+  color: rgba(255,255,255,.82);
   cursor: pointer;
-  border-bottom: 3px solid transparent;
+  border-bottom: 2px solid transparent;
   white-space: nowrap;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition: all 0.15s;
 }
-nav button:hover { background: var(--sawdust); }
+nav button:hover { color: #fff; }
 nav button.active {
-  border-bottom-color: var(--wood-dark);
-  color: var(--wood-dark);
-  font-weight: 500;
-  background: var(--paper);
+  color: #fff;
+  border-bottom-color: #fff;
+  font-weight: 600;
 }
 
 /* MAIN */
-main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+main { padding: 22px 20px 80px; max-width: 1280px; margin: 0 auto; }
 .section { display: none; }
 .section.active { display: block; }
 
@@ -90,9 +87,9 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
-.sec-header h2 { font-family: 'Fraunces', serif; font-size: 1.3rem; color: var(--accent); }
+.sec-header h2 { font-size: 1.2rem; font-weight: 700; color: var(--ink); }
 
 /* SEARCH BAR */
 .search-bar { display: flex; gap: 8px; margin-bottom: 18px; }
@@ -102,16 +99,13 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 /* CARDS */
 .card {
   background: white;
-  border: 1px solid var(--sawdust);
-  border-radius: 6px;
-  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
   margin-bottom: 12px;
-  box-shadow: 2px 2px 0 var(--sawdust);
-  transition: box-shadow 0.15s;
 }
-.card:hover { box-shadow: 3px 3px 0 var(--wood); }
 .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.card-title { font-family: 'Fraunces', serif; font-size: 1rem; color: var(--accent); }
+.card-title { font-size: 1rem; color: var(--accent); font-weight: 600; }
 .card-id { font-size: 0.7rem; color: #999; margin-bottom: 4px; }
 .card-info { font-size: 0.8rem; color: #555; line-height: 1.7; }
 .card-info strong { color: var(--ink); }
@@ -119,12 +113,10 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 
 /* BADGES */
 .badge {
-  font-size: 0.67rem;
-  padding: 3px 8px;
-  border-radius: 3px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .b-direct { background: var(--wood-light); color: var(--wood-dark); }
@@ -135,27 +127,40 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 
 .fase-tabs {
   display: flex;
-  gap: 4px;
+  gap: 0;
   flex-wrap: wrap;
   margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 .fase-tab {
-  padding: 8px 12px;
-  border: 1px solid var(--sawdust);
-  background: white;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent);
+  padding: 8px 12px 9px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--muted);
   cursor: pointer;
-  border-radius: 4px;
+  margin-bottom: -1px;
 }
-.fase-tab.active {
-  background: var(--accent);
-  color: var(--wood-light);
-  border-color: var(--accent);
+.fase-tab:hover { color: var(--ink); }
+.fase-tab.active { font-weight: 600; color: var(--ink); }
+.fase-tab.active[data-fase="medicion"] { border-bottom-color: #5b6d8a; color: #5b6d8a; }
+.fase-tab.active[data-fase="presupuestada"] { border-bottom-color: #b45309; color: #b45309; }
+.fase-tab.active[data-fase="en_proceso"] { border-bottom-color: var(--accent); color: var(--accent); }
+.fase-tab.active[data-fase="terminada"] { border-bottom-color: var(--green); color: var(--green); }
+.fase-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--muted);
 }
+.fase-chip.medicion { background: #dce4f0; color: #3d4f6a; }
+.fase-chip.presupuestada { background: #f3e6c4; color: #7a5a12; }
+.fase-chip.en_proceso { background: #f0dcc8; color: var(--accent); }
+.fase-chip.terminada { background: #d4e8d8; color: var(--green); }
 .fase-sel {
   width: auto;
   min-width: 140px;
@@ -167,11 +172,10 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .num-faena {
   font-size: 0.75rem;
   background: var(--ink);
-  color: var(--wood-light);
-  padding: 3px 8px;
-  border-radius: 3px;
-  letter-spacing: 0.1em;
-  font-family: 'DM Mono', monospace;
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* FORMS */
@@ -183,8 +187,8 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
   margin-bottom: 20px;
 }
 .form-title {
-  font-family: 'Fraunces', serif;
   font-size: 0.95rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 14px;
   padding-bottom: 8px;
@@ -195,34 +199,30 @@ main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .form-grid.g1 { grid-template-columns: 1fr; }
 @media(max-width:700px) { .form-grid, .form-grid.g3 { grid-template-columns: 1fr; } }
 
-label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #666; margin-bottom: 4px; }
+label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
 input, select, textarea {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.82rem;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 14px;
   background: white;
   color: var(--ink);
-  transition: border-color 0.15s;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--wood-dark); }
 textarea { resize: vertical; min-height: 70px; }
 
 /* BUTTONS */
 .btn {
-  padding: 8px 16px;
+  padding: 8px 14px;
   border: none;
-  border-radius: 4px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.77rem;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 13px;
   cursor: pointer;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  transition: all 0.15s;
 }
-.btn-p { background: var(--accent); color: var(--wood-light); }
+.btn-p { background: var(--accent); color: #fff; }
 .btn-p:hover { background: var(--wood-dark); }
 .btn-s { background: var(--sawdust); color: var(--accent); border: 1px solid var(--wood); }
 .btn-s:hover { background: var(--wood-light); }
@@ -255,8 +255,8 @@ textarea { resize: vertical; min-height: 70px; }
   box-shadow: 0 10px 40px rgba(0,0,0,0.3);
 }
 .modal-title {
-  font-family: 'Fraunces', serif;
   font-size: 1.05rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 16px;
   padding-bottom: 8px;
@@ -272,7 +272,7 @@ textarea { resize: vertical; min-height: 70px; }
   font-size: 0.8rem;
 }
 .det-row:last-child { border-bottom: none; }
-.det-k { color: #888; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; }
+.det-k { color: var(--muted); font-size: 0.72rem; }
 .det-v { color: var(--ink); font-weight: 500; max-width: 60%; text-align: right; }
 
 /* PROMPT BOX */
@@ -293,15 +293,37 @@ textarea { resize: vertical; min-height: 70px; }
 /* TABLA MATERIALES */
 .mat-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .mat-table th {
-  background: var(--accent);
-  color: var(--wood-light);
+  background: var(--paper-2);
+  color: var(--muted);
   padding: 8px 12px;
   text-align: left;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
 }
-.mat-table td { padding: 8px 12px; font-size: 0.8rem; border-bottom: 1px solid var(--sawdust); }
+.mat-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.mat-table tr:nth-child(even) td { background: #fff; }
+
+.data-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.data-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.data-table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #faf8f3; }
+.data-table .acciones { white-space: nowrap; }
+.data-table .acciones .btn, .data-table .acciones .fase-sel { margin: 2px 4px 2px 0; }
+.table-wrap { overflow-x: auto; }
 .mat-table tr:nth-child(even) td { background: var(--paper-dark); }
 .mat-table .precio-min { color: var(--green); font-weight: 500; }
 
@@ -315,7 +337,7 @@ textarea { resize: vertical; min-height: 70px; }
   bottom: 24px;
   right: 24px;
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 12px 20px;
   border-radius: 6px;
   font-size: 0.82rem;
@@ -330,18 +352,18 @@ textarea { resize: vertical; min-height: 70px; }
 
 /* GASTOS TABLE */
 .gastos-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.8rem; }
-.gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.68rem; text-transform: uppercase; color: #666; border-bottom: 2px solid var(--sawdust); }
+.gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.72rem; color: var(--muted); border-bottom: 2px solid var(--sawdust); }
 .gastos-table td { padding: 7px 10px; border-bottom: 1px solid var(--sawdust); }
-.gastos-total { text-align: right; font-family: 'Fraunces', serif; color: var(--accent); font-size: 1rem; margin-top: 8px; }
+.gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 /* POLYBOARD */
 .pb-mat-header {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   padding: 8px 14px;
-  font-family: 'Fraunces', serif;
   font-size: 0.95rem;
+  font-weight: 600;
   border-radius: 4px 4px 0 0;
   margin-top: 16px;
 }
@@ -385,13 +407,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 }
 .book-card {
   background: white;
-  border: 1px solid var(--sawdust);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 2px 2px 0 var(--sawdust);
-  transition: box-shadow 0.15s;
 }
-.book-card:hover { box-shadow: 3px 3px 0 var(--wood); }
+.book-card:hover { border-color: var(--accent); }
 .book-card img {
   width: 100%;
   aspect-ratio: 4/3;
@@ -402,8 +422,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   padding: 10px 12px;
 }
 .book-card-titulo {
-  font-family: 'Fraunces', serif;
   font-size: 0.9rem;
+  font-weight: 600;
   color: var(--accent);
   margin-bottom: 3px;
 }
@@ -468,7 +488,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 }
 .chat-msg.usuario .chat-burbuja {
   background: var(--accent);
-  color: var(--wood-light);
+  color: #fff;
   border-bottom-right-radius: 2px;
 }
 .chat-msg.asistente .chat-burbuja {
@@ -527,31 +547,32 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 </head>
 <body>
 
-<header>
-  <span>🪵</span>
-  <div>
-    <h1>Gestión de Faenas</h1>
-    <div class="header-sub">Carpintería · Gestión local</div>
+<<header>
+  <div class="header-bar">
+    <span>🪵</span>
+    <div>
+      <h1>Gestión de Faenas</h1>
+      <div class="header-sub">Carpintería · Gestión local</div>
+    </div>
+    <div id="ip-banner" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer" onclick="copiarIP()" title="Pulsa para copiar">
+      📱 IP móvil: <span id="ip-valor" style="font-weight:500">cargando...</span>
+    </div>
+    <div id="r2-banner" style="margin-left:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer" onclick="abrirConfigR2()" title="Cloudflare R2">
+      ☁ <span id="r2-valor">Cloudflare...</span>
+    </div>
   </div>
-  <div id="ip-banner" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:6px 12px;font-size:0.72rem;color:var(--wood-light);cursor:pointer" onclick="copiarIP()" title="Pulsa para copiar">
-    📱 IP móvil: <span id="ip-valor" style="font-weight:500">cargando...</span>
-  </div>
-  <div id="r2-banner" style="margin-left:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:6px 12px;font-size:0.72rem;color:var(--wood-light);cursor:pointer" onclick="abrirConfigR2()" title="Cloudflare R2">
-    ☁ <span id="r2-valor">Cloudflare...</span>
-  </div>
+  <nav>
+    <button class="active" onclick="nav('faenas')">Faenas</button>
+    <button onclick="nav('clientes')">Clientes</button>
+    <button onclick="nav('intermediarios')">Intermediarios</button>
+    <button onclick="nav('materiales')">Materiales</button>
+    <button onclick="nav('prompts')">Prompts IA</button>
+    <button onclick="nav('polyboard')">PolyBoard</button>
+    <button onclick="nav('presupuesto')">Presupuesto</button>
+    <button onclick="nav('book')">Book</button>
+    <button onclick="nav('asistente')">Jimmi</button>
+  </nav>
 </header>
-
-<nav>
-  <button class="active" onclick="nav('faenas')">🔨 Faenas</button>
-  <button onclick="nav('clientes')">👤 Clientes</button>
-  <button onclick="nav('intermediarios')">🤝 Intermediarios</button>
-  <button onclick="nav('materiales')">📦 Materiales</button>
-  <button onclick="nav('prompts')">💬 Prompts IA</button>
-  <button onclick="nav('polyboard')">🪵 PolyBoard</button>
-  <button onclick="nav('presupuesto')">📋 Presupuesto</button>
-  <button onclick="nav('book')">📸 Book</button>
-  <button onclick="nav('asistente')">Jimmi</button>
-</nav>
 
 <main>
 
@@ -846,7 +867,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </thead>
       <tbody id="tbody-materiales"></tbody>
     </table>
-    <div style="text-align:right;font-family:'Fraunces',serif;color:var(--accent);font-size:1rem;margin-top:8px">
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
       Subtotal materiales: <strong id="subtotal-mat">0.00 €</strong>
     </div>
   </div>
@@ -870,7 +891,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </thead>
       <tbody id="tbody-mo"></tbody>
     </table>
-    <div style="text-align:right;font-family:'Fraunces',serif;color:var(--accent);font-size:1rem;margin-top:8px">
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
       Subtotal mano de obra: <strong id="subtotal-mo">0.00 €</strong>
     </div>
   </div>
@@ -878,8 +899,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <!-- TOTAL Y ACCIONES -->
   <div class="form-box" style="border:2px solid var(--wood)">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-family:'Fraunces',serif;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
-      <span style="font-family:'Fraunces',serif;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
+      <span style="font-weight:600;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
+      <span style="font-weight:600;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
     </div>
     <div class="btn-row" style="margin-top:14px">
       <button class="btn btn-p" onclick="guardarPresupuesto()">💾 Guardar TXT en carpeta</button>
@@ -1636,46 +1657,45 @@ function renderFaenas() {
   });
   const el = document.getElementById("lista-faenas");
   const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
-  el.innerHTML = lista.length ? lista.map(f => {
-    const esDirecto = f.intermediario_id === 0;
-    const fase = faseDeFaena(f);
-    const precio = parseFloat(f.importe) || 0;
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-id"><span class="num-faena">${f.numero}</span></div>
-            <div class="card-title">${f.tipo_trabajo || "Sin descripción"}</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-            <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre || ""}</span>
-            ${precio > 0 ? `<span style="font-family:'Fraunces',serif;color:var(--green);font-size:0.95rem">${precio.toFixed(2)} €</span>` : ""}
-          </div>
-        </div>
-        <div class="card-info">
-          <strong>${f.cliente_nombre}</strong>
-          ${f.direccion ? ` · ${f.direccion}` : ""}
-          ${f.fecha_inicio ? ` · <span style="color:#aaa">${f.fecha_inicio}</span>` : ""}
-        </div>
-        <div class="card-actions">
-          ${fase !== "terminada" ? `
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
+    return;
+  }
+  const etiquetaFase = { medicion: "Medición", presupuestada: "Presupuestada", en_proceso: "En proceso", terminada: "Terminada" };
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Número</th><th>Cliente</th><th>Tipo</th><th>Dirección</th><th>Importe</th><th>Fase</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${lista.map(f => {
+      const esDirecto = f.intermediario_id === 0;
+      const fase = faseDeFaena(f);
+      const precio = parseFloat(f.importe) || 0;
+      const acciones = fase !== "terminada" ? `
           <select class="fase-sel" onchange="cambiarFase(${f.id}, this.value)">
             <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
             <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
             <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
             <option value="terminada">Terminada</option>
           </select>
-          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Ver detalle</button>
-          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">✏️ Editar</button>
-          <button class="btn btn-s btn-sm" onclick="abrirGasto(${f.id})">+ Gasto</button>
-          <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">📂 Documentos</button>
+          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
+          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
+          <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
           <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-          ` : `
-          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Ver detalle</button>
-          `}
-        </div>
-      </div>`;
-  }).join("") : `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
+        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
+      return `<tr>
+        <td><span class="num-faena">${f.numero}</span></td>
+        <td>
+          <strong>${f.cliente_nombre || ""}</strong>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esDirecto ? "Directo" : (f.intermediario_nombre || "")}</div>
+        </td>
+        <td>${f.tipo_trabajo || "—"}</td>
+        <td>${f.direccion || "—"}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
+        <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
+        <td class="acciones">${acciones}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER CLIENTES =====
@@ -1683,65 +1703,63 @@ function renderClientes() {
   const q = document.getElementById("q-cliente").value.toLowerCase();
   const lista = state.clientes.filter(c => !q || c.nombre.toLowerCase().includes(q));
   const el = document.getElementById("lista-clientes");
-  el.innerHTML = lista.length ? lista.map(c => {
-    const trabajos = state.faenas.filter(f => f.cliente_id === c.id);
-    const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">👤 ${c.nombre}</div>
-            ${c.telefono ? `<div style="font-size:0.78rem;color:var(--green);margin-top:2px">📞 <a href="tel:${c.telefono}" style="color:var(--green)">${c.telefono}</a></div>` : ""}
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-start">
-            <span class="badge b-direct">${trabajos.length} faena${trabajos.length !== 1 ? "s" : ""}</span>
-            <button class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">✏️</button>
-          </div>
-        </div>
-        <div class="card-info">
-          ${c.email ? "✉️ " + c.email + " &nbsp; " : ""}
-          ${total > 0 ? `<strong style="color:var(--green)">${total.toFixed(2)} € total</strong>` : ""}
-          ${c.intermediario_nombre && c.intermediario_id !== 0 ? `<br><span class="badge b-inter">${c.intermediario_nombre}</span>` : ""}
-          ${c.notas ? `<br><em style="color:#aaa">${c.notas}</em>` : ""}
-        </div>
-        ${trabajos.length > 0 ? `
-          <div style="margin-top:10px;border-top:1px solid var(--sawdust);padding-top:8px">
-            <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#aaa;margin-bottom:6px">Faenas</div>
-            ${trabajos.map(f => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dashed var(--sawdust);cursor:pointer" onclick="verDetalle(${f.id})">
-                <div>
-                  <span class="num-faena" style="font-size:0.65rem">${f.numero}</span>
-                  <span style="font-size:0.78rem;margin-left:6px">${f.tipo_trabajo || "Sin descripción"}</span>
-                </div>
-                <span style="font-size:0.75rem;color:var(--green)">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : ""}</span>
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
-      </div>`;
-  }).join("") : `<div class="empty"><div class="empty-icon">👤</div>No hay clientes</div>`;
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">👤</div>No hay clientes</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Nombre</th><th>Teléfono</th><th>Faenas</th><th>Total</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${lista.map(c => {
+      const trabajos = state.faenas.filter(f => f.cliente_id === c.id);
+      const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
+      const extra = [
+        c.email || "",
+        c.intermediario_nombre && c.intermediario_id !== 0 ? c.intermediario_nombre : "",
+        c.notas || ""
+      ].filter(Boolean).join(" · ");
+      return `<tr>
+        <td>
+          <strong>${c.nombre}</strong>
+          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>` : ""}
+        </td>
+        <td>${c.telefono ? `<a href="tel:${c.telefono}" style="color:var(--green)">${c.telefono}</a>` : "—"}</td>
+        <td>${trabajos.length}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
+        <td class="acciones"><button class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">Editar</button></td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER INTERMEDIARIOS =====
 function renderInter() {
   const el = document.getElementById("lista-inter");
-  el.innerHTML = state.intermediarios.map(i => {
-    const clientes = state.clientes.filter(c => c.intermediario_id === i.id);
-    const faenas = state.faenas.filter(f => f.intermediario_id === i.id);
-    return `
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${i.id === 0 ? "🏠" : "🤝"} ${i.nombre}</div>
-          <span class="badge b-inter">${faenas.length} faena${faenas.length !== 1 ? "s" : ""}</span>
-        </div>
-        <div class="card-info">
-          ${i.id === 0 ? '<em style="color:#aaa">Trabajos sin intermediario</em><br>' : ""}
-          ${i.telefono ? "📞 " + i.telefono + " &nbsp; " : ""}
-          ${i.email ? "✉️ " + i.email : ""}
-          ${clientes.length > 0 ? `<br>Clientes: ${clientes.map(c => c.nombre).join(", ")}` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  el.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Nombre</th><th>Teléfono</th><th>Faenas</th><th>Total</th>
+    </tr></thead>
+    <tbody>${state.intermediarios.map(i => {
+      const clientes = state.clientes.filter(c => c.intermediario_id === i.id);
+      const faenas = state.faenas.filter(f => f.intermediario_id === i.id);
+      const total = faenas.reduce((s, f) => s + (f.importe || 0), 0);
+      const extra = [
+        i.id === 0 ? "Trabajos sin intermediario" : "",
+        i.email || "",
+        clientes.length ? "Clientes: " + clientes.map(c => c.nombre).join(", ") : ""
+      ].filter(Boolean).join(" · ");
+      return `<tr>
+        <td>
+          <strong>${i.nombre}</strong>
+          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>` : ""}
+        </td>
+        <td>${i.telefono || "—"}</td>
+        <td>${faenas.length}</td>
+        <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
 }
 
 // ===== RENDER MATERIALES (con definición) =====
@@ -1758,7 +1776,7 @@ function renderMateriales() {
   el.innerHTML = Object.entries(cats).map(([cat, mats]) => `
     <div class="form-box" style="margin-bottom:16px">
       <div class="form-title">${cat}</div>
-      <table class="mat-table">
+      <table class="data-table">
         <thead>
           <tr><th>Material</th><th>Unidad</th><th>Definición</th><th>Proveedores y precios</th><th></th></tr>
         </thead>
@@ -1874,7 +1892,7 @@ async function verDetalle(id) {
     <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${f.tipo_trabajo || "—"}</span></div>
     <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre}${tel ? `<br><a href="tel:${tel}" style="color:var(--green);font-size:0.78rem">📞 ${tel}</a>` : ""}</span></div>
     <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion || "—"}</span></div>
-    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-family:'Fraunces',serif">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
+    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2579,7 +2597,7 @@ function renderTablasManoObra() {
   const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
   const tbody = document.getElementById("tbody-mo");
   if (!presState.manoObra.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin mano de obra — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:'DM Mono',monospace" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
+  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:inherit" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
 }
 function actualizarTotales() {
   renderTablasMateriales(); renderTablasManoObra();
