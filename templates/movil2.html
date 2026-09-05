@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#C2410C">
+<meta name="theme-color" content="#8F4F2A">
 <link rel="manifest" href="/static/manifest.json">
 <script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
 <title>Faenas</title>
@@ -16,15 +16,15 @@
   --font-mono: var(--font-sans);
   --font-serif: var(--font-sans);
   --wood: #E7D5B8;
-  --wood-dark: #9A3412;
-  --wood-light: #FFF7ED;
+  --wood-dark: #6B3A22;
+  --wood-light: #F6EFE4;
   --ink: #1C1917;
   --muted: #57534E;
   --paper: #F4EFE6;
   --paper-dark: #EDE6D9;
   --sawdust: #E7E0D4;
-  --accent: #C2410C;
-  --accent-soft: #FFEDD5;
+  --accent: #8F4F2A;
+  --accent-soft: #F0E4D6;
   --green: #15803D;
   --red: #B91C1C;
   --blue: #1D4ED8;
@@ -693,7 +693,7 @@ input, select, textarea {
   background: #fff; color: var(--ink);
   appearance: none; -webkit-appearance: none;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(194,65,12,0.15); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(143,79,42,0.18); }
 textarea { resize: vertical; min-height: 80px; }
 
 .overlay-modal {
@@ -766,10 +766,19 @@ textarea { resize: vertical; min-height: 80px; }
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.96);
   z-index: 9999; display: flex; align-items: center; justify-content: center;
-  overflow: auto; touch-action: pinch-zoom;
+  overflow: hidden;
+  touch-action: none;
 }
-.foto-viewer img { max-width: 90%; max-height: 90%; object-fit: contain; transition: transform 0.1s; cursor: zoom-in; }
-.foto-viewer img.zoomed { cursor: zoom-out; transform: scale(1.5); }
+.foto-viewer img {
+  max-width: 90%; max-height: 90%; object-fit: contain;
+  cursor: zoom-in;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.foto-viewer img.zoomed { cursor: grab; }
+.foto-viewer img.panning { cursor: grabbing; }
 .foto-viewer .close-btn {
   position: absolute; top: 18px; right: 18px;
   background: rgba(255,255,255,0.2); border: 1px solid white;
@@ -2777,22 +2786,121 @@ function verFotoGrande(src) {
   viewer.className = "foto-viewer";
   const img = document.createElement("img");
   img.src = src;
-  let zoomed = false;
-  img.onclick = e => { e.stopPropagation(); zoomed = !zoomed; img.classList.toggle("zoomed", zoomed); };
+  img.alt = "";
   const closeBtn = document.createElement("button");
-  closeBtn.textContent = "✕ Cerrar"; closeBtn.className = "close-btn";
+  closeBtn.textContent = "✕ Cerrar";
+  closeBtn.className = "close-btn";
   closeBtn.onclick = () => viewer.remove();
-  viewer.appendChild(img); viewer.appendChild(closeBtn);
-  viewer.onclick = e => { if (e.target === viewer) viewer.remove(); };
+  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
   document.body.appendChild(viewer);
-  let d0 = 0;
-  viewer.addEventListener("touchstart", e => { if (e.touches.length === 2) d0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }, { passive: true });
-  viewer.addEventListener("touchmove", e => {
-    if (e.touches.length === 2 && d0 > 0) {
-      const d1 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      img.style.transform = `scale(${Math.min(3, Math.max(1, d1/d0))})`;
+
+  let scale = 1, x = 0, y = 0;
+  const pointers = new Map();
+  let dragging = false;
+  let pinch0 = 0;
+  let pinchScale0 = 1;
+  let pinchX0 = 0;
+  let pinchY0 = 0;
+
+  const aplicar = () => {
+    if (scale <= 1.02) {
+      scale = 1;
+      x = 0;
+      y = 0;
     }
-  }, { passive: true });
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    img.classList.toggle("zoomed", scale > 1);
+  };
+
+  const limitar = () => {
+    const extra = (scale - 1) * 280;
+    const max = Math.max(80, extra);
+    x = Math.max(-max, Math.min(max, x));
+    y = Math.max(-max, Math.min(max, y));
+  };
+
+  viewer.addEventListener("pointerdown", e => {
+    if (e.target === closeBtn) return;
+    if (e.target !== img && e.target !== viewer) return;
+    viewer.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragging = false;
+    if (pointers.size === 2) {
+      const pts = [...pointers.values()];
+      pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchScale0 = scale;
+      pinchX0 = x;
+      pinchY0 = y;
+    }
+  });
+
+  viewer.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const pts = [...pointers.values()];
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinch0 > 8) {
+        scale = Math.min(4, Math.max(1, pinchScale0 * (d / pinch0)));
+        limitar();
+        aplicar();
+      }
+      return;
+    }
+    if (scale > 1 && pointers.size === 1) {
+      const dx = e.clientX - prev.x;
+      const dy = e.clientY - prev.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) {
+        dragging = true;
+        img.classList.add("panning");
+      }
+      x += dx;
+      y += dy;
+      limitar();
+      aplicar();
+    }
+  });
+
+  const soltar = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch0 = 0;
+    img.classList.remove("panning");
+  };
+
+  viewer.addEventListener("pointerup", e => {
+    const eraArrastre = dragging;
+    const sobreImg = e.target === img;
+    soltar(e);
+    if (eraArrastre) {
+      dragging = false;
+      return;
+    }
+    if (e.target === viewer) {
+      viewer.remove();
+      return;
+    }
+    if (!sobreImg) return;
+    if (scale <= 1) {
+      scale = 2.2;
+    } else {
+      scale = 1;
+      x = 0;
+      y = 0;
+    }
+    aplicar();
+  });
+  viewer.addEventListener("pointercancel", soltar);
+
+  viewer.addEventListener("wheel", e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 0.9;
+    const next = Math.min(4, Math.max(1, scale * factor));
+    scale = next;
+    limitar();
+    aplicar();
+  }, { passive: false });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4564,7 +4672,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=24", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=25", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

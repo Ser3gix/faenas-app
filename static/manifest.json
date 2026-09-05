@@ -5,7 +5,7 @@
   "start_url": "/movil2",
   "display": "standalone",
   "background_color": "#F4EFE6",
-  "theme_color": "#C2410C",
+  "theme_color": "#8F4F2A",
   "orientation": "portrait",
   "icons": [
     {
