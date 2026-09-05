@@ -4,8 +4,8 @@
   "description": "App de carpintería para gestión de faenas en obra",
   "start_url": "/movil2",
   "display": "standalone",
-  "background_color": "#faf6ee",
-  "theme_color": "#5c3d0e",
+  "background_color": "#F4EFE6",
+  "theme_color": "#C2410C",
   "orientation": "portrait",
   "icons": [
     {
