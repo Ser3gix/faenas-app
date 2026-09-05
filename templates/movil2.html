@@ -82,7 +82,7 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   scrollbar-width: none;
 }
 #main-carousel::-webkit-scrollbar { display: none; }
@@ -745,22 +745,43 @@ textarea { resize: vertical; min-height: 80px; }
 .mat-precios { font-size: 0.8rem; color: #666; }
 .mat-precio-min { color: var(--green); font-weight: 500; }
 
-#sl-book { padding: 6px 0 8px; }
-.book-grid { display: flex; flex-direction: column; gap: 10px; }
-.book-card { position: relative; background: #1a1208; border: none; border-radius: 0; overflow: hidden; }
+#sl-book { padding: 6px 16px 8px; touch-action: pan-y; }
+.book-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.book-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.book-card.sel { box-shadow: 0 0 0 3px var(--accent); }
 .book-card img {
   width: 100%;
-  height: calc(100dvh - var(--header-h) - env(safe-area-inset-top, 0px) - var(--bottom-h) - 56px);
+  aspect-ratio: 4/3;
+  height: auto;
   object-fit: cover;
   display: block;
-  background: #2a1a0c;
+  background: var(--paper-dark);
 }
+.book-check {
+  position: absolute; top: 8px; left: 8px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: none; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+}
+.book-card.sel .book-check { display: flex; }
 .book-card-info {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 28px 12px 10px;
-  background: linear-gradient(transparent, rgba(0,0,0,0.72));
+  position: static;
+  padding: 8px 10px 10px;
+  background: #fff;
 }
-.book-card-titulo { font-family: var(--font-sans); font-size: 1rem; font-weight: 700; color: #fff; }
+.book-card-titulo { font-family: var(--font-sans); font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+.book-card-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
 
 .foto-viewer {
   position: fixed; inset: 0;
@@ -939,12 +960,18 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- Slide 3: BOOK -->
   <div class="slide" id="sl-book">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 4px">
       <div class="form-title" style="border:none;margin:0;padding:0">Book</div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-s btn-inline" id="btn-book-sel" onclick="alternarSeleccionBook()">Seleccionar</button>
         <button class="btn btn-p btn-inline" onclick="añadirFotoBook()">+ Foto</button>
         <button class="btn btn-g btn-inline" onclick="compartirBook()">↗</button>
       </div>
+    </div>
+    <input id="q-book-mov" placeholder="Buscar por título o faena..." oninput="renderBookMovil()" style="margin-bottom:8px">
+    <div id="book-sel-acciones" style="display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-g btn-inline" onclick="compartirFotosBookSel()">Compartir</button>
+      <button class="btn btn-d btn-inline" onclick="quitarFotosBookSel()">Quitar</button>
     </div>
     <div id="book-carpeta-info" style="font-size:0.82rem;color:#aaa;margin-bottom:10px;padding:6px 10px;background:var(--paper-dark);border-radius:6px;display:none"></div>
     <div id="book-movil-galeria"></div>
@@ -4155,6 +4182,8 @@ async function guardarCorreccionJimmi() {
 
 let bookCache = JSON.parse(localStorage.getItem("book_cache") || "[]");
 let bookDirHandle = null;
+let bookModoSel = false;
+const bookSel = new Set();
 
 async function añadirFotoBook(faenaId = null) {
   window._elegirDestinoFoto = true;
@@ -4187,22 +4216,98 @@ async function cargarFotosDeCarpetaBook() {
 
 function urlFotoBook(f) {
   if (f && f.id) return `${getServerUrl()}/book/${f.id}/imagen`;
+  if (f && f.data && String(f.data).startsWith("/")) return `${location.origin}${f.data}`;
   return (f && f.data) || "";
+}
+
+function fotosBookFiltradas() {
+  const q = (document.getElementById("q-book-mov")?.value || "").trim().toLowerCase();
+  if (!q) return bookCache.slice();
+  return bookCache.filter(f => {
+    const texto = [f.titulo, f.descripcion, f.faena_numero, f.cliente_nombre].map(x => String(x || "").toLowerCase()).join(" ");
+    return texto.includes(q);
+  });
 }
 
 function renderBookMovil() {
   const el = document.getElementById("book-movil-galeria");
+  if (!el) return;
   const inf = document.getElementById("book-carpeta-info");
   if (inf) inf.style.display = "none";
-  if (!bookCache.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos en el book.<br><small>Pulsa + Foto para añadir</small></div>`; return; }
-  el.innerHTML = `<div class="book-grid">${bookCache.map((f,i) => {
+  const acciones = document.getElementById("book-sel-acciones");
+  const btnSel = document.getElementById("btn-book-sel");
+  if (acciones) acciones.style.display = bookModoSel ? "flex" : "none";
+  if (btnSel) btnSel.textContent = bookModoSel ? "Listo" : "Seleccionar";
+  const lista = fotosBookFiltradas();
+  if (!bookCache.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📸</div>Sin fotos en el book.<br><small>Pulsa + Foto para añadir</small></div>`;
+    return;
+  }
+  if (!lista.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div>Ninguna foto coincide con la búsqueda</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="book-grid">${lista.map(f => {
     const src = urlFotoBook(f);
-    return `<div class="book-card"><img src="${escHtml(src)}" alt="${escHtml(f.titulo||"")}" loading="lazy" onclick="verFotoBook(${i})" onerror="this.onerror=null;this.style.background='#3a2a18'" style="cursor:pointer"><div class="book-card-info"><div class="book-card-titulo">${escHtml(f.titulo||"Sin título")}</div><div style="margin-top:5px;display:flex;gap:4px"><button class="btn btn-s btn-inline" style="flex:1;font-size:0.75rem" onclick="compartirFotoBook(${i})">↗</button><button class="btn btn-d btn-inline" style="flex:1;font-size:0.75rem" onclick="quitarDelBook(${i})">×</button></div></div></div>`;
+    const id = f.id || f.nombre || "";
+    const sel = bookSel.has(String(id));
+    const meta = [f.faena_numero, f.cliente_nombre].filter(Boolean).join(" · ") || "Sin faena";
+    const click = bookModoSel ? `toggleSelBook('${escHtml(String(id))}')` : `verFotoBook('${escHtml(String(id))}')`;
+    const fallback = f.id ? `/api/book/${f.id}/imagen` : "";
+    return `<div class="book-card${sel ? " sel" : ""}" onclick="${click}">
+      <span class="book-check">✓</span>
+      <img src="${escHtml(src)}" alt="${escHtml(f.titulo||"")}" loading="lazy" onerror="this.onerror=null;${fallback ? `this.src='${fallback}';` : "this.style.background='#d6cfc3';"}">
+      <div class="book-card-info">
+        <div class="book-card-titulo">${escHtml(f.titulo || "Sin título")}</div>
+        <div class="book-card-meta">${escHtml(meta)}</div>
+      </div>
+    </div>`;
   }).join("")}</div>`;
 }
 
-function verFotoBook(idx) {
-  verFotoGrande(urlFotoBook(bookCache[idx]));
+function fotoBookPorId(id) {
+  return bookCache.find(f => String(f.id || f.nombre || "") === String(id));
+}
+
+function verFotoBook(id) {
+  const f = fotoBookPorId(id);
+  if (!f) return;
+  verFotoGrande(urlFotoBook(f), f.titulo || "");
+}
+
+function alternarSeleccionBook() {
+  bookModoSel = !bookModoSel;
+  if (!bookModoSel) bookSel.clear();
+  renderBookMovil();
+}
+
+function toggleSelBook(id) {
+  const k = String(id);
+  if (bookSel.has(k)) bookSel.delete(k);
+  else bookSel.add(k);
+  renderBookMovil();
+}
+
+async function compartirFotosBookSel() {
+  const ids = [...bookSel];
+  if (!ids.length) { toast("Elige al menos una foto", true); return; }
+  for (const id of ids) {
+    const idx = bookCache.findIndex(f => String(f.id || f.nombre || "") === String(id));
+    if (idx >= 0) await compartirFotoBook(idx);
+  }
+}
+
+async function quitarFotosBookSel() {
+  const ids = [...bookSel];
+  if (!ids.length) { toast("Elige al menos una foto", true); return; }
+  if (!confirm(`¿Quitar ${ids.length} foto${ids.length === 1 ? "" : "s"} del book?`)) return;
+  for (const id of ids) {
+    const idx = bookCache.findIndex(f => String(f.id || f.nombre || "") === String(id));
+    if (idx >= 0) await quitarDelBook(idx, true);
+  }
+  bookSel.clear();
+  bookModoSel = false;
+  renderBookMovil();
 }
 
 async function compartirFotoBook(idx) {
@@ -4215,18 +4320,30 @@ async function compartirFotoBook(idx) {
   } catch(e) { if (e.name !== "AbortError") toast("Error al compartir", true); }
 }
 
-async function quitarDelBook(idx) {
-  if (!confirm("¿Quitar esta foto del book?")) return;
+async function quitarDelBook(idx, silencioso) {
   const f = bookCache[idx];
+  if (!f) return;
+  if (!silencioso && !confirm("¿Quitar esta foto del book?")) return;
   if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
+  if (f.id) {
+    try {
+      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      const cola = cargarCola();
+      cola.bookEliminar = cola.bookEliminar || [];
+      cola.bookEliminar.push(f.id);
+      guardarCola(cola);
+    }
+  }
   bookCache.splice(idx, 1);
   localStorage.setItem("book_cache", JSON.stringify(bookCache));
-  renderBookMovil(); toast("Foto quitada del book");
+  if (!silencioso) { renderBookMovil(); toast("Foto quitada del book"); }
 }
 
 async function compartirBook() {
-  if (!bookCache.length) { toast("El book está vacío", true); return; }
-  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.2rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 5px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:8px 10px}.t{font-size:.85rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${bookCache.map(f=>`<div class="card"><img src="${urlFotoBook(f)}" alt="${escHtml(f.titulo||"")}"><div class="info"><div class="t">${escHtml(f.titulo||"")}</div></div></div>`).join("")}</div></body></html>`;
+  const lista = fotosBookFiltradas();
+  if (!lista.length) { toast("El book está vacío", true); return; }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book de trabajos</title><style>body{font-family:Arial,sans-serif;background:#faf6ee;margin:0;padding:16px}h1{font-size:1.2rem;color:#5c3d0e}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;overflow:hidden;box-shadow:2px 2px 5px rgba(0,0,0,.1)}.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.info{padding:8px 10px}.t{font-size:.85rem;font-weight:bold;color:#5c3d0e}</style></head><body><h1>🪵 Book de trabajos</h1><div class="grid">${lista.map(f=>`<div class="card"><img src="${urlFotoBook(f)}" alt="${escHtml(f.titulo||"")}"><div class="info"><div class="t">${escHtml(f.titulo||"")}</div></div></div>`).join("")}</div></body></html>`;
   const blob = new Blob([html], {type:"text/html"});
   const file = new File([blob],"book_trabajos.html",{type:"text/html"});
   if (navigator.share && navigator.canShare?.({files:[file]})) { try { await navigator.share({title:"Book de trabajos",files:[file]}); return; } catch(e) {} }
@@ -4236,9 +4353,13 @@ async function compartirBook() {
 async function sincronizarBook(API) {
   try {
     const cola = cargarCola();
+    for (const id of (cola.bookEliminar || [])) {
+      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: AbortSignal.timeout(10000) }); } catch (e) {}
+    }
+    cola.bookEliminar = [];
     for (const foto of (cola.bookPendiente||[])) {
       try {
-        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:null, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(10000) });
+        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(30000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch(e) { console.error("Error subiendo foto book:", e); }
     }
@@ -4251,22 +4372,11 @@ async function sincronizarBook(API) {
         id: f.id,
         titulo: f.titulo,
         descripcion: f.descripcion,
+        faena_id: f.faena_id,
         faena_numero: f.faena_numero,
-        cliente_nombre: f.cliente_nombre
+        cliente_nombre: f.cliente_nombre,
+        data: f.data || (f.id ? `/api/book/${f.id}/imagen` : "")
       }));
-      if (bookDirHandle) {
-        for (const foto of d.data) {
-          if (!foto.id) continue;
-          const nombre = `${(foto.faena_numero||"foto").replace(/[^a-zA-Z0-9]/g,"_")}_${foto.id}.jpg`;
-          try {
-            const fh = await bookDirHandle.getFileHandle(nombre, {create:true});
-            const w = await fh.createWritable();
-            const blob = await (await fetch(`${API}/book/${foto.id}/imagen`)).blob();
-            await w.write(blob);
-            await w.close();
-          } catch(e) {}
-        }
-      }
       localStorage.setItem("book_cache", JSON.stringify(bookCache));
       renderBookMovil();
     }
@@ -4676,7 +4786,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=26", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=28", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
