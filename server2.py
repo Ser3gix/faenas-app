@@ -2745,7 +2745,7 @@ def secretario_contexto_post():
     texto = (datos.get("texto") or datos.get("nota") or "").strip()
     if not texto:
         return jsonify({"ok": False, "error": "Escribe el contexto a añadir"}), 400
-    anotar_contexto(texto)
+    anotar_contexto(texto, modo=datos.get("modo") or datos.get("contexto"))
     return jsonify({"ok": True, "data": leer_contexto_detalle()})
 
 
@@ -2768,8 +2768,9 @@ def secretario_chat():
     pregunta = (datos.get("pregunta") or datos.get("mensaje") or "").strip()
     historial = datos.get("historial") if isinstance(datos.get("historial"), list) else []
     faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+    modo = datos.get("modo") or datos.get("contexto") or datos.get("contexto_tipo")
     try:
-        res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id)
+        res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id, modo=modo)
         if not res.get("ok"):
             return jsonify(res), 400
         return jsonify(res)

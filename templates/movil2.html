@@ -896,6 +896,14 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="slide" id="sl-ia">
     <div style="font-family:var(--font-serif);font-size:1.05rem;color:var(--accent);margin-bottom:12px">Jimmi</div>
     <div class="field" style="margin-bottom:8px">
+      <label>Contexto</label>
+      <select id="ia-contexto">
+        <option value="todo">Todo</option>
+        <option value="faenas">Faenas</option>
+        <option value="materiales">Materiales</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:8px">
       <label>Faena (opcional)</label>
       <select id="ia-faena-id"><option value="">— Todo el negocio —</option></select>
     </div>
@@ -3878,6 +3886,14 @@ async function procesarTextoManual() {
 }
 
 // ─── IA: consulta en lenguaje natural ────────────────────────────────────────
+function modoJimmiActual() {
+  const v = (document.getElementById("ia-contexto")?.value || "todo").trim().toLowerCase();
+  if (v === "materiales" || v === "material") return "materiales";
+  if (v === "faenas" || v === "trabajos" || v === "trabajo") return "faenas";
+  if (v === "general") return "todo";
+  return "todo";
+}
+
 async function enviarConsultaIA() {
   const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
   if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
@@ -3885,13 +3901,14 @@ async function enviarConsultaIA() {
   window._jimmiHistorial = window._jimmiHistorial || [];
   window._jimmiHistorial.push({ rol: "usuario", texto: pregunta });
   const faenaId = document.getElementById("ia-faena-id")?.value || "";
+  const modo = modoJimmiActual();
   if (box) box.innerHTML += `<div style="margin:8px 0"><strong>Tú:</strong> ${escHtml(pregunta)}</div><div style="color:#888">Jimmi está pensando…</div>`;
   document.getElementById("ia-pregunta").value = "";
   try {
     const r = await fetch(`${getServerUrl()}/secretario/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial })
+      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial, modo })
     });
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
@@ -3944,14 +3961,15 @@ async function guardarCorreccionJimmi() {
   const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
   const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
   if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const modo = modoJimmiActual();
   const nota = pregunta
-    ? `Corrección del usuario. Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
-    : `Corrección del usuario. Respuesta correcta: ${correcta}`;
+    ? `[correccion][${modo}] Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `[correccion][${modo}] Respuesta correcta: ${correcta}`;
   try {
     const r = await fetch(`${getServerUrl()}/secretario/contexto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto: nota }),
+      body: JSON.stringify({ texto: nota, modo }),
       signal: AbortSignal.timeout(15000)
     });
     const data = await r.json();
@@ -4490,7 +4508,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=22", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=23", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

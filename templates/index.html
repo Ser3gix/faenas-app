@@ -930,9 +930,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <div class="form-title">Filtrar consulta</div>
     <div class="form-grid">
       <div><label>Contexto</label><select id="ia-contexto-index">
-        <option value="general">General</option>
+        <option value="todo">Todo</option>
+        <option value="faenas">Faenas</option>
         <option value="materiales">Materiales</option>
-        <option value="trabajos">Trabajos</option>
       </select></div>
       <div><label>Faena opcional</label><select id="ia-faena-index"><option value="">— Todas —</option></select></div>
     </div>
@@ -2716,16 +2716,11 @@ function quitarTyping() { const el = document.getElementById("typing-indicator")
 async function enviarConsulta() {
   const input = document.getElementById("chat-input"); const pregunta = input.value.trim(); if (!pregunta) return;
   const faenaId = document.getElementById("ia-faena-index")?.value || document.getElementById("asistente-faena-sel")?.value || null;
-  const contextoTipo = document.getElementById("ia-contexto-index")?.value || "general";
-  const faenas = state.faenas.map(f => ({ id: f.id, numero: f.numero, cliente_nombre: f.cliente_nombre, tipo_trabajo: f.tipo_trabajo, trabajo: f.tipo_trabajo, importe: f.importe, direccion: f.direccion, archivada: f.archivada, presupuesto: f.presupuesto || [], gastos: f.gastos || [], gastos_reales: f.gastos_reales || [], anotaciones: f.anotaciones || [], documentos: f.documentos || [] }));
-  const clientes = state.clientes.map(c => ({ nombre: c.nombre, telefono: c.telefono, direccion: c.direccion, email: c.email }));
-  const materiales = state.materiales.map(m => ({ nombre: m.nombre, categoria: m.categoria, unidad: m.unidad, definicion: m.definicion, precios: (m.precios || []).map(p => ({ proveedor: p.proveedor, precio: p.precio_unitario, precio_unitario: p.precio_unitario, fecha_actualizacion: p.fecha_actualizacion })) }));
-  const contexto = { faenas: contextoTipo === "materiales" ? [] : faenas, clientes: contextoTipo === "materiales" ? [] : clientes, materiales: contextoTipo === "trabajos" ? [] : materiales };
-  if (faenaId && contexto.faenas.length) contexto.faenas = contexto.faenas.filter(f => String(f.id) === String(faenaId));
+  const modo = modoJimmiActual();
   const btn = document.getElementById("btn-consulta");
   añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
   try {
-    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial }) });
+    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial, modo }) });
     quitarTyping(); const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });
@@ -2759,11 +2754,18 @@ async function cargarContextoJimmi() {
   </tr>`).join("");
 }
 
+function modoJimmiActual() {
+  const v = (document.getElementById("ia-contexto-index")?.value || "todo").trim().toLowerCase();
+  if (v === "materiales" || v === "material") return "materiales";
+  if (v === "faenas" || v === "trabajos" || v === "trabajo") return "faenas";
+  return "todo";
+}
+
 async function añadirContextoJimmi() {
   const el = document.getElementById("jimmi-ctx-nuevo");
   const texto = ((el && el.value) || "").trim();
   if (!texto) { toast("Escribe una nota", true); return; }
-  const r = await api("POST", "/secretario/contexto", { texto });
+  const r = await api("POST", "/secretario/contexto", { texto, modo: modoJimmiActual() });
   if (!r.ok) { toast(r.error || "No se pudo añadir", true); return; }
   if (el) el.value = "";
   toast("Nota añadida");
@@ -2815,10 +2817,11 @@ async function guardarCorreccionJimmi() {
   const pregunta = (document.getElementById("cj-pregunta")?.value || "").trim();
   const correcta = (document.getElementById("cj-correcta")?.value || "").trim();
   if (!correcta) { toast("Escribe la respuesta correcta", true); return; }
+  const modo = modoJimmiActual();
   const nota = pregunta
-    ? `Corrección del usuario. Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
-    : `Corrección del usuario. Respuesta correcta: ${correcta}`;
-  const r = await api("POST", "/secretario/contexto", { texto: nota });
+    ? `[correccion][${modo}] Pregunta: ${pregunta} | Respuesta correcta: ${correcta}`
+    : `[correccion][${modo}] Respuesta correcta: ${correcta}`;
+  const r = await api("POST", "/secretario/contexto", { texto: nota, modo });
   if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
   cerrarModal("m-corregir-jimmi");
   toast("Jimmi ya tiene la corrección");
