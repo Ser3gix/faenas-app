@@ -488,67 +488,20 @@ def _ia_provider_activo():
 
 
 def _prompt_ticket_base():
-    return """Analiza la imagen del ticket o factura de compra que te adjunto.
-Extrae todos los artículos y devuelve ÚNICAMENTE el siguiente JSON, sin texto adicional antes ni después:
+    return """Analiza la imagen o el PDF de compra adjunto y extrae las líneas reales.
 
-Lee la imagen por zonas y revisa dos veces cada línea de artículos. No inventes artículos ni importes.
-Respeta la separación entre columnas: cantidad es el número de unidades, precio_unitario es el precio de una unidad y total es cantidad multiplicada por precio_unitario. No uses el subtotal, IVA o total del ticket como precio de un artículo.
-Si una línea tiene descuento, conserva el importe final pagado en total y calcula precio_unitario = total / cantidad cuando la cantidad sea conocida.
-Convierte los importes con coma decimal a números JSON usando punto decimal. Si una cifra o nombre no se lee con seguridad, usa null en ese campo, pero conserva la línea si el artículo se puede identificar.
-Ignora IVA, bases imponibles, recargos y totales fiscales. Usa el importe pagado de cada línea (sin desglose de IVA).
-Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y definicion si hay referencia o medida.
-
-{
-    "proveedor": "Nombre del establecimiento",
-    "fecha": "YYYY-MM-DD",
-    "articulos": [
-        {
-            "nombre": "Nombre del artículo",
-            "cantidad": 1,
-            "precio_unitario": 0.00,
-            "total": 0.00,
-            "unidad": "ud",
-            "categoria": "Herrajes",
-            "definicion": ""
-        }
-    ],
-    "total_ticket": 0.00
-}
-
-Si no puedes leer algún dato con claridad, usa null para ese campo.
-Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro.
-El JSON anterior es solo el formato. Prohibido devolver "Nombre del artículo" o "Nombre del establecimiento". Si no hay líneas reales, "articulos": []."""
+Devuelve SOLO un JSON con: proveedor, fecha (si aparece), total_ticket, articulos.
+Cada artículo: nombre, cantidad, precio_unitario, total, unidad, categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros), definicion (referencia o medida).
+Lee tablas de presupuesto, albarán o factura. Si hay descuento, total es lo pagado de esa línea y precio_unitario = total / cantidad.
+Importes con coma → números JSON con punto. Ignora IVA, base imponible, portes y totales fiscales.
+Si no ves líneas, articulos es []. No inventes nombres genéricos."""
 
 
 def _prompt_documento_base(nombre="documento"):
-    return f"""Analiza el documento '{nombre}' y devuelve ÚNICAMENTE este JSON, sin texto adicional:
+    return f"""Analiza el documento '{nombre}' (factura, albarán, ticket o PDF impreso) y extrae las líneas de compra reales.
 
-El documento puede ser una factura, un albarán, un ticket o la impresión de un correo. Ignora cabeceras del correo (De, Para, CC, Asunto), fechas de envío, firmas, avisos legales, respuestas repetidas y texto de conversación que no sea una compra. Busca en todo el cuerpo, tablas de pedido o factura y las líneas de materiales.
-Si describe una compra sin tabla formal, convierte cada material con cantidad y precio en un artículo. No conviertas teléfonos, fechas, números de pedido, códigos postales ni importes de transporte o IVA en materiales. Usa el proveedor o vendedor cuando esté claro.
-Separa cantidad, precio unitario y total. Si solo aparece un importe de línea, úsalo como total y calcula el precio unitario cuando haya cantidad. Si un dato no aparece, usa null.
-Ignora IVA, bases, recargos y totales fiscales. Usa el importe pagado de cada línea.
-Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y definicion si hay referencia o medida.
-
-{{
-    "proveedor": "Nombre del establecimiento",
-    "fecha": "YYYY-MM-DD",
-    "articulos": [
-        {{
-            "nombre": "Nombre del artículo",
-            "cantidad": 1,
-            "precio_unitario": 0.00,
-            "total": 0.00,
-            "unidad": "ud",
-            "categoria": "Herrajes",
-            "definicion": ""
-        }}
-    ],
-    "total_ticket": 0.00
-}}
-
-Si no puedes leer algún dato con claridad, usa null para ese campo.
-Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro.
-El JSON anterior es solo el formato. Prohibido devolver "Nombre del artículo" o "Nombre del establecimiento". Si no hay líneas reales, "articulos": []."""
+Devuelve SOLO JSON con proveedor, fecha, total_ticket y articulos (nombre, cantidad, precio_unitario, total, unidad, categoria, definicion).
+Ignora IVA, portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
 def _gemini_endpoint(model=None, api_key=None):
@@ -3572,7 +3525,11 @@ def ia_procesar_documento():
         if not isinstance(data, dict):
             data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
         articulos = data.get("articulos") or []
-        data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        data["articulos"] = [
+            _normalizar_articulo(a)
+            for a in articulos
+            if isinstance(a, dict) and (a.get("nombre") or "").strip() and not _es_nombre_articulo_ejemplo(a.get("nombre"))
+        ]
         data["tipo_fuente"] = "documento"
         data["nombre_documento"] = nombre
         data["guardado_en_nube"] = guardar
