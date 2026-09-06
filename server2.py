@@ -2871,6 +2871,18 @@ def _texto_ocr_desde_imagen_base64(data_b64):
         return ""
 
 
+def _linea_ocr_es_ruido(linea):
+    baja = (linea or "").strip().lower()
+    if not baja:
+        return True
+    if re.fullmatch(r"[\d\s.,€%$/-]+", baja):
+        return True
+    return any(p in baja for p in (
+        "iva", "base imponible", "cif", "nif", "total factura", "importe total",
+        "gracias", "www.", "http", "albarán", "albaran",
+    ))
+
+
 def _json_ticket_desde_ocr(texto):
     if not texto:
         return None
@@ -2881,7 +2893,7 @@ def _json_ticket_desde_ocr(texto):
 
     proveedor = None
     for l in lineas[:8]:
-        if any(ch.isalpha() for ch in l) and not re.search(r"\d{2,}", l):
+        if any(ch.isalpha() for ch in l) and not re.search(r"\d+[.,]\d{2}", l):
             proveedor = l[:120]
             break
     if not proveedor:
@@ -2905,21 +2917,30 @@ def _json_ticket_desde_ocr(texto):
             total_ticket = _parse_numero(todos[-1])
 
     articulos = []
+    vistos = set()
     for l in lineas:
-        if " x " not in l.lower() and not re.search(r"\bx\b", l.lower()):
+        if _linea_ocr_es_ruido(l):
             continue
-        qty_m = re.search(r"(\d+(?:[.,]\d+)?)\s*x", l.lower())
-        if not qty_m:
-            continue
-        qty = _parse_numero(qty_m.group(1))
+        qty = 1
+        qty_m = re.search(r"(?i)(\d+(?:[.,]\d+)?)\s*x\b", l)
+        if qty_m:
+            qty = _parse_numero(qty_m.group(1)) or 1
         decs = re.findall(r"\d+[.,]\d{2}", l)
         if not decs:
             continue
         precio_unitario = _parse_numero(decs[0])
-        total = _parse_numero(decs[-1]) if len(decs) > 1 else round(qty * precio_unitario, 2)
-        nombre = re.sub(r"\s+\d+(?:[.,]\d+)?\s*x.*$", "", l, flags=re.IGNORECASE).strip(" -:\t")
+        total = _parse_numero(decs[-1]) if len(decs) > 1 else round((qty or 1) * (precio_unitario or 0), 2)
+        nombre = l
+        if qty_m:
+            nombre = re.sub(r"(?i)\s*\d+(?:[.,]\d+)?\s*x\b.*$", "", l)
+        nombre = re.sub(r"\s+\d+[.,]\d{2}(?:\s+\d+[.,]\d{2})*\s*$", "", nombre)
+        nombre = nombre.strip(" -:;·\t")
         if not nombre or len(nombre) < 2:
             continue
+        clave = nombre.lower()
+        if clave in vistos:
+            continue
+        vistos.add(clave)
         articulos.append({
             "nombre": nombre,
             "cantidad": qty or 1,
@@ -3017,7 +3038,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             data = _extraer_json_de_texto(contenido)
             if not isinstance(data, dict) and tipo != "ticket":
                 data = _normalizar_json_materiales_con_ia(contenido, tipo=tipo, api_key=ticket_key, model=ticket_model)
-            if isinstance(data, dict):
+            if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
                 return data
         except Exception as e:
             mensaje = str(e).lower()
@@ -3028,10 +3049,10 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             if tipo not in {"ticket", "documento"} and not (is_timeout or is_quota or is_unavailable or is_conn):
                 raise
             # Fallback local cuando Gemini tarda demasiado o se queda sin cuota.
-            if imagen:
-                texto_ocr = _texto_ocr_desde_imagen_base64(imagen)
+            for img in imgs:
+                texto_ocr = _texto_ocr_desde_imagen_base64(img)
                 data = _json_ticket_desde_ocr(texto_ocr)
-                if isinstance(data, dict):
+                if isinstance(data, dict) and data.get("articulos"):
                     return data
             if texto:
                 data = _json_ticket_desde_ocr(texto)
@@ -3045,10 +3066,10 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             if is_timeout:
                 raise RuntimeError(f"La IA tardó demasiado en responder. Se intentó fallback local y no pudo extraer artículos. {e}")
             raise RuntimeError(f"La IA no devolvió JSON válido. Fallback local insuficiente. {e}")
-        if imagen:
-            texto_ocr = _texto_ocr_desde_imagen_base64(imagen)
+        for img in (imgs or ([imagen] if imagen else [])):
+            texto_ocr = _texto_ocr_desde_imagen_base64(img)
             data = _json_ticket_desde_ocr(texto_ocr)
-            if isinstance(data, dict):
+            if isinstance(data, dict) and data.get("articulos"):
                 return data
         if texto:
             data = _json_ticket_desde_ocr(texto)
@@ -3059,6 +3080,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
         raise RuntimeError("La IA no devolvió JSON válido")
 
     # Fallback local con Ollama
+    for img in imgs:
+        texto_ocr = _texto_ocr_desde_imagen_base64(img)
+        data = _json_ticket_desde_ocr(texto_ocr)
+        if isinstance(data, dict) and data.get("articulos"):
+            return data
     if texto:
         data = _json_ticket_desde_ocr(texto)
         if isinstance(data, dict):
@@ -3330,6 +3356,16 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
                 ))
             except Exception as e:
                 print("pdf ia pagina:", e)
+    if not articulos:
+        textos_ocr = []
+        if texto:
+            textos_ocr.append(texto)
+        for img in imgs:
+            ocr = _texto_ocr_desde_imagen_base64(img)
+            if ocr:
+                textos_ocr.append(ocr)
+        if textos_ocr:
+            _acumular(_json_ticket_desde_ocr("\n".join(textos_ocr)))
     return {
         "proveedor": meta.get("proveedor"),
         "fecha": meta.get("fecha"),
@@ -3397,10 +3433,10 @@ def ia_procesar_documento():
                 data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "pdf", data)
             except Exception as e:
                 print("pdf persistir:", e)
-        try:
-            data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
-        except Exception as e:
-            print("pdf ficha:", e)
+            try:
+                data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
+            except Exception as e:
+                print("pdf ficha:", e)
         if not data["articulos"]:
             data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
         return jsonify({"ok": True, "data": data})
