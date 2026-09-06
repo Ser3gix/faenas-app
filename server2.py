@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 import threading
+import ssl
 import re
 import unicodedata
 import json
@@ -13,6 +14,7 @@ import urllib.error
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file, make_response
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
+from datetime import datetime
 
 import shutil
 try:
@@ -927,6 +929,7 @@ def get_ocr_info():
             "ruta": ruta or "",
             "nube": bool(en_servidor_nube()),
             "cola_pc": _url_cola_ocr_pc() if not en_servidor_nube() else "",
+            "colas_pc": _urls_cola_ocr_pc() if not en_servidor_nube() else [],
         },
     })
 
@@ -3648,12 +3651,12 @@ def _liberar_trabajos_ocr_atascados(conn):
     if getattr(conn, "_backend", "") == "mysql":
         conn.execute(
             "UPDATE trabajos_ocr SET estado='pendiente', error='', actualizado_en=CURRENT_TIMESTAMP "
-            "WHERE estado='procesando' AND actualizado_en < DATE_SUB(NOW(), INTERVAL 12 MINUTE)"
+            "WHERE estado='procesando' AND actualizado_en < DATE_SUB(NOW(), INTERVAL 2 MINUTE)"
         )
     else:
         conn.execute(
             "UPDATE trabajos_ocr SET estado='pendiente', error='', actualizado_en=datetime('now') "
-            "WHERE estado='procesando' AND actualizado_en < datetime('now', '-12 minutes')"
+            "WHERE estado='procesando' AND actualizado_en < datetime('now', '-2 minutes')"
         )
 
 
@@ -3790,50 +3793,145 @@ def ocr_guardar_resultado(trabajo_id):
         conn.close()
 
 
-def _url_cola_ocr_pc():
+@app.route("/api/ocr/pc-vivo", methods=["GET", "POST"])
+def ocr_pc_vivo():
+    conn = get_connection()
+    try:
+        if request.method == "POST":
+            if getattr(conn, "_backend", "") == "mysql":
+                conn.execute("DELETE FROM ocr_pc_vivo WHERE id=1")
+                conn.execute("INSERT INTO ocr_pc_vivo (id, visto_en) VALUES (1, NOW())")
+            else:
+                conn.execute("INSERT OR REPLACE INTO ocr_pc_vivo (id, visto_en) VALUES (1, datetime('now'))")
+            conn.commit()
+            return jsonify({"ok": True, "vivo": True, "segundos": 0})
+        fila = conn.execute("SELECT visto_en FROM ocr_pc_vivo WHERE id=1").fetchone()
+        visto = (fila_a_dict(fila) or {}).get("visto_en") or ""
+        segundos = None
+        if getattr(conn, "_backend", "") == "mysql":
+            diff = conn.execute("SELECT TIMESTAMPDIFF(SECOND, visto_en, NOW()) AS s FROM ocr_pc_vivo WHERE id=1").fetchone()
+            d = fila_a_dict(diff) or {}
+            if d.get("s") is not None:
+                segundos = int(d.get("s") or 0)
+        elif visto:
+            try:
+                if isinstance(visto, datetime):
+                    ts = visto
+                else:
+                    ts = datetime.strptime(str(visto)[:19], "%Y-%m-%d %H:%M:%S")
+                segundos = max(0, int((datetime.now() - ts).total_seconds()))
+            except Exception:
+                segundos = None
+        vivo = segundos is not None and segundos < 30
+        return jsonify({"ok": True, "vivo": vivo, "segundos": segundos, "visto_en": str(visto or "")})
+    except Exception as exc:
+        return jsonify({"ok": False, "vivo": False, "error": str(exc)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/ocr/tick-nube", methods=["POST", "GET"])
+def ocr_tick_nube():
     if en_servidor_nube():
-        return ""
-    for cand in (
-        os.environ.get("FAENAS_OCR_COLA_URL", ""),
+        return jsonify({"ok": False, "error": "Esto solo corre en el PC"}), 400
+    hechos = 0
+    errores = []
+    for base in _urls_cola_ocr_pc():
+        try:
+            if _procesar_un_trabajo_ocr_remoto(base):
+                hechos += 1
+        except Exception as exc:
+            errores.append(str(exc)[:200])
+            _ocr_pc_log(f"tick {base}: {exc}")
+    return jsonify({"ok": True, "hechos": hechos, "errores": errores, "colas": _urls_cola_ocr_pc()})
+
+
+def _ocr_pc_log(mensaje):
+    linea = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {mensaje}"
+    try:
+        os.makedirs(CARPETA_RAIZ, exist_ok=True)
+        with open(os.path.join(CARPETA_RAIZ, "ocr_pc.log"), "a", encoding="utf-8") as fh:
+            fh.write(linea + "\n")
+    except Exception:
+        pass
+    try:
+        print(linea)
+    except Exception:
+        pass
+
+
+def _urls_cola_ocr_pc():
+    if en_servidor_nube():
+        return []
+    forzadas = (os.environ.get("FAENAS_OCR_COLA_URL", "") or "").strip()
+    candidatos = [forzadas] if forzadas else [
         os.environ.get("FAENAS_API_BASE", ""),
         PUBLIC_BASE_URL or "",
         "https://faenas-app.onrender.com",
-    ):
+    ]
+    vistos = []
+    for cand in candidatos:
         url = (cand or "").strip().rstrip("/")
         if url.endswith("/api"):
             url = url[:-4]
-        if url.startswith("http://") or url.startswith("https://"):
-            host = url.split("://", 1)[-1].split("/", 1)[0].lower()
-            if host.startswith("127.") or host.startswith("localhost") or host.startswith("[::1]"):
-                if os.environ.get("FAENAS_OCR_COLA_URL"):
-                    return url
-                continue
-            return url
-    return ""
+        if not (url.startswith("http://") or url.startswith("https://")):
+            continue
+        host = url.split("://", 1)[-1].split("/", 1)[0].lower()
+        if ("127.0.0.1" in host or host.startswith("localhost") or host.startswith("[::1]")) and not forzadas:
+            continue
+        if url not in vistos:
+            vistos.append(url)
+    return vistos
+
+
+def _url_cola_ocr_pc():
+    urls = _urls_cola_ocr_pc()
+    return urls[0] if urls else ""
+
+
+def _http_open(req, timeout=30):
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except ssl.SSLError:
+        ctx = ssl._create_unverified_context()
+        return urllib.request.urlopen(req, timeout=timeout, context=ctx)
 
 
 def _http_json(url, method="GET", payload=None, timeout=30):
     data = None
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": "FaenasPC-OCR"}
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _http_open(req, timeout=timeout) as resp:
         bruto = resp.read() or b"{}"
         return json.loads(bruto.decode("utf-8"))
 
 
+def _avisar_pc_vivo(base):
+    try:
+        _http_json(f"{base}/api/ocr/pc-vivo", method="POST", payload={}, timeout=15)
+    except Exception as exc:
+        _ocr_pc_log(f"ping {base}: {exc}")
+
+
 def _procesar_un_trabajo_ocr_remoto(base):
-    info = _http_json(f"{base}/api/ocr/trabajos/reclamar", method="POST", payload={}, timeout=25)
+    _avisar_pc_vivo(base)
+    info = _http_json(f"{base}/api/ocr/trabajos/reclamar", method="POST", payload={"pc": True}, timeout=25)
     trabajo = (info or {}).get("trabajo")
     if not trabajo:
         return False
     tid = trabajo.get("id")
     nombre = trabajo.get("nombre") or "documento.pdf"
     mime = trabajo.get("mime") or "application/pdf"
-    req = urllib.request.Request(f"{base}/api/ocr/trabajos/{tid}/archivo", method="GET")
-    with urllib.request.urlopen(req, timeout=90) as resp:
+    _ocr_pc_log(f"leyendo trabajo {tid} ({nombre}) de {base}")
+    req = urllib.request.Request(
+        f"{base}/api/ocr/trabajos/{tid}/archivo",
+        headers={"User-Agent": "FaenasPC-OCR"},
+        method="GET",
+    )
+    with _http_open(req, timeout=90) as resp:
         bruto = resp.read() or b""
         mime = resp.headers.get("Content-Type") or mime
     try:
@@ -3844,7 +3942,7 @@ def _procesar_un_trabajo_ocr_remoto(base):
             payload={"ok": True, "data": data},
             timeout=30,
         )
-        print(f"[ocr-pc] trabajo {tid} listo: {len(data.get('articulos') or [])} líneas")
+        _ocr_pc_log(f"trabajo {tid} listo: {len(data.get('articulos') or [])} lineas")
     except Exception as exc:
         try:
             _http_json(
@@ -3855,22 +3953,24 @@ def _procesar_un_trabajo_ocr_remoto(base):
             )
         except Exception:
             pass
-        print(f"[ocr-pc] trabajo {tid} error: {exc}")
+        _ocr_pc_log(f"trabajo {tid} error: {exc}")
     return True
 
 
 def _bucle_trabajador_ocr_pc():
-    base = _url_cola_ocr_pc()
-    if not base:
-        return
-    print(f"✓ Este PC lee los PDF de la web: {base}")
-    time.sleep(6)
+    time.sleep(2)
+    _ocr_pc_log("trabajador OCR arrancado: " + ", ".join(_urls_cola_ocr_pc() or ["(sin url)"]))
     while True:
-        try:
-            _procesar_un_trabajo_ocr_remoto(base)
-        except Exception as exc:
-            print(f"[ocr-pc] {exc}")
-        time.sleep(4)
+        urls = _urls_cola_ocr_pc()
+        if not urls:
+            time.sleep(8)
+            continue
+        for base in urls:
+            try:
+                _procesar_un_trabajo_ocr_remoto(base)
+            except Exception as exc:
+                _ocr_pc_log(str(exc))
+        time.sleep(3)
 
 
 def _arrancar_trabajador_ocr_pc():
@@ -5049,6 +5149,9 @@ if __name__ == "__main__":
     except Exception:
         ips_validas = ["127.0.0.1"]
     print(f"✓ Servidor en:  http://localhost:{PORT}")
+    colas = _urls_cola_ocr_pc()
+    if colas:
+        print("  Este PC lee los PDF de: " + ", ".join(colas))
     for ip in ips_validas:
         print(f"✓ IP para móvil: http://{ip}:{PORT}/movil2")
     if PUBLIC_BASE_URL:
@@ -5064,4 +5167,4 @@ if __name__ == "__main__":
         raise SystemExit(1)
     finally:
         sock.close()
-    app.run(host=HOST, port=PORT, debug=False)
+    app.run(host=HOST, port=PORT, debug=False, threaded=True)

@@ -103,7 +103,7 @@ Start-Job -ScriptBlock {
 Stop-StaleFaenasProcesses
 Start-Sleep -Milliseconds 400
 
-$serverProcess = Start-Process -FilePath $pythonExe -ArgumentList @($serverFile) -WorkingDirectory $projectPath -WindowStyle Hidden -PassThru
+$serverProcess = Start-Process -FilePath $pythonExe -ArgumentList @($serverFile) -WorkingDirectory $projectPath -WindowStyle Minimized -PassThru
 if (-not $serverProcess) {
     throw "No se pudo iniciar la app del PC"
 }
@@ -125,4 +125,19 @@ if (-not $ready) {
 Write-Host "Listo. Abriendo $urlLocal"
 try { Start-Process $urlLocal } catch { Write-Host "Abre el navegador en $urlLocal" }
 
-Wait-Process -Id $serverProcess.Id
+$ocrJob = Start-Job -ScriptBlock {
+    param($localUrl)
+    while ($true) {
+        try {
+            Invoke-WebRequest -Uri ($localUrl.TrimEnd('/') + "/api/ocr/tick-nube") -Method POST -UseBasicParsing -TimeoutSec 120 | Out-Null
+        } catch {}
+        Start-Sleep -Seconds 3
+    }
+} -ArgumentList $urlLocal
+
+try {
+    Wait-Process -Id $serverProcess.Id
+} finally {
+    try { Stop-Job $ocrJob -ErrorAction SilentlyContinue } catch {}
+    try { Remove-Job $ocrJob -Force -ErrorAction SilentlyContinue } catch {}
+}

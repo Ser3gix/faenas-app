@@ -521,6 +521,12 @@ def _crear_esquema_sqlite(cursor):
             actualizado_en TEXT DEFAULT (datetime('now'))
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_pc_vivo (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            visto_en TEXT DEFAULT (datetime('now'))
+        )
+    """)
     _asegurar_categorias_material(cursor, mysql=False)
 
 
@@ -774,6 +780,12 @@ def _crear_esquema_mysql(cursor):
             creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             KEY idx_trabajos_ocr_estado (estado)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ocr_pc_vivo (
+            id INT NOT NULL PRIMARY KEY,
+            visto_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
     ]
