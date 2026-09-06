@@ -656,7 +656,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       Introducir datos
       <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto o PDF de factura/ticket. Jimmi saca la lista para que la revises y edites antes de guardar. Sin IVA.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto o PDF. Este PC lee el documento; al aceptar se guarda en la nube. Sin IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
@@ -1509,6 +1509,15 @@ const API = (function () {
   return "https://faenas-app.onrender.com/api";
 })();
 
+function esAppDelPc() {
+  const h = String(window.location.hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+}
+
+const API_OCR = esAppDelPc() && window.location.origin && window.location.origin !== "null"
+  ? `${window.location.origin}/api`
+  : API;
+
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -1540,6 +1549,14 @@ async function init() {
   poblarSelectPresupuesto();
   cargarIP();
   cargarEstadoR2();
+  if (esAppDelPc()) {
+    try {
+      const ocr = await fetch(API_OCR + "/info/ocr").then(r => r.json());
+      if (ocr && ocr.data && !ocr.data.tesseract) {
+        toast("Instala Tesseract-OCR en este PC para leer facturas PDF", true);
+      }
+    } catch (e) {}
+  }
 }
 
 async function cargarEstadoDb() {
@@ -1549,7 +1566,11 @@ async function cargarEstadoDb() {
     const d = r.data;
     const sub = document.querySelector(".header-sub");
     if (!sub) return;
-    if (d.backend_activo === "mysql") {
+    if (esAppDelPc()) {
+      sub.textContent = d.backend_activo === "mysql"
+        ? "Este PC lee los PDF · datos en la nube"
+        : "Este PC lee los PDF · datos locales";
+    } else if (d.backend_activo === "mysql") {
       sub.textContent = "Carpintería · Nube conectada";
     } else if (d.mysql_configurado && d.mysql_deshabilitado) {
       sub.textContent = "Carpintería · Local (sin nube)";
@@ -2820,7 +2841,7 @@ async function ticketPdfPreview(event) {
   const info = document.getElementById("ticket-pdf-info");
   if (info) {
     info.style.display = "block";
-    info.textContent = "PDF: " + file.name + " — leyendo…";
+    info.textContent = "PDF: " + file.name + " — leyendo en este PC…";
   }
   document.getElementById("ticket-preview").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "block";
@@ -2861,7 +2882,7 @@ async function analizarDocumentoFaena(faenaId, nombre) {
     fd.append("guardar", "false");
     fd.append("faena_id", String(faenaId));
     fd.append("nombre", nombre || "documento.pdf");
-    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000);
+    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
     if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
     abrirTicketConDatos(r.data, faenaId);
     toast("Revisa la tabla de tickets y guarda");
@@ -2928,7 +2949,7 @@ async function procesarTicketConIA() {
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "var(--muted)";
-    estado.textContent = "Leyendo el PDF…";
+    estado.textContent = esAppDelPc() ? "Leyendo el PDF en este PC…" : "Leyendo el PDF…";
   }
   try {
     let data;
@@ -2937,9 +2958,9 @@ async function procesarTicketConIA() {
       fd.append("archivo", pdf, pdf.name || "factura.pdf");
       fd.append("guardar", "false");
       fd.append("nombre", pdf.name || "factura.pdf");
-      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000);
+      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
     } else {
-      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000);
+      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000, API_OCR);
     }
     if (data.ok && data.data) {
       const arts = (data.data.articulos || []).filter(a => {
@@ -3081,7 +3102,7 @@ async function procesarTextoManual() {
   const texto = document.getElementById("ticket-texto-manual").value.trim();
   if (!texto) { toast("Escribe o pega el texto primero", true); return; }
   toast("Enviando a Jimmi...");
-  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000);
+  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000, API_OCR);
   if (d.ok) {
     ticketAnalisisActual = d.data;
     const jsonEl = document.getElementById("ticket-json-pc");
