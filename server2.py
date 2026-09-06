@@ -2,6 +2,7 @@ import socket
 import os
 import subprocess
 import time
+import threading
 import re
 import unicodedata
 import json
@@ -925,6 +926,7 @@ def get_ocr_info():
             "tesseract": bool(ruta and os.path.exists(ruta)),
             "ruta": ruta or "",
             "nube": bool(en_servidor_nube()),
+            "cola_pc": _url_cola_ocr_pc() if not en_servidor_nube() else "",
         },
     })
 
@@ -3495,12 +3497,49 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
     }
 
 
+def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
+    """Lee un PDF o imagen en este ordenador (OCR) y devuelve el JSON de líneas."""
+    nombre = (nombre or "documento").strip() or "documento"
+    mime_type = (mime_type or "").strip()
+    texto = (texto or "").strip()
+    bruto = bruto or b""
+    imagenes = []
+    es_pdf = bruto[:5] == b"%PDF-" or _es_pdf_nombre(nombre) or "pdf" in (mime_type or "").lower()
+    if es_pdf and bruto:
+        if not texto:
+            texto = _texto_de_pdf_bytes(bruto)
+        if not (texto or "").strip():
+            texto = _ocr_pdf_bytes(bruto)
+        imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
+    elif bruto and not es_pdf:
+        mime = mime_type or "image/jpeg"
+        if "png" in mime:
+            imagenes = ["data:image/png;base64," + base64.b64encode(bruto).decode("ascii")]
+        else:
+            imagenes = ["data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")]
+    if not texto and not imagenes:
+        raise ValueError("No se pudo abrir el PDF. Prueba de nuevo o usa una foto.")
+    data = _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=bruto if es_pdf else None)
+    if not isinstance(data, dict):
+        data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
+    articulos = data.get("articulos") or []
+    data["articulos"] = [
+        _normalizar_articulo(a)
+        for a in articulos
+        if isinstance(a, dict) and (a.get("nombre") or "").strip() and not _es_nombre_articulo_ejemplo(a.get("nombre"))
+    ]
+    data["tipo_fuente"] = "documento"
+    data["nombre_documento"] = nombre
+    if not data["articulos"]:
+        data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
+    return data
+
+
 @app.route("/api/ia/procesar-documento", methods=["POST"])
 def ia_procesar_documento():
     datos = request.get_json(silent=True) or {}
     nombre = (datos.get("nombre") or request.form.get("nombre") or "documento").strip() or "documento"
     mime_type = (datos.get("mime_type") or datos.get("mime") or request.form.get("mime_type") or "").strip()
-    prompt = (datos.get("prompt") or "").strip()
     faena_id = _parse_faena_id_seguro(datos.get("faena_id") or request.form.get("faena_id"))
     guardar_raw = datos.get("guardar") if isinstance(datos, dict) and "guardar" in datos else request.form.get("guardar")
     guardar = _parse_bool_seguro(guardar_raw, True)
@@ -3521,39 +3560,17 @@ def ia_procesar_documento():
             bruto = b""
     if not texto and ruta:
         texto = _leer_texto_documento_para_ia(ruta)
-    imagenes = []
-    es_pdf = bruto[:5] == b"%PDF-" or _es_pdf_nombre(nombre) or "pdf" in (mime_type or "").lower()
-    if es_pdf and bruto:
-        if not texto:
-            texto = _texto_de_pdf_bytes(bruto)
-        if not (texto or "").strip():
-            texto = _ocr_pdf_bytes(bruto)
-        imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
-    elif bruto and not es_pdf:
-        mime = mime_type or "image/jpeg"
-        if "png" in mime:
-            imagenes = ["data:image/png;base64," + base64.b64encode(bruto).decode("ascii")]
-        else:
-            imagenes = ["data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")]
-    if not texto and not imagenes and archivo_base64:
+    if not texto and not bruto and archivo_base64:
         texto = _leer_texto_documento_base64_para_ia(archivo_base64, nombre=nombre, mime_type=mime_type)
         img = _primera_pagina_pdf_base64(archivo_base64, nombre=nombre, mime_type=mime_type)
-        if img:
-            imagenes = [img]
-    if not texto and not imagenes:
-        return jsonify({"ok": False, "error": "No se pudo abrir el PDF. Prueba de nuevo o usa una foto."}), 400
+        if img and not bruto:
+            try:
+                bruto = base64.b64decode(limpiar_data_b64(img))
+                mime_type = "image/png"
+            except Exception:
+                pass
     try:
-        data = _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=bruto if es_pdf else None)
-        if not isinstance(data, dict):
-            data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
-        articulos = data.get("articulos") or []
-        data["articulos"] = [
-            _normalizar_articulo(a)
-            for a in articulos
-            if isinstance(a, dict) and (a.get("nombre") or "").strip() and not _es_nombre_articulo_ejemplo(a.get("nombre"))
-        ]
-        data["tipo_fuente"] = "documento"
-        data["nombre_documento"] = nombre
+        data = _procesar_bytes_documento(bruto, nombre, mime_type, texto)
         data["guardado_en_nube"] = guardar
         if guardar:
             try:
@@ -3564,11 +3581,303 @@ def ia_procesar_documento():
                 data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
             except Exception as e:
                 print("pdf ficha:", e)
-        if not data["articulos"]:
-            data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
         return jsonify({"ok": True, "data": data})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
+
+
+def _nombre_ocr_seguro(nombre):
+    base = os.path.basename(nombre or "documento.pdf")
+    base = re.sub(r"[^\w.\-áéíóúÁÉÍÓÚñÑ]+", "_", base)
+    return (base or "documento.pdf")[:160]
+
+
+def _dict_trabajo_ocr(fila):
+    d = fila_a_dict(fila) or {}
+    resultado = d.get("resultado_json") or ""
+    parsed = None
+    if resultado:
+        try:
+            parsed = json.loads(resultado) if isinstance(resultado, str) else resultado
+        except Exception:
+            parsed = None
+    return {
+        "id": d.get("id"),
+        "estado": d.get("estado") or "",
+        "nombre": d.get("nombre") or "",
+        "mime": d.get("mime") or "",
+        "faena_id": d.get("faena_id") or 0,
+        "error": d.get("error") or "",
+        "resultado": parsed,
+        "creado_en": d.get("creado_en"),
+        "actualizado_en": d.get("actualizado_en"),
+    }
+
+
+def _guardar_archivo_trabajo_ocr(trabajo_id, nombre, data, mime):
+    nombre = _nombre_ocr_seguro(nombre)
+    if r2_activo():
+        key = clave_objeto("ocr", "trabajos", str(trabajo_id), nombre)
+        res = subir_bytes(key, data, mime or "application/pdf")
+        if not res.get("ok"):
+            raise RuntimeError(res.get("error") or "No se pudo subir el PDF a Cloudflare")
+        return key
+    carpeta = os.path.join(CARPETA_RAIZ, "ocr_trabajos", str(trabajo_id))
+    os.makedirs(carpeta, exist_ok=True)
+    ruta = os.path.join(carpeta, nombre)
+    with open(ruta, "wb") as fh:
+        fh.write(data)
+    return ruta
+
+
+def _leer_archivo_trabajo_ocr(object_key):
+    if not object_key:
+        return None
+    if os.path.isfile(object_key):
+        with open(object_key, "rb") as fh:
+            return fh.read()
+    data = descargar_bytes(object_key)
+    if data:
+        return data
+    return None
+
+
+def _liberar_trabajos_ocr_atascados(conn):
+    if getattr(conn, "_backend", "") == "mysql":
+        conn.execute(
+            "UPDATE trabajos_ocr SET estado='pendiente', error='', actualizado_en=CURRENT_TIMESTAMP "
+            "WHERE estado='procesando' AND actualizado_en < DATE_SUB(NOW(), INTERVAL 12 MINUTE)"
+        )
+    else:
+        conn.execute(
+            "UPDATE trabajos_ocr SET estado='pendiente', error='', actualizado_en=datetime('now') "
+            "WHERE estado='procesando' AND actualizado_en < datetime('now', '-12 minutes')"
+        )
+
+
+@app.route("/api/ocr/trabajos", methods=["POST"])
+def ocr_crear_trabajo():
+    datos = request.get_json(silent=True) or {}
+    nombre = (datos.get("nombre") or request.form.get("nombre") or "documento.pdf").strip() or "documento.pdf"
+    mime_type = (datos.get("mime_type") or datos.get("mime") or request.form.get("mime_type") or "").strip()
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id") or request.form.get("faena_id")) or 0
+    archivo_base64 = (datos.get("archivo_base64") or datos.get("archivo") or datos.get("data") or "").strip()
+    bruto = b""
+    f = request.files.get("archivo") or request.files.get("file") or request.files.get("pdf")
+    if f:
+        bruto = f.read() or b""
+        if f.filename:
+            nombre = f.filename
+        mime_type = mime_type or (f.mimetype or "")
+    elif archivo_base64:
+        try:
+            bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
+        except Exception:
+            bruto = b""
+    if not bruto:
+        return jsonify({"ok": False, "error": "Falta el archivo PDF"}), 400
+    mime_type = mime_type or _mime_archivo(nombre) or "application/pdf"
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO trabajos_ocr (estado, nombre, object_key, mime, faena_id, resultado_json, error) "
+            "VALUES ('pendiente', ?, '', ?, ?, '', '')",
+            (nombre, mime_type, faena_id),
+        )
+        trabajo_id = cur.lastrowid
+        try:
+            object_key = _guardar_archivo_trabajo_ocr(trabajo_id, nombre, bruto, mime_type)
+        except Exception as exc:
+            conn.execute(
+                "UPDATE trabajos_ocr SET estado='error', error=?, actualizado_en=datetime('now') WHERE id=?",
+                (str(exc)[:900], trabajo_id),
+            )
+            conn.commit()
+            return jsonify({"ok": False, "error": str(exc)}), 502
+        conn.execute(
+            "UPDATE trabajos_ocr SET object_key=?, actualizado_en=datetime('now') WHERE id=?",
+            (object_key, trabajo_id),
+        )
+        conn.commit()
+        fila = conn.execute("SELECT * FROM trabajos_ocr WHERE id=?", (trabajo_id,)).fetchone()
+        return jsonify({"ok": True, "trabajo": _dict_trabajo_ocr(fila), "id": trabajo_id})
+    finally:
+        conn.close()
+
+
+@app.route("/api/ocr/trabajos/<int:trabajo_id>", methods=["GET"])
+def ocr_ver_trabajo(trabajo_id):
+    conn = get_connection()
+    try:
+        fila = conn.execute("SELECT * FROM trabajos_ocr WHERE id=?", (trabajo_id,)).fetchone()
+        if not fila:
+            return jsonify({"ok": False, "error": "Trabajo no encontrado"}), 404
+        return jsonify({"ok": True, "trabajo": _dict_trabajo_ocr(fila)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/ocr/trabajos/<int:trabajo_id>/archivo", methods=["GET"])
+def ocr_descargar_trabajo(trabajo_id):
+    conn = get_connection()
+    try:
+        fila = fila_a_dict(conn.execute("SELECT * FROM trabajos_ocr WHERE id=?", (trabajo_id,)).fetchone())
+    finally:
+        conn.close()
+    if not fila:
+        return jsonify({"ok": False, "error": "Trabajo no encontrado"}), 404
+    data = _leer_archivo_trabajo_ocr(fila.get("object_key") or "")
+    if not data:
+        return jsonify({"ok": False, "error": "No se encontró el archivo"}), 404
+    nombre = _nombre_ocr_seguro(fila.get("nombre") or "documento.pdf")
+    mime = fila.get("mime") or "application/pdf"
+    return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True, download_name=nombre)
+
+
+@app.route("/api/ocr/trabajos/reclamar", methods=["POST"])
+def ocr_reclamar_trabajo():
+    conn = get_connection()
+    try:
+        _liberar_trabajos_ocr_atascados(conn)
+        fila = conn.execute(
+            "SELECT * FROM trabajos_ocr WHERE estado='pendiente' ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        if not fila:
+            conn.commit()
+            return jsonify({"ok": True, "trabajo": None})
+        trabajo = _dict_trabajo_ocr(fila)
+        cur = conn.execute(
+            "UPDATE trabajos_ocr SET estado='procesando', actualizado_en=datetime('now') "
+            "WHERE id=? AND estado='pendiente'",
+            (trabajo["id"],),
+        )
+        if cur.rowcount == 0:
+            conn.commit()
+            return jsonify({"ok": True, "trabajo": None})
+        conn.commit()
+        trabajo["estado"] = "procesando"
+        return jsonify({"ok": True, "trabajo": trabajo})
+    finally:
+        conn.close()
+
+
+@app.route("/api/ocr/trabajos/<int:trabajo_id>/resultado", methods=["POST"])
+def ocr_guardar_resultado(trabajo_id):
+    datos = request.get_json(silent=True) or {}
+    error = (datos.get("error") or "").strip()
+    payload = datos.get("data") if isinstance(datos.get("data"), dict) else None
+    conn = get_connection()
+    try:
+        fila = conn.execute("SELECT id FROM trabajos_ocr WHERE id=?", (trabajo_id,)).fetchone()
+        if not fila:
+            return jsonify({"ok": False, "error": "Trabajo no encontrado"}), 404
+        if error or not payload:
+            conn.execute(
+                "UPDATE trabajos_ocr SET estado='error', error=?, resultado_json='', actualizado_en=datetime('now') WHERE id=?",
+                ((error or "El PC no pudo leer el PDF")[:900], trabajo_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE trabajos_ocr SET estado='hecho', error='', resultado_json=?, actualizado_en=datetime('now') WHERE id=?",
+                (json.dumps(payload, ensure_ascii=False), trabajo_id),
+            )
+        conn.commit()
+        actual = conn.execute("SELECT * FROM trabajos_ocr WHERE id=?", (trabajo_id,)).fetchone()
+        return jsonify({"ok": True, "trabajo": _dict_trabajo_ocr(actual)})
+    finally:
+        conn.close()
+
+
+def _url_cola_ocr_pc():
+    if en_servidor_nube():
+        return ""
+    for cand in (
+        os.environ.get("FAENAS_OCR_COLA_URL", ""),
+        os.environ.get("FAENAS_API_BASE", ""),
+        PUBLIC_BASE_URL or "",
+        "https://faenas-app.onrender.com",
+    ):
+        url = (cand or "").strip().rstrip("/")
+        if url.endswith("/api"):
+            url = url[:-4]
+        if url.startswith("http://") or url.startswith("https://"):
+            host = url.split("://", 1)[-1].split("/", 1)[0].lower()
+            if host.startswith("127.") or host.startswith("localhost") or host.startswith("[::1]"):
+                if os.environ.get("FAENAS_OCR_COLA_URL"):
+                    return url
+                continue
+            return url
+    return ""
+
+
+def _http_json(url, method="GET", payload=None, timeout=30):
+    data = None
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        bruto = resp.read() or b"{}"
+        return json.loads(bruto.decode("utf-8"))
+
+
+def _procesar_un_trabajo_ocr_remoto(base):
+    info = _http_json(f"{base}/api/ocr/trabajos/reclamar", method="POST", payload={}, timeout=25)
+    trabajo = (info or {}).get("trabajo")
+    if not trabajo:
+        return False
+    tid = trabajo.get("id")
+    nombre = trabajo.get("nombre") or "documento.pdf"
+    mime = trabajo.get("mime") or "application/pdf"
+    req = urllib.request.Request(f"{base}/api/ocr/trabajos/{tid}/archivo", method="GET")
+    with urllib.request.urlopen(req, timeout=90) as resp:
+        bruto = resp.read() or b""
+        mime = resp.headers.get("Content-Type") or mime
+    try:
+        data = _procesar_bytes_documento(bruto, nombre, mime)
+        _http_json(
+            f"{base}/api/ocr/trabajos/{tid}/resultado",
+            method="POST",
+            payload={"ok": True, "data": data},
+            timeout=30,
+        )
+        print(f"[ocr-pc] trabajo {tid} listo: {len(data.get('articulos') or [])} líneas")
+    except Exception as exc:
+        try:
+            _http_json(
+                f"{base}/api/ocr/trabajos/{tid}/resultado",
+                method="POST",
+                payload={"ok": False, "error": str(exc)[:900]},
+                timeout=20,
+            )
+        except Exception:
+            pass
+        print(f"[ocr-pc] trabajo {tid} error: {exc}")
+    return True
+
+
+def _bucle_trabajador_ocr_pc():
+    base = _url_cola_ocr_pc()
+    if not base:
+        return
+    print(f"✓ Este PC lee los PDF de la web: {base}")
+    time.sleep(6)
+    while True:
+        try:
+            _procesar_un_trabajo_ocr_remoto(base)
+        except Exception as exc:
+            print(f"[ocr-pc] {exc}")
+        time.sleep(4)
+
+
+def _arrancar_trabajador_ocr_pc():
+    if en_servidor_nube():
+        return
+    t = threading.Thread(target=_bucle_trabajador_ocr_pc, name="ocr-pc", daemon=True)
+    t.start()
 
 
 @app.route("/api/ia/guardar-json", methods=["POST"])
@@ -4745,6 +5054,7 @@ if __name__ == "__main__":
     if PUBLIC_BASE_URL:
         print(f"✓ URL cloud para móvil: {PUBLIC_BASE_URL}/movil2")
     print("=" * 50)
+    _arrancar_trabajador_ocr_pc()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

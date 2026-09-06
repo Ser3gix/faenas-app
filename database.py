@@ -507,6 +507,20 @@ def _crear_esquema_sqlite(cursor):
             orden INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trabajos_ocr (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            nombre TEXT NOT NULL DEFAULT '',
+            object_key TEXT NOT NULL DEFAULT '',
+            mime TEXT NOT NULL DEFAULT '',
+            faena_id INTEGER DEFAULT 0,
+            resultado_json TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            creado_en TEXT DEFAULT (datetime('now')),
+            actualizado_en TEXT DEFAULT (datetime('now'))
+        )
+    """)
     _asegurar_categorias_material(cursor, mysql=False)
 
 
@@ -745,6 +759,21 @@ def _crear_esquema_mysql(cursor):
             nombre VARCHAR(100) NOT NULL,
             orden INT NOT NULL DEFAULT 0,
             UNIQUE KEY uk_categorias_material_nombre (nombre)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS trabajos_ocr (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+            nombre VARCHAR(255) NOT NULL DEFAULT '',
+            object_key VARCHAR(500) NOT NULL DEFAULT '',
+            mime VARCHAR(120) NOT NULL DEFAULT '',
+            faena_id INT NOT NULL DEFAULT 0,
+            resultado_json LONGTEXT,
+            error VARCHAR(1000) NOT NULL DEFAULT '',
+            creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_trabajos_ocr_estado (estado)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
     ]

@@ -2800,18 +2800,64 @@ async function procesarGastoFotoTicket(faenaId, file) {
   }
 }
 
+async function procesarPdfViaColaMovil(file, faenaId, onEstado) {
+  const fd = new FormData();
+  fd.append("archivo", file, file.name || "documento.pdf");
+  fd.append("nombre", file.name || "documento.pdf");
+  if (faenaId) fd.append("faena_id", String(faenaId));
+  const r = await fetch(`${getServerUrl()}/ocr/trabajos`, { method: "POST", body: fd, signal: AbortSignal.timeout(60000) });
+  const job = await r.json();
+  if (!job.ok) throw new Error(job.error || "No se pudo enviar el PDF");
+  const id = job.id || (job.trabajo && job.trabajo.id);
+  if (!id) throw new Error("No se pudo enviar el PDF al PC");
+  const t0 = Date.now();
+  let aviso = false;
+  while (Date.now() - t0 < 180000) {
+    await new Promise(x => setTimeout(x, 2000));
+    const s = await fetch(`${getServerUrl()}/ocr/trabajos/${id}`).then(x => x.json());
+    const t = s.trabajo || {};
+    if (onEstado) onEstado(t.estado || "");
+    if (t.estado === "hecho") return { ok: true, data: t.resultado };
+    if (t.estado === "error") throw new Error(t.error || "El PC no pudo leer el PDF");
+    if (!aviso && Date.now() - t0 > 12000 && t.estado === "pendiente") {
+      aviso = true;
+      toast("Esperando al PC. Deja Arrancar_Faenas.bat abierto", true);
+    }
+  }
+  throw new Error("El PC no contestó. Abre Arrancar_Faenas.bat en el ordenador");
+}
+
+function usaColaOcrMovil() {
+  try {
+    const u = new URL(getServerUrl(), window.location.origin);
+    const h = String(u.hostname || "").toLowerCase();
+    return h !== "localhost" && h !== "127.0.0.1";
+  } catch (e) {
+    return true;
+  }
+}
+
 async function procesarGastoDocumento(faenaId, file) {
   const estado = document.getElementById(`gasto-ia-estado-${faenaId}`);
-  if (estado) { estado.style.display = "block"; estado.style.color = "#666"; estado.textContent = "🤖 La IA está analizando…"; }
+  if (estado) { estado.style.display = "block"; estado.style.color = "#666"; estado.textContent = "🤖 Enviando el PDF al PC…"; }
   try {
-    const archivo_base64 = await fileToBase64(file);
-    const r = await fetch(`${getServerUrl()}/ia/procesar-documento`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ archivo_base64, nombre: file.name || "documento", mime_type: file.type || "", faena_id: faenaId, guardar: false }),
-      signal: AbortSignal.timeout(50000)
-    });
-    const d = await r.json();
+    let d;
+    if (usaColaOcrMovil()) {
+      d = await procesarPdfViaColaMovil(file, faenaId, (est) => {
+        if (!estado) return;
+        if (est === "pendiente") estado.textContent = "El PC está cogiendo el PDF…";
+        else if (est === "procesando") estado.textContent = "El PC está leyendo el PDF…";
+      });
+    } else {
+      const archivo_base64 = await fileToBase64(file);
+      const r = await fetch(`${getServerUrl()}/ia/procesar-documento`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archivo_base64, nombre: file.name || "documento", mime_type: file.type || "", faena_id: faenaId, guardar: false }),
+        signal: AbortSignal.timeout(50000)
+      });
+      d = await r.json();
+    }
     if (!d.ok) throw new Error(d.error || "Error al procesar el documento");
     gastoIaOrigen[faenaId] = "pdf";
     gastoIaDatos[faenaId] = d.data;

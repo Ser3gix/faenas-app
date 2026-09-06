@@ -41,7 +41,7 @@ function Update-FaenasApp {
 
 Write-Host "Faenas PC"
 Write-Host "  Datos y faenas: $urlNube"
-Write-Host "  Lectura de PDF: este ordenador"
+Write-Host "  Este ordenador lee los PDF que se suban en la web"
 Write-Host ""
 
 Update-FaenasApp

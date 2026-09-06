@@ -656,7 +656,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       Introducir datos
       <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto o PDF. Este PC lee el documento; al aceptar se guarda en la nube. Sin IVA.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6" id="ticket-ayuda">Foto o PDF. Al aceptar se guarda en la nube. Sin IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
@@ -1518,6 +1518,42 @@ const API_OCR = esAppDelPc() && window.location.origin && window.location.origin
   ? `${window.location.origin}/api`
   : API;
 
+function usaColaOcrNube() {
+  return !esAppDelPc();
+}
+
+async function esperarTrabajoOcr(id, onEstado) {
+  const t0 = Date.now();
+  let avisoPc = false;
+  while (Date.now() - t0 < 180000) {
+    await new Promise(r => setTimeout(r, 2000));
+    const s = await api("GET", "/ocr/trabajos/" + id);
+    const t = (s && s.trabajo) || {};
+    const estado = String(t.estado || "");
+    if (typeof onEstado === "function") onEstado(estado);
+    if (estado === "hecho") return { ok: true, data: t.resultado };
+    if (estado === "error") return { ok: false, error: t.error || "El PC no pudo leer el PDF" };
+    if (!avisoPc && Date.now() - t0 > 12000 && estado === "pendiente") {
+      avisoPc = true;
+      toast("Esperando al PC. Deja Arrancar_Faenas.bat abierto", true);
+    }
+  }
+  return { ok: false, error: "El PC no contestó. Abre Arrancar_Faenas.bat en el ordenador." };
+}
+
+async function procesarPdfViaCola(file, extra) {
+  extra = extra || {};
+  const fd = new FormData();
+  fd.append("archivo", file, extra.nombre || file.name || "documento.pdf");
+  fd.append("nombre", extra.nombre || file.name || "documento.pdf");
+  if (extra.faena_id) fd.append("faena_id", String(extra.faena_id));
+  const r = await apiForm("POST", "/ocr/trabajos", fd, 60000, API);
+  if (!r.ok) return r;
+  const id = r.id || (r.trabajo && r.trabajo.id);
+  if (!id) return { ok: false, error: "No se pudo enviar el PDF al PC" };
+  return esperarTrabajoOcr(id, extra.onEstado);
+}
+
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -1557,6 +1593,12 @@ async function init() {
       }
     } catch (e) {}
   }
+  const ayuda = document.getElementById("ticket-ayuda");
+  if (ayuda) {
+    ayuda.textContent = esAppDelPc()
+      ? "Foto o PDF. Este PC lee el documento; al aceptar se guarda en la nube. Sin IVA."
+      : "Foto o PDF. El PC (Arrancar_Faenas.bat) lee el documento y lo devuelve aquí. Al aceptar se guarda. Sin IVA.";
+  }
 }
 
 async function cargarEstadoDb() {
@@ -1568,10 +1610,10 @@ async function cargarEstadoDb() {
     if (!sub) return;
     if (esAppDelPc()) {
       sub.textContent = d.backend_activo === "mysql"
-        ? "Este PC lee los PDF · datos en la nube"
+        ? "Este PC lee los PDF de la web · datos en la nube"
         : "Este PC lee los PDF · datos locales";
     } else if (d.backend_activo === "mysql") {
-      sub.textContent = "Carpintería · Nube conectada";
+      sub.textContent = "Carpintería · Nube conectada · PDF: deja Arrancar_Faenas.bat abierto";
     } else if (d.mysql_configurado && d.mysql_deshabilitado) {
       sub.textContent = "Carpintería · Local (sin nube)";
       toast("No se pudo conectar a la nube: " + (d.mysql_error || "error desconocido"), true);
@@ -2841,7 +2883,9 @@ async function ticketPdfPreview(event) {
   const info = document.getElementById("ticket-pdf-info");
   if (info) {
     info.style.display = "block";
-    info.textContent = "PDF: " + file.name + " — leyendo en este PC…";
+    info.textContent = usaColaOcrNube()
+      ? ("PDF: " + file.name + " — enviando al PC…")
+      : ("PDF: " + file.name + " — leyendo en este PC…");
   }
   document.getElementById("ticket-preview").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "block";
@@ -2882,7 +2926,9 @@ async function analizarDocumentoFaena(faenaId, nombre) {
     fd.append("guardar", "false");
     fd.append("faena_id", String(faenaId));
     fd.append("nombre", nombre || "documento.pdf");
-    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+    const r = usaColaOcrNube()
+      ? await procesarPdfViaCola(new File([blob], nombre || "documento.pdf", { type: blob.type || "application/pdf" }), { faena_id: faenaId, nombre })
+      : await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
     if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
     abrirTicketConDatos(r.data, faenaId);
     toast("Revisa la tabla de tickets y guarda");
@@ -2954,11 +3000,23 @@ async function procesarTicketConIA() {
   try {
     let data;
     if (pdf) {
-      const fd = new FormData();
-      fd.append("archivo", pdf, pdf.name || "factura.pdf");
-      fd.append("guardar", "false");
-      fd.append("nombre", pdf.name || "factura.pdf");
-      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+      if (usaColaOcrNube()) {
+        if (estado) estado.textContent = "Enviando el PDF al PC…";
+        data = await procesarPdfViaCola(pdf, {
+          nombre: pdf.name || "factura.pdf",
+          onEstado: function (est) {
+            if (!estado) return;
+            if (est === "pendiente") estado.textContent = "El PC está cogiendo el PDF… deja Arrancar_Faenas.bat abierto";
+            else if (est === "procesando") estado.textContent = "El PC está leyendo el PDF…";
+          }
+        });
+      } else {
+        const fd = new FormData();
+        fd.append("archivo", pdf, pdf.name || "factura.pdf");
+        fd.append("guardar", "false");
+        fd.append("nombre", pdf.name || "factura.pdf");
+        data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+      }
     } else {
       data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000, API_OCR);
     }
