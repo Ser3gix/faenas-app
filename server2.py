@@ -23,7 +23,8 @@ from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_D
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
-    fila_a_dict, filas_a_lista
+    fila_a_dict, filas_a_lista,
+    CATEGORIAS_MATERIAL_DEFECTO,
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
 from secretario import (
@@ -1600,7 +1601,7 @@ def crear_material():
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO materiales (nombre, unidad, categoria) VALUES (?, ?, ?)",
-        (nombre, datos.get("unidad", "ud"), datos.get("categoria", "Herraje"))
+        (nombre, datos.get("unidad", "ud"), datos.get("categoria", "Otros"))
     )
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -1612,7 +1613,7 @@ def editar_material(id):
     datos = request.json or {}
     nombre = str(datos.get("nombre", "")).strip()
     unidad = str(datos.get("unidad", "ud")).strip() or "ud"
-    categoria = str(datos.get("categoria", "Herraje")).strip() or "Herraje"
+    categoria = str(datos.get("categoria", "Otros")).strip() or "Otros"
     definicion = str(datos.get("definicion", "")).strip()
     if not nombre:
         return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
@@ -1641,6 +1642,107 @@ def eliminar_material(id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+def _listar_categorias_material(conn):
+    filas = filas_a_lista(conn.execute(
+        "SELECT id, nombre, orden FROM categorias_material ORDER BY orden, nombre"
+    ).fetchall())
+    if filas:
+        return filas
+    return [{"id": 0, "nombre": n, "orden": o} for n, o in CATEGORIAS_MATERIAL_DEFECTO]
+
+
+@app.route("/api/categorias-material", methods=["GET"])
+def get_categorias_material():
+    conn = get_connection()
+    try:
+        return jsonify({"ok": True, "data": _listar_categorias_material(conn)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/categorias-material", methods=["POST"])
+def crear_categoria_material():
+    datos = request.json or {}
+    nombre = str(datos.get("nombre") or "").strip()
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+    conn = get_connection()
+    try:
+        existe = conn.execute("SELECT id FROM categorias_material WHERE nombre=?", (nombre,)).fetchone()
+        if existe:
+            return jsonify({"ok": False, "error": "Esa categoría ya existe"}), 400
+        fila = conn.execute("SELECT MAX(orden) AS m FROM categorias_material").fetchone()
+        orden = int((fila_a_dict(fila) or {}).get("m") or 0) + 1
+        cur = conn.cursor()
+        cur.execute("INSERT INTO categorias_material (nombre, orden) VALUES (?, ?)", (nombre, orden))
+        conn.commit()
+        return jsonify({"ok": True, "data": {"id": cur.lastrowid, "nombre": nombre, "orden": orden}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/categorias-material/<int:id>", methods=["PUT"])
+def editar_categoria_material(id):
+    datos = request.json or {}
+    nombre = str(datos.get("nombre") or "").strip()
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+    conn = get_connection()
+    try:
+        actual = fila_a_dict(conn.execute("SELECT * FROM categorias_material WHERE id=?", (id,)).fetchone())
+        if not actual:
+            return jsonify({"ok": False, "error": "Categoría no encontrada"}), 404
+        otro = conn.execute(
+            "SELECT id FROM categorias_material WHERE nombre=? AND id<>?",
+            (nombre, id),
+        ).fetchone()
+        if otro:
+            return jsonify({"ok": False, "error": "Esa categoría ya existe"}), 400
+        viejo = actual.get("nombre") or ""
+        conn.execute("UPDATE categorias_material SET nombre=? WHERE id=?", (nombre, id))
+        if viejo and viejo != nombre:
+            conn.execute("UPDATE materiales SET categoria=? WHERE categoria=?", (nombre, viejo))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/categorias-material/<int:id>", methods=["DELETE"])
+def eliminar_categoria_material(id):
+    conn = get_connection()
+    try:
+        actual = fila_a_dict(conn.execute("SELECT * FROM categorias_material WHERE id=?", (id,)).fetchone())
+        if not actual:
+            return jsonify({"ok": False, "error": "Categoría no encontrada"}), 404
+        n = conn.execute("SELECT COUNT(*) AS n FROM categorias_material").fetchone()
+        total = int((fila_a_dict(n) or {}).get("n") or 0)
+        if total <= 1:
+            return jsonify({"ok": False, "error": "Tiene que quedar al menos una categoría"}), 400
+        destino = "Otros"
+        if actual.get("nombre") == destino:
+            otra = fila_a_dict(conn.execute(
+                "SELECT nombre FROM categorias_material WHERE id<>? ORDER BY orden LIMIT 1",
+                (id,),
+            ).fetchone())
+            destino = (otra or {}).get("nombre") or "Otros"
+        conn.execute(
+            "UPDATE materiales SET categoria=? WHERE categoria=?",
+            (destino, actual.get("nombre")),
+        )
+        conn.execute("DELETE FROM categorias_material WHERE id=?", (id,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 @app.route("/api/materiales/<int:id>/definicion", methods=["PUT"])
 def editar_definicion_material(id):
@@ -4201,30 +4303,34 @@ def fotos_disponibles_faena(faena_id):
     return jsonify({"ok": True, "data": fotos})
 
 # -------------------- IMPORTAR MATERIALES DESDE PDF --------------------
+def _pdf_subido_bytes():
+    f = request.files.get("archivo") or request.files.get("file") or request.files.get("pdf")
+    if not f:
+        return None, None
+    return f.read(), (f.filename or "documento.pdf")
+
+
+def _texto_de_pdf_bytes(contenido):
+    import fitz
+    doc = fitz.open(stream=contenido, filetype="pdf")
+    try:
+        return "".join(p.get_text() or "" for p in doc)
+    finally:
+        doc.close()
+
+
 @app.route("/api/materiales/importar-pdf", methods=["POST"])
 def importar_pdf_materiales():
-    import fitz
-    root = tk.Tk()
-    root.withdraw()
-    ruta_pdf = filedialog.askopenfilename(
-        title="Selecciona el PDF del catálogo o factura",
-        filetypes=[("PDF", "*.pdf"), ("Todos", "*.*")]
-    )
-    root.destroy()
-    if not ruta_pdf:
-        return jsonify({"ok": False, "error": "No se seleccionó ningún archivo"})
+    contenido, nombre_pdf = _pdf_subido_bytes()
+    if not contenido:
+        return jsonify({"ok": False, "error": "Selecciona un PDF"}), 400
     try:
-        doc = fitz.open(ruta_pdf)
-        texto = ""
-        for pagina in doc:
-            texto += pagina.get_text()
-        doc.close()
+        texto = _texto_de_pdf_bytes(contenido)
         if not texto.strip():
             return jsonify({"ok": False, "error": "El PDF no contiene texto extraíble"}), 400
         texto_truncado = texto[:8000]
         if len(texto) > 8000:
             texto_truncado += "\n[... texto truncado ...]"
-        nombre_pdf = os.path.basename(ruta_pdf)
         prompt = f"""Analiza el siguiente texto extraído del PDF "{nombre_pdf}" que es un catálogo o factura de materiales de carpintería.
 
 Extrae todos los materiales, herrajes o productos con sus precios y devuelve ÚNICAMENTE este JSON sin texto adicional:
@@ -4237,7 +4343,7 @@ Extrae todos los materiales, herrajes o productos con sus precios y devuelve ÚN
       "referencia": "Referencia o código si aparece",
       "unidad": "ud/ml/kg/caja/m2/litro",
       "precio_unitario": 0.00,
-      "categoria": "Herraje/Consumible/Cola/Tornillería/Otro"
+      "categoria": "Trabajo/Tableros/Molduras-Maderas/Herrajes/Otros"
     }}
   ]
 }}
@@ -4254,7 +4360,6 @@ Extrae solo productos con precio. Si no hay precios claros, incluye el producto 
 
 @app.route("/api/faenas/<int:id>/gastos/importar-pdf", methods=["POST"])
 def importar_pdf_gastos(id):
-    import fitz
     conn = get_connection()
     faena = conn.execute("""
         SELECT f.*, c.nombre AS cliente_nombre
@@ -4264,23 +4369,14 @@ def importar_pdf_gastos(id):
     conn.close()
     if not faena:
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    root = tk.Tk()
-    root.withdraw()
-    ruta_pdf = filedialog.askopenfilename(
-        title="Selecciona la factura PDF",
-        filetypes=[("PDF", "*.pdf"), ("Todos", "*.*")]
-    )
-    root.destroy()
-    if not ruta_pdf:
-        return jsonify({"ok": False, "error": "No se seleccionó ningún archivo"})
+    contenido, nombre_pdf = _pdf_subido_bytes()
+    if not contenido:
+        return jsonify({"ok": False, "error": "Selecciona un PDF"}), 400
     try:
-        doc = fitz.open(ruta_pdf)
-        texto = "".join(p.get_text() for p in doc)
-        doc.close()
+        texto = _texto_de_pdf_bytes(contenido)
         if not texto.strip():
             return jsonify({"ok": False, "error": "El PDF no contiene texto extraíble"}), 400
         texto_truncado = texto[:6000] + ("\n[... truncado ...]" if len(texto) > 6000 else "")
-        nombre_pdf = os.path.basename(ruta_pdf)
         prompt = f"""Analiza esta factura de materiales para una obra de carpintería.
 Faena: {faena['numero']} — {faena['tipo_trabajo'] or '—'} — Cliente: {faena['cliente_nombre']}
 

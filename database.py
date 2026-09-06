@@ -500,6 +500,15 @@ def _crear_esquema_sqlite(cursor):
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categorias_material (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE,
+            orden INTEGER DEFAULT 0
+        )
+    """)
+    _asegurar_categorias_material(cursor, mysql=False)
+
 
 def _crear_esquema_mysql(cursor):
     sentencias = [
@@ -730,6 +739,14 @@ def _crear_esquema_mysql(cursor):
             KEY idx_tiempos_fin (fin)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
+        """
+        CREATE TABLE IF NOT EXISTS categorias_material (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL,
+            orden INT NOT NULL DEFAULT 0,
+            UNIQUE KEY uk_categorias_material_nombre (nombre)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
     ]
     for sentencia in sentencias:
         cursor.execute(sentencia)
@@ -740,6 +757,7 @@ def _crear_esquema_mysql(cursor):
         pass
 
     _asegurar_columna_fase(cursor, mysql=True)
+    _asegurar_categorias_material(cursor, mysql=True)
 
 
 def _asegurar_columna_fase(cursor, mysql=False):
@@ -758,6 +776,110 @@ def _asegurar_columna_fase(cursor, mysql=False):
         cursor.execute(
             "UPDATE faenas SET fase='en_proceso' WHERE COALESCE(archivada,0)=0 AND (fase IS NULL OR fase='')"
         )
+    except Exception:
+        pass
+
+
+CATEGORIAS_MATERIAL_DEFECTO = [
+    ("Trabajo", 1),
+    ("Tableros", 2),
+    ("Molduras-Maderas", 3),
+    ("Herrajes", 4),
+    ("Otros", 5),
+]
+
+_MAPA_CATEGORIA_MATERIAL = {
+    "herraje": "Herrajes",
+    "herrajes": "Herrajes",
+    "tornilleria": "Herrajes",
+    "tornillería": "Herrajes",
+    "otro": "Otros",
+    "otros": "Otros",
+    "consumible": "Otros",
+    "cola": "Otros",
+    "tablero": "Tableros",
+    "tableros": "Tableros",
+    "moldura": "Molduras-Maderas",
+    "molduras": "Molduras-Maderas",
+    "madera": "Molduras-Maderas",
+    "maderas": "Molduras-Maderas",
+    "molduras-maderas": "Molduras-Maderas",
+    "trabajo": "Trabajo",
+}
+
+
+def _asegurar_categorias_material(cursor, mysql=False):
+    """Crea categorías por defecto y unifica nombres viejos sin perder materiales."""
+    try:
+        if mysql:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS categorias_material (
+                    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(100) NOT NULL,
+                    orden INT NOT NULL DEFAULT 0,
+                    UNIQUE KEY uk_categorias_material_nombre (nombre)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS categorias_material (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL UNIQUE,
+                    orden INTEGER DEFAULT 0
+                )
+                """
+            )
+    except Exception:
+        pass
+    try:
+        cursor.execute("SELECT COUNT(*) FROM categorias_material")
+        fila = cursor.fetchone()
+        n = 0
+        if fila is not None:
+            n = int(fila[0] if not isinstance(fila, dict) else list(fila.values())[0])
+        if n == 0:
+            for nombre, orden in CATEGORIAS_MATERIAL_DEFECTO:
+                try:
+                    cursor.execute(
+                        "INSERT INTO categorias_material (nombre, orden) VALUES (?, ?)",
+                        (nombre, orden),
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    try:
+        cursor.execute("SELECT DISTINCT categoria FROM materiales")
+        usadas = cursor.fetchall() or []
+        for fila in usadas:
+            if isinstance(fila, dict):
+                vieja = str(fila.get("categoria") or "").strip()
+            else:
+                vieja = str(fila[0] if fila else "").strip()
+            if not vieja:
+                continue
+            nueva = _MAPA_CATEGORIA_MATERIAL.get(vieja.lower(), vieja)
+            if nueva != vieja:
+                try:
+                    cursor.execute(
+                        "UPDATE materiales SET categoria=? WHERE categoria=?",
+                        (nueva, vieja),
+                    )
+                except Exception:
+                    pass
+                vieja = nueva
+            try:
+                cursor.execute("SELECT id FROM categorias_material WHERE nombre=?", (vieja,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO categorias_material (nombre, orden) VALUES (?, ?)",
+                        (vieja, 50),
+                    )
+            except Exception:
+                pass
     except Exception:
         pass
 

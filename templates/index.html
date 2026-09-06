@@ -581,15 +581,14 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     </div>
   </div>
   <nav>
-    <button class="active" onclick="nav('faenas')">Faenas</button>
-    <button onclick="nav('clientes')">Clientes</button>
-    <button onclick="nav('intermediarios')">Intermediarios</button>
-    <button onclick="nav('materiales')">Materiales</button>
-    <button onclick="nav('tickets')">Tickets</button>
-    <button onclick="nav('polyboard')">PolyBoard</button>
-    <button onclick="nav('presupuesto')">Presupuesto</button>
-    <button onclick="nav('book')">Book</button>
-    <button onclick="nav('asistente')">Jimmi</button>
+    <button class="active" data-nav="faenas" onclick="nav('faenas')">Faenas</button>
+    <button data-nav="clientes" onclick="nav('clientes')">Clientes</button>
+    <button data-nav="intermediarios" onclick="nav('intermediarios')">Intermediarios</button>
+    <button data-nav="materiales" onclick="nav('materiales')">Materiales</button>
+    <button data-nav="polyboard" onclick="nav('polyboard')">PolyBoard</button>
+    <button data-nav="presupuesto" onclick="nav('presupuesto')">Presupuesto</button>
+    <button data-nav="book" onclick="nav('book')">Book</button>
+    <button data-nav="asistente" onclick="nav('asistente')">Jimmi</button>
   </nav>
 </header>
 
@@ -640,64 +639,25 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <!-- ===== MATERIALES ===== -->
 <div id="s-materiales" class="section">
   <div class="sec-header">
-    <h2>Materiales y precios</h2>
+    <h2>Materiales</h2>
     <div class="btn-row">
-      <button class="btn btn-s btn-sm" onclick="importarPDF()">📄 Importar PDF</button>
-      <button class="btn btn-p btn-sm" onclick="abrirModal('m-material')">+ Nuevo material</button>
+      <button class="btn btn-s btn-sm" onclick="abrirModal('m-categorias')">Categorías</button>
+      <input type="file" id="pdf-catalogo-input" accept="application/pdf,.pdf" onchange="enviarPdfCatalogo(event)" style="display:none">
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('pdf-catalogo-input').click()">📄 Importar PDF</button>
+      <button class="btn btn-p btn-sm" onclick="abrirModalNuevoMaterial()">+ Nuevo material</button>
     </div>
   </div>
+  <div id="filtro-cats-mat" class="fase-tabs" style="margin-bottom:10px"></div>
   <div class="search-bar">
     <input id="q-mat" placeholder="Buscar material..." oninput="renderMateriales()">
   </div>
 
-  <!-- Panel importar PDF -->
-  <div id="pdf-import-panel" style="display:none" class="form-box">
-    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
-      📄 Importar desde PDF
-      <button class="btn btn-s btn-sm" onclick="document.getElementById('pdf-import-panel').style.display='none'">× Cerrar</button>
-    </div>
-    <div id="pdf-import-estado" style="font-size:0.82rem;color:#666;margin-bottom:12px">
-      Selecciona un PDF de catálogo o factura de proveedor para extraer materiales y precios.
-    </div>
-
-    <!-- Prompt generado -->
-    <div id="pdf-prompt-box" style="display:none">
-      <div style="font-size:0.78rem;color:#666;margin-bottom:8px">
-        Copia el prompt, ve a Claude.ai, pégalo y obtén el JSON con los materiales.
-      </div>
-      <div class="prompt-box" id="pdf-prompt-txt" style="max-height:250px"></div>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="btn btn-g" onclick="copiar('pdf-prompt-txt')">📋 Copiar prompt</button>
-      </div>
-      <hr>
-      <div class="form-title" style="margin-top:8px">Pega aquí el JSON de respuesta</div>
-      <div class="form-grid g1">
-        <div>
-          <label>JSON de Claude</label>
-          <textarea id="pdf-json-input" rows="8"
-            placeholder='{"proveedor": "...", "materiales": [{"nombre": "...", "precio_unitario": 0.00, ...}]}'
-            style="font-size:0.78rem"></textarea>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-p" onclick="cargarJsonPDF()">✓ Importar materiales</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="lista-materiales"></div>
-</div>
-
-<!-- ===== TICKETS ===== -->
-<div id="s-tickets" class="section">
-  <div class="sec-header">
-    <h2>Tickets</h2>
-    <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
-  </div>
-
   <div class="form-box">
-    <div class="form-title">Paso 1 — Foto del ticket</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto del ticket o PDF de compra (solo en el PC). Jimmi lo lee y tú revisas la lista antes de guardar. Sin IVA.</p>
+    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
+      Introducir datos
+      <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto del ticket o PDF de compra. Jimmi lo lee y tú revisas la lista antes de guardar. Sin IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
@@ -714,11 +674,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box" id="ticket-paso2" style="display:none">
-    <div class="form-title">Paso 2 — Procesar ticket</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Jimmi analiza el ticket. Después revisas la lista y eliges faena o almacén.</p>
+    <div class="form-title">Paso 2 — Procesar</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Jimmi analiza el documento. Después revisas la lista y eliges faena o almacén.</p>
     <div class="btn-row">
       <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">Pedir a Jimmi</button>
-      <button class="btn btn-s" type="button" onclick="cancelarTicket()">Resetear ticket</button>
+      <button class="btn btn-s" type="button" onclick="cancelarTicket()">Resetear</button>
     </div>
     <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem"></div>
   </div>
@@ -768,7 +728,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <div class="form-grid g1">
       <div>
         <label>Lista de materiales</label>
-        <textarea id="ticket-texto-manual" rows="5" placeholder="Ej: 2x Bisagra 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€"></textarea>
+        <textarea id="ticket-texto-manual" rows="5" placeholder='Ej: 2x Bisagra 35mm a 2.50€&#10;4x Tornillos 4x40 a 0.10€'></textarea>
       </div>
     </div>
     <div class="btn-row">
@@ -776,6 +736,43 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <button class="btn btn-s" onclick="document.getElementById('ticket-paso4').style.display='none'">Cancelar</button>
     </div>
   </div>
+
+  <!-- Panel importar PDF -->
+  <div id="pdf-import-panel" style="display:none" class="form-box">
+    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
+      📄 Importar desde PDF
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('pdf-import-panel').style.display='none'">× Cerrar</button>
+    </div>
+    <div id="pdf-import-estado" style="font-size:0.82rem;color:#666;margin-bottom:12px">
+      Selecciona un PDF de catálogo o factura de proveedor para extraer materiales y precios.
+    </div>
+
+    <!-- Prompt generado -->
+    <div id="pdf-prompt-box" style="display:none">
+      <div style="font-size:0.78rem;color:#666;margin-bottom:8px">
+        Copia el prompt, ve a Claude.ai, pégalo y obtén el JSON con los materiales.
+      </div>
+      <div class="prompt-box" id="pdf-prompt-txt" style="max-height:250px"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-g" onclick="copiar('pdf-prompt-txt')">📋 Copiar prompt</button>
+      </div>
+      <hr>
+      <div class="form-title" style="margin-top:8px">Pega aquí el JSON de respuesta</div>
+      <div class="form-grid g1">
+        <div>
+          <label>JSON de Claude</label>
+          <textarea id="pdf-json-input" rows="8"
+            placeholder='{"proveedor": "...", "materiales": [{"nombre": "...", "precio_unitario": 0.00, ...}]}'
+            style="font-size:0.78rem"></textarea>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-p" onclick="cargarJsonPDF()">✓ Importar materiales</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="lista-materiales"></div>
 </div>
 
 <!-- ===== POLYBOARD ===== -->
@@ -1249,7 +1246,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <!-- Importar desde PDF -->
     <div style="background:var(--paper-dark);border:1px solid var(--sawdust);border-radius:6px;padding:12px;margin-bottom:14px">
       <div style="font-size:0.78rem;color:#666;margin-bottom:8px">¿Tienes una factura en PDF? Extrae los gastos automáticamente.</div>
-      <button class="btn btn-s btn-sm" onclick="importarPDFGastos()" style="width:auto">📄 Importar desde factura PDF</button>
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('gastos-pdf-input').click()" style="width:auto">📄 Importar desde factura PDF</button>
+      <input type="file" id="gastos-pdf-input" accept="application/pdf,.pdf" onchange="enviarPdfGastos(event)" style="display:none">
       <div id="pdf-gastos-prompt-box" style="display:none;margin-top:10px">
         <div class="prompt-box" id="pdf-gastos-prompt-txt" style="max-height:180px;font-size:0.72rem"></div>
         <div class="btn-row" style="margin-top:6px">
@@ -1410,18 +1408,58 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
         </select>
       </div>
       <div><label>Categoría</label>
-        <select id="mat-cat">
-          <option value="Herraje">Herraje</option>
-          <option value="Consumible">Consumible</option>
-          <option value="Cola">Cola</option>
-          <option value="Tornillería">Tornillería</option>
-          <option value="Otro">Otro</option>
-        </select>
+        <select id="mat-cat"></select>
       </div>
     </div>
     <div class="btn-row">
       <button class="btn btn-p" onclick="crearMaterial()">Guardar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-material')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar Material -->
+<div class="overlay" id="m-material-detalle">
+  <div class="modal">
+    <div class="modal-title">📦 Editar material</div>
+    <input type="hidden" id="material-editar-id">
+    <div class="form-grid g1"><div><label>Nombre *</label><input id="material-editar-nombre"></div></div>
+    <div class="form-grid">
+      <div><label>Unidad</label>
+        <select id="material-editar-unidad">
+          <option value="ud">ud</option>
+          <option value="ml">ml</option>
+          <option value="kg">kg</option>
+          <option value="caja">caja</option>
+          <option value="m2">m²</option>
+          <option value="litro">litro</option>
+        </select>
+      </div>
+      <div><label>Categoría</label>
+        <select id="material-editar-categoria"></select>
+      </div>
+    </div>
+    <div class="form-grid g1"><div><label>Definición</label><textarea id="material-editar-definicion" rows="3"></textarea></div></div>
+    <div id="material-editar-precios" style="margin:12px 0"></div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarMaterialEditado()">Guardar</button>
+      <button class="btn btn-d" onclick="eliminarMaterialDesdeModal()">Eliminar</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-material-detalle')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Categorías -->
+<div class="overlay" id="m-categorias">
+  <div class="modal">
+    <div class="modal-title">Categorías de materiales</div>
+    <div id="lista-categorias-mat"></div>
+    <div class="form-grid" style="margin-top:12px">
+      <div><label>Nueva categoría</label><input id="cat-nueva-nombre" placeholder="Nombre"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="crearCategoriaMaterial()">Añadir</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-categorias')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -1479,6 +1517,7 @@ function esc(value) {
 // ===== ESTADO =====
 let state = {
   faenas: [], terminadas: [], clientes: [], intermediarios: [], materiales: [],
+  categorias: [], filtroCat: "",
   faseVista: "en_proceso",
   detalleId: null,
   detalleActual: { gastos: [], presupuesto: [] }
@@ -1489,8 +1528,10 @@ async function init() {
   await cargarEstadoDb();
   await Promise.all([
     cargarFaenas(), cargarClientes(),
-    cargarIntermediarios(), cargarMateriales()
+    cargarIntermediarios(), cargarMateriales(), cargarCategorias()
   ]);
+  rellenarSelectsCategoria();
+  renderFiltroCats();
   renderFaenas();
   renderClientes();
   renderInter();
@@ -1657,14 +1698,99 @@ async function cargarMateriales() {
   const r = await api("GET", "/materiales");
   if (r.ok) state.materiales = r.data;
 }
+async function cargarCategorias() {
+  const r = await api("GET", "/categorias-material");
+  if (r.ok) state.categorias = r.data || [];
+}
+
+function nombresCategorias() {
+  const n = (state.categorias || []).map(c => c.nombre).filter(Boolean);
+  return n.length ? n : ["Trabajo", "Tableros", "Molduras-Maderas", "Herrajes", "Otros"];
+}
+function opcionesCategoriaHtml(selected) {
+  const sel = selected || "Otros";
+  const nombres = nombresCategorias();
+  const lista = nombres.includes(sel) ? nombres : [...nombres, sel];
+  return lista.map(n => `<option value="${esc(n)}" ${n === sel ? "selected" : ""}>${esc(n)}</option>`).join("");
+}
+function rellenarSelectsCategoria() {
+  ["mat-cat", "material-editar-categoria"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = opcionesCategoriaHtml(el.value || "Otros");
+  });
+}
+function renderFiltroCats() {
+  const el = document.getElementById("filtro-cats-mat");
+  if (!el) return;
+  const cats = nombresCategorias();
+  const actual = state.filtroCat || "";
+  el.innerHTML = `<button class="fase-tab ${actual === "" ? "active" : ""}" onclick="filtrarCatMaterial('')">Todas</button>` +
+    cats.map(c => `<button class="fase-tab ${actual === c ? "active" : ""}" onclick="filtrarCatMaterial('${esc(c)}')">${esc(c)}</button>`).join("");
+}
+function filtrarCatMaterial(cat) {
+  state.filtroCat = cat;
+  renderFiltroCats();
+  renderMateriales();
+}
+function abrirModalNuevoMaterial() {
+  rellenarSelectsCategoria();
+  abrirModal("m-material");
+}
+async function renderListaCategorias() {
+  await cargarCategorias();
+  const el = document.getElementById("lista-categorias-mat");
+  if (!el) return;
+  el.innerHTML = `<table class="data-table"><tbody>${(state.categorias || []).map(c => `
+    <tr>
+      <td><input id="cat-nom-${c.id}" value="${esc(c.nombre)}"></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-s btn-sm" onclick="guardarCategoriaMaterial(${c.id})">Guardar</button>
+        <button class="btn btn-d btn-sm" onclick="borrarCategoriaMaterial(${c.id})">Eliminar</button>
+      </td>
+    </tr>`).join("")}</tbody></table>`;
+  renderFiltroCats();
+  rellenarSelectsCategoria();
+}
+async function crearCategoriaMaterial() {
+  const nombre = document.getElementById("cat-nueva-nombre").value.trim();
+  if (!nombre) { toast("Escribe un nombre", true); return; }
+  const r = await api("POST", "/categorias-material", { nombre });
+  if (!r.ok) { toast(r.error || "No se pudo crear", true); return; }
+  document.getElementById("cat-nueva-nombre").value = "";
+  await renderListaCategorias();
+  toast("✓ Categoría añadida");
+}
+async function guardarCategoriaMaterial(id) {
+  const nombre = document.getElementById("cat-nom-" + id)?.value.trim();
+  if (!nombre) { toast("El nombre es obligatorio", true); return; }
+  const r = await api("PUT", `/categorias-material/${id}`, { nombre });
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  await cargarMateriales();
+  await renderListaCategorias();
+  renderMateriales();
+  toast("✓ Categoría actualizada");
+}
+async function borrarCategoriaMaterial(id) {
+  if (!confirm("¿Eliminar esta categoría? Los materiales pasarán a Otros o a la siguiente.")) return;
+  const r = await api("DELETE", `/categorias-material/${id}`);
+  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  await cargarMateriales();
+  await renderListaCategorias();
+  renderMateriales();
+  toast("✓ Categoría eliminada");
+}
 
 // ===== NAV =====
 function nav(id) {
+  if (id === "tickets") id = "materiales";
   document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
   document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
-  document.getElementById("s-" + id).classList.add("active");
-  event.target.classList.add("active");
-  if (id === "tickets") rellenarFaenasTicketDestino();
+  const sec = document.getElementById("s-" + id);
+  if (sec) sec.classList.add("active");
+  const btn = document.querySelector(`nav button[data-nav="${id}"]`);
+  if (btn) btn.classList.add("active");
+  else if (typeof event !== "undefined" && event && event.target && event.target.tagName === "BUTTON") event.target.classList.add("active");
+  if (id === "materiales") rellenarFaenasTicketDestino();
   if (id === "polyboard") poblarSelectPolyboard();
   if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
@@ -1674,6 +1800,8 @@ function nav(id) {
 // ===== MODALES =====
 function abrirModal(id) {
   document.getElementById(id).classList.add("open");
+  if (id === "m-categorias") renderListaCategorias();
+  if (id === "m-material" || id === "m-material-detalle") rellenarSelectsCategoria();
 }
 function cerrarModal(id) {
   document.getElementById(id).classList.remove("open");
@@ -1825,35 +1953,47 @@ function renderInter() {
 
 // ===== RENDER MATERIALES (con definición) =====
 function renderMateriales() {
-  const q = document.getElementById("q-mat").value.toLowerCase();
-  const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || m.categoria.toLowerCase().includes(q));
+  const q = (document.getElementById("q-mat")?.value || "").toLowerCase();
+  const filtro = state.filtroCat || "";
+  const lista = state.materiales.filter(m => {
+    const cat = m.categoria || "Otros";
+    if (filtro && cat !== filtro) return false;
+    if (!q) return true;
+    return (m.nombre || "").toLowerCase().includes(q) || cat.toLowerCase().includes(q);
+  });
   const el = document.getElementById("lista-materiales");
   if (!lista.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>No hay materiales</div>`; return; }
+  const orden = nombresCategorias();
   const cats = {};
   lista.forEach(m => {
-    if (!cats[m.categoria]) cats[m.categoria] = [];
-    cats[m.categoria].push(m);
+    const cat = m.categoria || "Otros";
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(m);
   });
-  el.innerHTML = Object.entries(cats).map(([cat, mats]) => `
+  const claves = [...orden.filter(c => cats[c]), ...Object.keys(cats).filter(c => !orden.includes(c))];
+  el.innerHTML = claves.map(cat => `
     <div class="form-box" style="margin-bottom:16px">
-      <div class="form-title">${cat}</div>
+      <div class="form-title">${esc(cat)}</div>
       <table class="data-table">
         <thead>
           <tr><th>Material</th><th>Unidad</th><th>Definición</th><th>Proveedores y precios</th><th></th></tr>
         </thead>
         <tbody>
-          ${mats.map(m => {
+          ${cats[cat].map(m => {
             const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
             const preciosTxt = precios.map((p, i) =>
-              `<span class="${i===0?"precio-min":""}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`
+              `<span class="${i===0?"precio-min":""}">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)}€</span>`
             ).join(" &nbsp;·&nbsp; ");
-            const definicion = m.definicion ? m.definicion : '—';
+            const definicion = m.definicion ? esc(m.definicion) : "—";
             return `<tr>
-              <td><strong>${m.nombre}</strong></td>
-              <td>${m.unidad}</td>
+              <td><strong>${esc(m.nombre)}</strong></td>
+              <td>${esc(m.unidad)}</td>
               <td><span style="font-style:italic; color:#555;">${definicion}</span></td>
               <td>${preciosTxt || '<em style="color:#aaa">Sin precios</em>'}</td>
-              <td><button class="btn btn-s btn-sm" onclick="abrirPrecio(${m.id})">+ Precio</button></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-s btn-sm" onclick="abrirMaterial(${m.id})">Editar</button>
+                <button class="btn btn-s btn-sm" onclick="abrirPrecio(${m.id})">+ Precio</button>
+              </td>
             </tr>`;
           }).join("")}
         </tbody>
@@ -1868,7 +2008,8 @@ function abrirMaterial(id) {
   document.getElementById("material-editar-id").value = m.id;
   document.getElementById("material-editar-nombre").value = m.nombre || "";
   document.getElementById("material-editar-unidad").value = m.unidad || "ud";
-  document.getElementById("material-editar-categoria").value = m.categoria || "Otro";
+  document.getElementById("material-editar-categoria").innerHTML = opcionesCategoriaHtml(m.categoria || "Otros");
+  document.getElementById("material-editar-categoria").value = m.categoria || "Otros";
   document.getElementById("material-editar-definicion").value = m.definicion || "";
   const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
   document.getElementById("material-editar-precios").innerHTML = precios.length
@@ -2352,9 +2493,17 @@ async function eliminarAnotacion(id, faenaId) {
 
 // ===== GASTOS =====
 async function importarPDFGastos() {
+  document.getElementById("gastos-pdf-input")?.click();
+}
+async function enviarPdfGastos(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
   const faenaId = document.getElementById("gasto-faena-id").value;
+  if (!file) return;
   if (!faenaId) { toast("Selecciona una faena primero", true); return; }
-  const r = await api("POST", `/faenas/${faenaId}/gastos/importar-pdf`, {});
+  const fd = new FormData();
+  fd.append("archivo", file);
+  const r = await apiForm("POST", `/faenas/${faenaId}/gastos/importar-pdf`, fd, 120000);
   if (!r.ok) { toast(r.error || "Error al leer el PDF", true); return; }
   document.getElementById("pdf-gastos-prompt-txt").textContent = r.data.prompt;
   document.getElementById("pdf-gastos-prompt-box").style.display = "block";
@@ -2442,13 +2591,26 @@ async function crearInter() {
 }
 
 // ===== MATERIALES =====
-async function importarPDF() {
-  const panel = document.getElementById("pdf-import-panel"); panel.style.display = "block"; panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  const estado = document.getElementById("pdf-import-estado"); estado.textContent = "Abriendo explorador de archivos..."; document.getElementById("pdf-prompt-box").style.display = "none";
-  const r = await api("POST", "/materiales/importar-pdf", {});
+async function enviarPdfCatalogo(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  const panel = document.getElementById("pdf-import-panel");
+  panel.style.display = "block";
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const estado = document.getElementById("pdf-import-estado");
+  estado.textContent = "Leyendo PDF…";
+  document.getElementById("pdf-prompt-box").style.display = "none";
+  const fd = new FormData();
+  fd.append("archivo", file);
+  const r = await apiForm("POST", "/materiales/importar-pdf", fd, 120000);
   if (!r.ok) { estado.textContent = "⚠️ " + (r.error || "Error al procesar el PDF"); return; }
-  estado.innerHTML = `<strong>${r.data.nombre_pdf}</strong> — ${r.data.caracteres.toLocaleString()} caracteres extraídos.<br><span style="color:#aaa">Copia el prompt y pégalo en Claude.ai para obtener el JSON.</span>`;
-  document.getElementById("pdf-prompt-txt").textContent = r.data.prompt; document.getElementById("pdf-prompt-box").style.display = "block";
+  estado.innerHTML = `<strong>${esc(r.data.nombre_pdf)}</strong> — ${(r.data.caracteres || 0).toLocaleString()} caracteres extraídos.`;
+  document.getElementById("pdf-prompt-txt").textContent = r.data.prompt;
+  document.getElementById("pdf-prompt-box").style.display = "block";
+}
+async function importarPDF() {
+  document.getElementById("pdf-catalogo-input").click();
 }
 async function cargarJsonPDF() {
   const raw = document.getElementById("pdf-json-input").value.trim();
@@ -2462,7 +2624,7 @@ async function cargarJsonPDF() {
     if (!mat.nombre) continue;
     let existente = state.materiales.find(m => m.nombre.toLowerCase() === mat.nombre.toLowerCase());
     if (!existente) {
-      const r = await api("POST", "/materiales", { nombre: mat.nombre, unidad: mat.unidad || "ud", categoria: mat.categoria || "Otro" });
+      const r = await api("POST", "/materiales", { nombre: mat.nombre, unidad: mat.unidad || "ud", categoria: mat.categoria || "Otros" });
       if (r.ok) { existente = { id: r.data.id }; insertados++; }
     }
     if (existente && proveedor && mat.precio_unitario) { await api("POST", `/materiales/${existente.id}/precio`, { proveedor: proveedor, precio_unitario: mat.precio_unitario }); actualizados++; }
@@ -2581,7 +2743,7 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
       return {
         nombre: String(a.nombre || "").trim(),
         unidad: String(a.unidad || "ud").trim() || "ud",
-        categoria: String(a.categoria || "Otro").trim() || "Otro",
+        categoria: String(a.categoria || "Otros").trim() || "Otros",
         proveedor: String(a.proveedor || proveedorBase || "").trim(),
         cantidad,
         precio_unitario: precio,
@@ -2597,7 +2759,7 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
   if (!wrap) return;
   const normalizado = _normalizarAnalisisParaTablaMateriales(data || {}, faenaPorDefecto);
   const articulos = normalizado.articulos.length ? normalizado.articulos : [{
-    nombre: "", unidad: "ud", categoria: "Otro", proveedor: normalizado.proveedor,
+    nombre: "", unidad: "ud", categoria: "Otros", proveedor: normalizado.proveedor,
     cantidad: 1, precio_unitario: 0, total: 0,
     faena_id: faenaPorDefecto != null ? String(faenaPorDefecto) : null
   }];
@@ -2607,7 +2769,7 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     const total = Number(a.total || (cantidad * precio));
     const faena = a.faena_id ? String(a.faena_id) : "";
     return `<tr data-i="${i}">
-      <td><input type="text" data-k="categoria" value="${esc(a.categoria || "Otro")}"></td>
+      <td><select data-k="categoria">${opcionesCategoriaHtml(a.categoria || "Otros")}</select></td>
       <td><input type="text" data-k="nombre" value="${esc(a.nombre || "")}"></td>
       <td><input type="text" data-k="proveedor" value="${esc(a.proveedor || normalizado.proveedor || "")}"></td>
       <td><input type="number" step="0.01" data-k="cantidad" value="${Number.isFinite(cantidad) ? cantidad : 0}"></td>
@@ -2645,7 +2807,7 @@ function _leerTablaAnalisisTicket(containerId) {
     const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
     articulos.push({
       nombre,
-      categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otro").trim() || "Otro",
+      categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otros").trim() || "Otros",
       proveedor,
       cantidad: Number.isFinite(cantidad) ? cantidad : 0,
       precio_unitario: Number.isFinite(precio) ? precio : 0,
@@ -2684,7 +2846,7 @@ async function ticketPdfPreview(event) {
 
 function abrirTicketConDatos(data, faenaId) {
   if (!data || !Array.isArray(data.articulos)) { toast("No hay artículos para revisar", true); return; }
-  nav("tickets");
+  nav("materiales");
   ticketAnalisisActual = data;
   const jsonEl = document.getElementById("ticket-json-pc");
   if (jsonEl) jsonEl.value = JSON.stringify(data, null, 2);
@@ -2887,7 +3049,7 @@ async function guardarTicketPc() {
 
 function filaFormularioManualHtml() {
   return `<tr>
-    <td><input type="text" data-manual="categoria" value="Otro"></td>
+    <td><select data-manual="categoria">${opcionesCategoriaHtml("Otros")}</select></td>
     <td><input type="text" data-manual="nombre"></td>
     <td><input type="text" data-manual="proveedor"></td>
     <td><input type="number" step="0.01" data-manual="cantidad" value="1"></td>
@@ -2915,7 +3077,7 @@ function usarFormularioManual() {
     const cantidad = Number(valor("cantidad").replace(",", ".")) || 0;
     const precio = Number(valor("precio_unitario").replace(",", ".")) || 0;
     const total = Number(valor("total").replace(",", ".")) || cantidad * precio;
-    return { nombre: valor("nombre"), categoria: valor("categoria") || "Otro", proveedor: valor("proveedor"), cantidad, precio_unitario: precio, total, unidad: valor("unidad") || "ud", faena_id: valor("faena_id") || null };
+    return { nombre: valor("nombre"), categoria: valor("categoria") || "Otros", proveedor: valor("proveedor"), cantidad, precio_unitario: precio, total, unidad: valor("unidad") || "ud", faena_id: valor("faena_id") || null };
   }).filter(a => a.nombre);
   if (!articulos.length) { toast("Escribe al menos un material", true); return; }
   ticketAnalisisActual = { proveedor: articulos[0].proveedor || "", fecha: "", articulos };
