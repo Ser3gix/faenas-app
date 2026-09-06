@@ -1509,6 +1509,17 @@ const API = (function () {
   return "https://faenas-app.onrender.com/api";
 })();
 
+function esPaginaDelPc() {
+  const h = String(window.location.hostname || "").toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") return true;
+  if (h.endsWith(".onrender.com") || h.endsWith(".railway.app")) return false;
+  return /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(h);
+}
+
+const API_OCR = (esPaginaDelPc() && window.location.origin && window.location.origin !== "null")
+  ? `${window.location.origin}/api`
+  : API;
+
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -2639,23 +2650,23 @@ async function guardarPrecio() {
 let ticketFotoBase64 = null;
 let ticketAnalisisActual = null;
 
-async function apiLargo(method, path, body, ms) {
+async function apiLargo(method, path, body, ms, base) {
   try {
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(ms || 50000) };
     if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(API + path, opts);
+    const r = await fetch((base || API) + path, opts);
     return await parsearRespuesta(r);
   } catch (e) {
     return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado" : "Error de conexión con el servidor" };
   }
 }
 
-async function apiForm(method, path, formData, ms) {
+async function apiForm(method, path, formData, ms, base) {
   try {
-    const r = await fetch(API + path, { method, body: formData, signal: AbortSignal.timeout(ms || 120000) });
+    const r = await fetch((base || API) + path, { method, body: formData, signal: AbortSignal.timeout(ms || 120000) });
     return await parsearRespuesta(r);
   } catch (e) {
-    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al subir la foto" : "Error de conexión con el servidor" };
+    return { ok: false, error: e.name === "TimeoutError" ? "Tiempo de espera agotado al leer el PDF" : "Error de conexión con el servidor" };
   }
 }
 
@@ -2820,12 +2831,17 @@ async function ticketPdfPreview(event) {
   const info = document.getElementById("ticket-pdf-info");
   if (info) {
     info.style.display = "block";
-    info.textContent = "PDF: " + file.name + " — Jimmi está leyendo…";
+    info.textContent = esPaginaDelPc()
+      ? ("PDF: " + file.name + " — leyendo en este PC…")
+      : ("PDF: " + file.name + " — abre Faenas en el PC para usar el OCR");
   }
   document.getElementById("ticket-preview").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "block";
   document.getElementById("ticket-paso3").style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+  if (!esPaginaDelPc()) {
+    toast("Para leer el PDF usa Faenas en el PC (Arrancar_Faenas.bat), no la web de internet", true);
+  }
   document.getElementById("s-materiales")?.scrollIntoView({ behavior: "smooth", block: "start" });
   await procesarTicketConIA();
 }
@@ -2861,7 +2877,7 @@ async function analizarDocumentoFaena(faenaId, nombre) {
     fd.append("guardar", "false");
     fd.append("faena_id", String(faenaId));
     fd.append("nombre", nombre || "documento.pdf");
-    const r = await apiForm("POST", "/ia/procesar-documento", fd, 120000);
+    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
     if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
     abrirTicketConDatos(r.data, faenaId);
     toast("Revisa la tabla de tickets y guarda");
@@ -2928,7 +2944,7 @@ async function procesarTicketConIA() {
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "var(--muted)";
-    estado.textContent = "Jimmi está leyendo…";
+    estado.textContent = esPaginaDelPc() ? "Leyendo el PDF en este PC…" : "Jimmi está leyendo…";
   }
   try {
     let data;
@@ -2937,9 +2953,9 @@ async function procesarTicketConIA() {
       fd.append("archivo", pdf, pdf.name || "factura.pdf");
       fd.append("guardar", "false");
       fd.append("nombre", pdf.name || "factura.pdf");
-      data = await apiForm("POST", "/ia/procesar-documento", fd, 120000);
+      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
     } else {
-      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
+      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000, API_OCR);
     }
     if (data.ok && data.data) {
       const arts = (data.data.articulos || []).filter(a => {
@@ -3081,7 +3097,7 @@ async function procesarTextoManual() {
   const texto = document.getElementById("ticket-texto-manual").value.trim();
   if (!texto) { toast("Escribe o pega el texto primero", true); return; }
   toast("Enviando a Jimmi...");
-  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000);
+  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000, API_OCR);
   if (d.ok) {
     ticketAnalisisActual = d.data;
     const jsonEl = document.getElementById("ticket-json-pc");

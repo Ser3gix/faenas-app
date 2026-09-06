@@ -902,6 +902,33 @@ def get_ip():
     url_publica = f"{PUBLIC_BASE_URL}/movil2" if PUBLIC_BASE_URL else url_local
     return jsonify({"ok": True, "data": {"ip": ip_final, "url": url_publica, "url_local": url_local, "url_publica": PUBLIC_BASE_URL, "todas": ips}})
 
+@app.route("/api/info/ocr", methods=["GET"])
+def get_ocr_info():
+    ruta = ""
+    if pytesseract is not None:
+        ruta = str(getattr(pytesseract.pytesseract, "tesseract_cmd", "") or "")
+        if ruta and not os.path.exists(ruta):
+            ruta = ""
+        if not ruta:
+            ruta = shutil.which("tesseract") or ""
+        if not ruta:
+            for cand in (
+                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+            ):
+                if os.path.exists(cand):
+                    ruta = cand
+                    break
+    return jsonify({
+        "ok": True,
+        "data": {
+            "tesseract": bool(ruta and os.path.exists(ruta)),
+            "ruta": ruta or "",
+            "nube": bool(en_servidor_nube()),
+        },
+    })
+
+
 @app.route("/api/info/db", methods=["GET"])
 def get_db_info():
     return jsonify({"ok": True, "data": get_db_status()})
