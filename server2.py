@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 import re
+import unicodedata
 import json
 import base64
 import io
@@ -2789,7 +2790,7 @@ def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
         tope = min(len(doc), max_paginas)
         for i in range(tope):
             try:
-                pix = doc[i].get_pixmap(matrix=fitz.Matrix(1.7, 1.7), alpha=False)
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
                 bruto_img = None
                 mime = "image/jpeg"
                 try:
@@ -2799,7 +2800,7 @@ def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
                     mime = "image/png"
                 if bruto_img:
                     data_url = "data:%s;base64,%s" % (mime, base64.b64encode(bruto_img).decode("ascii"))
-                    imagenes.append(_comprimir_imagen_data_url(data_url))
+                    imagenes.append(_comprimir_imagen_data_url(data_url, max_lado=1600, calidad=85))
             except Exception:
                 continue
     finally:
@@ -2808,6 +2809,41 @@ def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
         except Exception:
             pass
     return imagenes
+
+
+def _ocr_pdf_bytes(bruto, max_paginas=4):
+    if not bruto or pytesseract is None or Image is None:
+        return ""
+    try:
+        import fitz
+        doc = fitz.open(stream=bruto, filetype="pdf")
+    except Exception:
+        return ""
+    paginas = []
+    try:
+        tope = min(len(doc), max_paginas)
+        for i in range(tope):
+            try:
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(2.2, 2.2), alpha=False)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                txt = ""
+                for lang in ["spa", "spa+eng", "eng"]:
+                    try:
+                        cand = pytesseract.image_to_string(img, lang=lang, config="--psm 6", timeout=15)
+                    except Exception:
+                        cand = ""
+                    if cand and len(cand) > len(txt):
+                        txt = cand
+                if txt.strip():
+                    paginas.append(txt.strip())
+            except Exception:
+                continue
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+    return "\n".join(paginas).strip()
 
 
 def _primera_pagina_pdf_base64(archivo_base64, nombre="", mime_type=""):
@@ -2859,9 +2895,9 @@ def _texto_ocr_desde_imagen_base64(data_b64):
 
         mejor = ""
         for v in variantes:
-            for lang in ["spa+eng", "eng"]:
+            for lang in ["spa", "spa+eng", "eng"]:
                 try:
-                    txt = pytesseract.image_to_string(v, lang=lang, timeout=8)
+                    txt = pytesseract.image_to_string(v, lang=lang, config="--psm 6", timeout=12)
                     if txt and len(txt) > len(mejor):
                         mejor = txt
                 except Exception:
@@ -2872,15 +2908,55 @@ def _texto_ocr_desde_imagen_base64(data_b64):
 
 
 def _linea_ocr_es_ruido(linea):
-    baja = (linea or "").strip().lower()
+    baja = unicodedata.normalize("NFKD", (linea or "").strip().lower())
+    baja = "".join(c for c in baja if unicodedata.category(c) != "Mn")
     if not baja:
         return True
     if re.fullmatch(r"[\d\s.,€%$/-]+", baja):
         return True
     return any(p in baja for p in (
         "iva", "base imponible", "cif", "nif", "total factura", "importe total",
-        "gracias", "www.", "http", "albarán", "albaran",
+        "total pedido", "cuota iva", "gracias", "www.", "http", "albaran",
+        "aviso importante", "forma de pago", "delegacion", "observaciones al presupuesto",
+        "su referencia", "nº presupuesto", "n° presupuesto", "presupuesto fecha",
+        "tel.:", "tel:", "fax:", "avda.", "datos de envio",
     ))
+
+
+def _parse_fila_compra_ocr(linea):
+    if _linea_ocr_es_ruido(linea):
+        return None
+    partes = (linea or "").strip().split()
+    if len(partes) < 2:
+        return None
+    if not re.fullmatch(r"\d+[.,]\d{2}", partes[-1]):
+        return None
+    total = _parse_numero(partes[-1])
+    i = len(partes) - 2
+    if i >= 0 and re.fullmatch(r"\d{1,2}", partes[i]):
+        dto = int(partes[i])
+        if 0 <= dto <= 90:
+            i -= 1
+    if i < 0 or not re.fullmatch(r"\d+[.,]\d{1,2}", partes[i]):
+        return None
+    precio = _parse_numero(partes[i])
+    i -= 1
+    if i >= 0 and re.fullmatch(r"\d+[.,]\d{3,4}", partes[i]):
+        i -= 1
+    qty = 1.0
+    if i >= 0 and re.fullmatch(r"\d+(?:[.,]\d+)?", partes[i]):
+        qty = _parse_numero(partes[i]) or 1
+        i -= 1
+    nombre = " ".join(partes[: i + 1]).strip(" -:;·'\t")
+    if len(nombre) < 3:
+        return None
+    return {
+        "nombre": nombre,
+        "cantidad": qty or 1,
+        "precio_unitario": precio,
+        "total": total,
+        "unidad": "ud",
+    }
 
 
 def _json_ticket_desde_ocr(texto):
@@ -2892,10 +2968,17 @@ def _json_ticket_desde_ocr(texto):
         return None
 
     proveedor = None
-    for l in lineas[:8]:
-        if any(ch.isalpha() for ch in l) and not re.search(r"\d+[.,]\d{2}", l):
-            proveedor = l[:120]
+    for l in lineas:
+        if len(l) > 90:
+            continue
+        if re.search(r"profesionales|\bS\.A\.\s*$|\bS\.L\.\s*$", l, re.I):
+            proveedor = re.sub(r"\s+", " ", l).strip()[:120]
             break
+    if not proveedor:
+        for l in lineas[:16]:
+            if any(ch.isalpha() for ch in l) and not re.search(r"\d+[.,]\d{2}", l) and not _linea_ocr_es_ruido(l) and len(l) < 80:
+                proveedor = l[:120]
+                break
     if not proveedor:
         proveedor = lineas[0][:120]
 
@@ -2906,48 +2989,44 @@ def _json_ticket_desde_ocr(texto):
 
     total_ticket = None
     for l in lineas:
-        if "total" in l.lower():
+        if "total pedido" in l.lower() or "total factura" in l.lower():
             nums = re.findall(r"\d+[.,]\d{2}", l)
             if nums:
                 total_ticket = _parse_numero(nums[-1])
                 break
     if total_ticket is None:
-        todos = re.findall(r"\d+[.,]\d{2}", texto)
-        if todos:
-            total_ticket = _parse_numero(todos[-1])
+        for l in lineas:
+            if "base imponible" in l.lower():
+                nums = re.findall(r"\d+[.,]\d{2}", l)
+                if nums:
+                    total_ticket = _parse_numero(nums[-1])
+                    break
+
+    fusionadas = []
+    pendiente = ""
+    for l in lineas:
+        if re.search(r"\d+[.,]\d{2}\s*$", l) and not _linea_ocr_es_ruido(l):
+            if pendiente and len(pendiente) <= 90:
+                fusionadas.append((pendiente + " " + l).strip())
+            else:
+                fusionadas.append(l)
+            pendiente = ""
+        elif not _linea_ocr_es_ruido(l) and len(l) <= 90:
+            pendiente = l
+        else:
+            pendiente = ""
 
     articulos = []
     vistos = set()
-    for l in lineas:
-        if _linea_ocr_es_ruido(l):
+    for l in fusionadas:
+        fila = _parse_fila_compra_ocr(l)
+        if not fila:
             continue
-        qty = 1
-        qty_m = re.search(r"(?i)(\d+(?:[.,]\d+)?)\s*x\b", l)
-        if qty_m:
-            qty = _parse_numero(qty_m.group(1)) or 1
-        decs = re.findall(r"\d+[.,]\d{2}", l)
-        if not decs:
-            continue
-        precio_unitario = _parse_numero(decs[0])
-        total = _parse_numero(decs[-1]) if len(decs) > 1 else round((qty or 1) * (precio_unitario or 0), 2)
-        nombre = l
-        if qty_m:
-            nombre = re.sub(r"(?i)\s*\d+(?:[.,]\d+)?\s*x\b.*$", "", l)
-        nombre = re.sub(r"\s+\d+[.,]\d{2}(?:\s+\d+[.,]\d{2})*\s*$", "", nombre)
-        nombre = nombre.strip(" -:;·\t")
-        if not nombre or len(nombre) < 2:
-            continue
-        clave = nombre.lower()
+        clave = fila["nombre"].lower()
         if clave in vistos:
             continue
         vistos.add(clave)
-        articulos.append({
-            "nombre": nombre,
-            "cantidad": qty or 1,
-            "precio_unitario": precio_unitario,
-            "total": total,
-            "unidad": "ud",
-        })
+        articulos.append(fila)
 
     if not articulos:
         return None
@@ -3334,8 +3413,10 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
                 articulos.append(a)
 
     imgs = [_comprimir_imagen_data_url(x) for x in (imagenes or []) if x]
+    if texto:
+        _acumular(_json_ticket_desde_ocr(texto))
     # Una o dos páginas juntas, como el ticket (menos peso para Gemini).
-    if imgs[:2] or texto:
+    if not articulos and (imgs[:2] or texto):
         try:
             _acumular(_extraer_materiales_json_con_ia(
                 _prompt_ticket_base() if imgs else _prompt_documento_base(nombre),
@@ -3405,6 +3486,8 @@ def ia_procesar_documento():
     if es_pdf and bruto:
         if not texto:
             texto = _texto_de_pdf_bytes(bruto)
+        if not (texto or "").strip():
+            texto = _ocr_pdf_bytes(bruto)
         imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
     elif bruto and not es_pdf:
         mime = mime_type or "image/jpeg"
