@@ -516,7 +516,8 @@ Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y defin
 }
 
 Si no puedes leer algún dato con claridad, usa null para ese campo.
-Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro."""
+Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro.
+El JSON anterior es solo el formato. Prohibido devolver "Nombre del artículo" o "Nombre del establecimiento". Si no hay líneas reales, "articulos": []."""
 
 
 def _prompt_documento_base(nombre="documento"):
@@ -546,7 +547,8 @@ Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y defin
 }}
 
 Si no puedes leer algún dato con claridad, usa null para ese campo.
-Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro."""
+Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, m2 (metro cuadrado), litro.
+El JSON anterior es solo el formato. Prohibido devolver "Nombre del artículo" o "Nombre del establecimiento". Si no hay líneas reales, "articulos": []."""
 
 
 def _gemini_endpoint(model=None, api_key=None):
@@ -622,6 +624,42 @@ def _gemini_imagen_part(data_url):
     if isinstance(data_url, str) and data_url.startswith("data:") and ";base64," in data_url:
         mime_type = data_url[5:data_url.index(";base64,")] or "image/jpeg"
     return {"inline_data": {"mime_type": mime_type, "data": data}}
+
+
+def _gemini_pdf_part(bruto):
+    if not bruto:
+        return None
+    if len(bruto) > 18 * 1024 * 1024:
+        return None
+    return {"inline_data": {"mime_type": "application/pdf", "data": base64.b64encode(bruto).decode("ascii")}}
+
+
+def _es_nombre_articulo_ejemplo(nombre):
+    n = unicodedata.normalize("NFKD", str(nombre or "").strip().lower())
+    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+    if not n:
+        return True
+    if n in {"nombre del articulo", "articulo", "string", "nombre"}:
+        return True
+    return n.startswith("nombre del articulo") or n.startswith("nombre del establecimiento")
+
+
+def _limpiar_resultado_ia(data):
+    if not isinstance(data, dict):
+        return data
+    arts = []
+    for a in data.get("articulos") or []:
+        if not isinstance(a, dict):
+            continue
+        if _es_nombre_articulo_ejemplo(a.get("nombre")):
+            continue
+        arts.append(a)
+    out = dict(data)
+    out["articulos"] = arts
+    prov = str(out.get("proveedor") or "").strip().lower()
+    if prov in {"nombre del establecimiento", "string", "null", "none"}:
+        out["proveedor"] = None
+    return out
 
 
 def _peticion_gemini(contents, system_instruction=None, response_mime_type=None, max_tokens=1200, temperature=0.2, api_key=None, model=None, timeout=90, tools=None):
@@ -3061,7 +3099,7 @@ def _json_ticket_desde_ocr(texto):
     }
 
 
-def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=None, tipo="ticket"):
+def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=None, tipo="ticket", pdf_bytes=None):
     instrucciones = prompt or ""
     imgs = []
     if imagen:
@@ -3100,7 +3138,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
     system = (
         f"Eres un extractor de materiales desde {tipo}. Devuelve SOLO JSON válido, sin texto extra. "
         "Usa este formato: {proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion}]}. "
-        "Ignora IVA. Si un campo no existe, usa null. Normaliza nombres de artículos."
+        "Ignora IVA. Si un campo no existe, usa null. No copies textos de ejemplo. Si no hay artículos, articulos debe ser []."
     )
     user_txt = instrucciones.strip()
     if texto:
@@ -3115,13 +3153,14 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
     ticket_key = TICKET_IA_API_KEY or IA_API_KEY
     ticket_model = TICKET_IA_MODEL or IA_MODEL
     if ticket_key and _ia_provider_activo() == "gemini":
+        parts_pdf = [_gemini_pdf_part(pdf_bytes)] if pdf_bytes else []
         parts_img = [_gemini_imagen_part(img) for img in imgs[:4]]
         contents = [
             {
                 "role": "user",
                 "parts": [
                     {"text": user_txt or "Extrae los materiales y devuelve JSON válido."},
-                ] + [p for p in parts_img if p],
+                ] + [p for p in parts_pdf if p] + [p for p in parts_img if p],
             }
         ]
         contents[0]["parts"] = [p for p in contents[0]["parts"] if p]
@@ -3140,6 +3179,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             data = _extraer_json_de_texto(contenido)
             if not isinstance(data, dict) and tipo != "ticket":
                 data = _normalizar_json_materiales_con_ia(contenido, tipo=tipo, api_key=ticket_key, model=ticket_model)
+            data = _limpiar_resultado_ia(data)
             if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
                 return data
         except Exception as e:
@@ -3419,7 +3459,7 @@ def _lineas_de_respuesta_ia(data):
     return arts, meta
 
 
-def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
+def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
     articulos = []
     meta = {"proveedor": None, "fecha": None, "total_ticket": None}
 
@@ -3432,7 +3472,7 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
         if m.get("total_ticket") and not meta.get("total_ticket"):
             meta["total_ticket"] = m.get("total_ticket")
         for a in arts:
-            if isinstance(a, dict) and str(a.get("nombre") or "").strip():
+            if isinstance(a, dict) and str(a.get("nombre") or "").strip() and not _es_nombre_articulo_ejemplo(a.get("nombre")):
                 articulos.append(a)
 
     imgs = [_comprimir_imagen_data_url(x) for x in (imagenes or []) if x]
@@ -3446,6 +3486,7 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
                 texto=texto or None,
                 imagenes=imgs[:2] or None,
                 tipo="ticket" if imgs else "documento",
+                pdf_bytes=pdf_bytes,
             ))
         except Exception as e:
             print("pdf ia lote:", e)
@@ -3457,6 +3498,7 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
                     _prompt_ticket_base(),
                     imagen=img,
                     tipo="ticket",
+                    pdf_bytes=pdf_bytes,
                 ))
             except Exception as e:
                 print("pdf ia pagina:", e)
@@ -3526,7 +3568,7 @@ def ia_procesar_documento():
     if not texto and not imagenes:
         return jsonify({"ok": False, "error": "No se pudo abrir el PDF. Prueba de nuevo o usa una foto."}), 400
     try:
-        data = _extraer_lineas_desde_pdf(texto, imagenes, nombre)
+        data = _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=bruto if es_pdf else None)
         if not isinstance(data, dict):
             data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
         articulos = data.get("articulos") or []

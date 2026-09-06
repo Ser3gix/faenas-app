@@ -2942,6 +2942,11 @@ async function procesarTicketConIA() {
       data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
     }
     if (data.ok && data.data) {
+      const arts = (data.data.articulos || []).filter(a => {
+        const n = String(a.nombre || "").trim().toLowerCase();
+        return n && !n.startsWith("nombre del art") && n !== "artículo" && n !== "articulo";
+      });
+      data.data.articulos = arts;
       ticketAnalisisActual = data.data;
       const jsonEl = document.getElementById("ticket-json-pc");
       if (jsonEl) jsonEl.value = JSON.stringify(data.data, null, 2);
