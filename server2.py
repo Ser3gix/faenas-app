@@ -8,7 +8,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
-from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file, make_response
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
@@ -873,7 +873,9 @@ def _url_api_publica():
 
 @app.route("/movil2")
 def movil2():
-    return render_template("movil2.html", faenas_api_base=_url_api_publica())
+    resp = make_response(render_template("movil2.html", faenas_api_base=_url_api_publica()))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 @app.route("/movil")
 @app.route("/movil4")
