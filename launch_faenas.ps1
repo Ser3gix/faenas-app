@@ -1,16 +1,74 @@
+param(
+    [switch]$SoloActualizar
+)
+
 $ErrorActionPreference = "Stop"
 
 $projectPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverFile = Join-Path $projectPath "server2.py"
 $urlLocal = "http://127.0.0.1:5000"
 $urlNube = "https://faenas-app.onrender.com"
+$zipUrl = "https://github.com/Ser3gix/faenas-app/archive/refs/heads/main.zip"
 $port = 5000
 $pythonExe = Join-Path $projectPath ".venv\Scripts\python.exe"
+
+function Update-FaenasApp {
+    Write-Host "Actualizando Faenas (no hace falta git pull)..."
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    $gitDir = Join-Path $projectPath ".git"
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd -and (Test-Path $gitDir)) {
+        Push-Location $projectPath
+        & git fetch origin main
+        if ($LASTEXITCODE -eq 0) {
+            & git pull --ff-only origin main
+        }
+        Pop-Location
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "App actualizada."
+            $ErrorActionPreference = $prev
+            return
+        }
+        Write-Host "Git no pudo actualizar. Pruebo a descargar la version nueva..."
+    }
+
+    try {
+        $tmp = Join-Path $env:TEMP ("faenas-update-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $tmp | Out-Null
+        $zip = Join-Path $tmp "faenas.zip"
+        Write-Host "Descargando la version nueva..."
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing
+        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
+        if (-not $src) { throw "No se pudo descomprimir" }
+        $xd = @("datos", "faenas-datos", ".git", ".venv", "__pycache__", "descargas_raul")
+        $args = @($src.FullName, $projectPath, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
+        foreach ($d in $xd) { $args += @("/XD", $d) }
+        $args += @("/XF", ".env")
+        & robocopy @args | Out-Null
+        Write-Host "App actualizada."
+    } catch {
+        Write-Host "No se pudo actualizar ahora. Sigo con la version que hay en la carpeta."
+        Write-Host $_.Exception.Message
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
 
 Write-Host "Faenas PC"
 Write-Host "  Datos y faenas: $urlNube"
 Write-Host "  Lectura de PDF: este ordenador"
 Write-Host ""
+
+Update-FaenasApp
+
+if ($SoloActualizar) {
+    Write-Host ""
+    Write-Host "Listo. Ya puedes cerrar esta ventana y pulsar Arrancar_Faenas.bat"
+    exit 0
+}
 
 function Stop-StaleFaenasProcesses {
     $candidates = @()
