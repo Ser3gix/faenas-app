@@ -1789,9 +1789,7 @@ async function refrescarTiemposFaena(f) {
     </div>`;
   }).join("");
   const bar = document.getElementById("tiempos-bar");
-  const box = document.getElementById("tiempos-faena-box");
   if (bar) bar.innerHTML = html;
-  if (box) box.innerHTML = html;
 }
 
 async function iniciarTiempoFaena(faenaId, categoria) {
@@ -1856,7 +1854,6 @@ function renderPanelDatos(f) {
   const direccionCliente = cliente?.direccion || "";
 
   document.getElementById("p-datos-content").innerHTML = `
-    <div id="tiempos-faena-box">${htmlTiemposFaena(f)}</div>
     <div style="margin:14px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       ${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}
       <span class="badge ${esDirecto ? "b-direct":"b-inter"}">${esDirecto ? "Directo" : escHtml(f.intermediario_nombre||"—")}</span>
@@ -4945,7 +4942,7 @@ async function init() {
   state._cargando = !state.faenas.length;
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=30", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=31", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
