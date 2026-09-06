@@ -683,8 +683,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box" id="ticket-paso3" style="display:none">
-    <div class="form-title">Paso 3 — Revisar y asignar</div>
-    <div id="ticket-cruzar-notas" style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;line-height:1.5"></div>
+    <div class="form-title">Revisar y editar</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;line-height:1.5">Corrige las líneas si hace falta. Al guardar se comparan con el almacén y se guardan.</p>
     <div class="form-grid">
       <div>
         <label>Destino</label>
@@ -2946,9 +2946,10 @@ async function procesarTicketConIA() {
       const jsonEl = document.getElementById("ticket-json-pc");
       if (jsonEl) jsonEl.value = JSON.stringify(data.data, null, 2);
       _renderTablaAnalisisTicket(data.data);
+      document.getElementById("ticket-paso2").style.display = "none";
       document.getElementById("ticket-paso3").style.display = "block";
+      document.getElementById("ticket-paso3")?.scrollIntoView({ behavior: "smooth", block: "start" });
       rellenarFaenasTicketDestino();
-      await mostrarCruceTicket(data.data.articulos || []);
       const n = (data.data.articulos || []).length;
       if (estado) {
         estado.style.color = n ? "var(--green)" : "var(--muted)";
@@ -3018,7 +3019,7 @@ async function guardarTicketPc() {
   const d = await apiLargo("POST", "/secretario/aplicar", { tipo: dest === "faena" ? "ticket" : "almacen", faena_id: faenaId, data: datos }, 30000);
   if (!d.ok) { toast(d.error || "No se pudo guardar", true); return; }
   const resumen = d.data || {};
-  toast(`Guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales, ${resumen.precios_actualizados || 0} precios`);
+  toast(`Guardado y comparado con el almacén: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales nuevos, ${resumen.materiales_actualizados || 0} actualizados, ${resumen.precios_actualizados || 0} precios`);
   cancelarTicket(false);
   await cargarMateriales();
   renderMateriales();
