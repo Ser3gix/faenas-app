@@ -271,28 +271,49 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 
 .tiempos-bar {
   flex-shrink: 0;
-  background: #fff;
-  border-bottom: 1px solid var(--sawdust);
-  padding: 8px 12px 10px;
-}
-.tiempos-bar-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.tiempos-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 6px 0;
+  background: #fff;
+  border-bottom: 1px solid var(--sawdust);
+  padding: 6px 10px;
 }
-.tiempos-row + .tiempos-row { border-top: 1px solid var(--sawdust); }
-.tiempos-nom { font-size: 0.88rem; font-weight: 600; color: var(--ink); }
-.tiempos-meta { font-size: 0.78rem; color: var(--muted); }
+.tiempos-sel {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0 8px;
+}
+.tiempos-sel:disabled { opacity: 0.7; }
+.tiempos-play {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.05rem;
+}
+.tiempos-crono {
+  min-width: 3.6rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ink);
+  text-align: right;
+}
+.tiempos-tot {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
 
 .fase-tabs-mov {
   display: flex;
@@ -1059,10 +1080,16 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 
   <div id="tiempos-bar" class="tiempos-bar">
-    <div class="tiempos-bar-title">Tiempos</div>
-    <div class="tiempos-row"><div><div class="tiempos-nom">Medición y diseño</div><div class="tiempos-meta">0.0 h</div></div></div>
-    <div class="tiempos-row"><div><div class="tiempos-nom">Compras y gestión</div><div class="tiempos-meta">0.0 h</div></div></div>
-    <div class="tiempos-row"><div><div class="tiempos-nom">Trabajo</div><div class="tiempos-meta">0.0 h</div></div></div>
+    <select class="tiempos-sel" id="tiempos-sel" aria-label="Categoría de tiempo">
+      <option value="medicion_diseno">Medición y diseño</option>
+      <option value="compras_gestion">Compras y gestión</option>
+      <option value="trabajo">Trabajo</option>
+    </select>
+    <button type="button" class="btn btn-p tiempos-play" id="tiempos-play" aria-label="Iniciar">▶</button>
+    <div>
+      <div class="tiempos-crono" id="tiempos-crono">0:00</div>
+      <div class="tiempos-tot" id="tiempos-tot">0.0 h</div>
+    </div>
   </div>
 
   <div id="panel-carousel">
@@ -1755,98 +1782,181 @@ const CATS_TIEMPO = [
   { id: "trabajo", label: "Trabajo" }
 ];
 
-function htmlTiemposFaena(f) {
-  return `<div style="font-size:0.85rem;color:#888">Cargando tiempos…</div>`;
+function leerTiempoActivo() {
+  try {
+    const t = JSON.parse(localStorage.getItem("tiempo_activo") || "null");
+    if (t && t.faena_id && t.inicio && !t.fin) return t;
+  } catch (e) {}
+  return null;
 }
 
-async function refrescarTiemposFaena(f) {
+function formatoCrono(inicioIso) {
+  const ini = new Date(inicioIso).getTime();
+  if (!Number.isFinite(ini)) return "0:00";
+  const s = Math.max(0, Math.floor((Date.now() - ini) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function minutosColaFaena(faenaId) {
+  const tot = {};
+  try {
+    const cola = cargarCola();
+    for (const t of (cola.tiempos || [])) {
+      if (String(t.faena_id) !== String(faenaId)) continue;
+      tot[t.categoria] = (tot[t.categoria] || 0) + Number(t.minutos || 0);
+    }
+  } catch (e) {}
+  return tot;
+}
+
+let _tickTiempoId = null;
+function arrancarTickTiempo() {
+  if (_tickTiempoId) return;
+  _tickTiempoId = setInterval(pintarCronoTiempo, 1000);
+}
+function pararTickTiempo() {
+  if (_tickTiempoId) { clearInterval(_tickTiempoId); _tickTiempoId = null; }
+}
+function pintarCronoTiempo() {
+  const el = document.getElementById("tiempos-crono");
+  if (!el) return;
+  const activo = leerTiempoActivo();
+  el.textContent = activo ? formatoCrono(activo.inicio) : "0:00";
+}
+
+function faenaDeTiempo(id) {
+  return state.faenas.find(x => String(x.id || x._tempId) === String(id))
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(id));
+}
+
+function initBarraTiempos() {
+  const sel = document.getElementById("tiempos-sel");
+  const play = document.getElementById("tiempos-play");
+  if (sel && !sel._ligado) {
+    sel._ligado = true;
+    sel.addEventListener("change", () => {
+      const id = state.faenaActualId;
+      if (id) localStorage.setItem("tiempo_cat_" + id, sel.value);
+      const f = faenaDeTiempo(id);
+      if (f) refrescarTiemposFaena(f, { sinRed: true });
+    });
+  }
+  if (play && !play._ligado) {
+    play._ligado = true;
+    play.addEventListener("click", e => {
+      e.stopPropagation();
+      const id = state.faenaActualId;
+      const activo = leerTiempoActivo();
+      if (activo) pararTiempoFaena(activo.faena_id);
+      else if (id) iniciarTiempoFaena(id, (document.getElementById("tiempos-sel") || {}).value);
+    });
+  }
+}
+
+async function refrescarTiemposFaena(f, opts) {
+  initBarraTiempos();
   const id = f && (f.id || f._tempId);
-  let totales = [];
-  let activo = null;
-  if (f && !esIdFaenaTemporal(id)) {
+  const sel = document.getElementById("tiempos-sel");
+  const play = document.getElementById("tiempos-play");
+  const totEl = document.getElementById("tiempos-tot");
+  const activo = leerTiempoActivo();
+  const totMap = minutosColaFaena(id);
+  if (f && !esIdFaenaTemporal(id) && !(opts && opts.sinRed)) {
     try {
       const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: AbortSignal.timeout(8000) });
       const d = await r.json();
       if (d.ok && d.data) {
-        totales = d.data.totales || [];
-        activo = d.data.activo;
+        for (const t of (d.data.totales || [])) {
+          totMap[t.categoria] = (totMap[t.categoria] || 0) + Number(t.minutos || 0);
+        }
       }
     } catch (e) {}
   }
-  const local = JSON.parse(localStorage.getItem("tiempo_activo") || "null");
-  if (local && String(local.faena_id) === String(id) && !local.fin) activo = local;
-  const totMap = {};
-  for (const t of totales) totMap[t.categoria] = Number(t.minutos || 0);
-  const html = `<div class="tiempos-bar-title">Tiempos</div>` + CATS_TIEMPO.map(cat => {
-    const mins = totMap[cat.id] || 0;
-    const enMarcha = activo && activo.categoria === cat.id && String(activo.faena_id) === String(id);
-    const btn = !f || esIdFaenaTemporal(id)
-      ? `<span class="tiempos-meta">Sincroniza la faena</span>`
-      : (enMarcha
-        ? `<button class="btn btn-d btn-inline" onclick="event.stopPropagation();pararTiempoFaena('${id}')">Parar</button>`
-        : `<button class="btn btn-p btn-inline" onclick="event.stopPropagation();iniciarTiempoFaena('${id}','${cat.id}')">Iniciar</button>`);
-    return `<div class="tiempos-row">
-      <div>
-        <div class="tiempos-nom">${cat.label}${enMarcha ? " · en marcha" : ""}</div>
-        <div class="tiempos-meta">${(mins/60).toFixed(1)} h</div>
-      </div>
-      ${btn}
-    </div>`;
-  }).join("");
-  const bar = document.getElementById("tiempos-bar");
-  if (bar) bar.innerHTML = html;
+  const catGuardada = localStorage.getItem("tiempo_cat_" + id) || "trabajo";
+  const catSel = (activo && String(activo.faena_id) === String(id)) ? activo.categoria : catGuardada;
+  if (sel) {
+    sel.value = CATS_TIEMPO.some(c => c.id === catSel) ? catSel : "trabajo";
+    sel.disabled = !!(activo && String(activo.faena_id) === String(id));
+  }
+  const cat = (sel && sel.value) || catSel;
+  const mins = totMap[cat] || 0;
+  if (totEl) {
+    if (activo && String(activo.faena_id) !== String(id)) {
+      const otra = faenaDeTiempo(activo.faena_id);
+      totEl.textContent = "En " + (otra?.numero || "otra faena");
+    } else {
+      totEl.textContent = (mins / 60).toFixed(1) + " h";
+    }
+  }
+  if (play) {
+    const enMarcha = !!(activo);
+    play.textContent = enMarcha ? "■" : "▶";
+    play.className = "btn tiempos-play " + (enMarcha ? "btn-d" : "btn-p");
+    play.setAttribute("aria-label", enMarcha ? "Parar" : "Iniciar");
+    play.disabled = !enMarcha && (!f || esIdFaenaTemporal(id));
+  }
+  pintarCronoTiempo();
+  if (activo) arrancarTickTiempo();
+  else pararTickTiempo();
 }
 
-async function iniciarTiempoFaena(faenaId, categoria) {
+function iniciarTiempoFaena(faenaId, categoria) {
+  if (esIdFaenaTemporal(faenaId)) { toast("Sincroniza la faena primero", true); return; }
+  if (!CATS_TIEMPO.some(c => c.id === categoria)) categoria = "trabajo";
+  const ya = leerTiempoActivo();
+  if (ya) { toast("Ya hay un cronómetro en marcha", true); return; }
+  const local = {
+    faena_id: faenaId,
+    categoria,
+    inicio: new Date().toISOString(),
+    fin: "",
+    origen: "movil"
+  };
+  localStorage.setItem("tiempo_activo", JSON.stringify(local));
+  localStorage.setItem("tiempo_cat_" + faenaId, categoria);
+  toast("Cronómetro en marcha");
+  renderFaenas();
+  const f = faenaDeTiempo(faenaId) || faenaDeTiempo(state.faenaActualId);
+  if (f) refrescarTiemposFaena(f, { sinRed: true });
+}
+
+async function guardarSesionTiempo(sesion) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/tiempos/iniciar`, {
+    const r = await fetch(`${getServerUrl()}/sync/tiempos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoria, origen: "movil" }),
+      body: JSON.stringify({ sesiones: [sesion] }),
       signal: AbortSignal.timeout(8000)
     });
     const d = await r.json();
-    if (!d.ok) { toast(d.error || "No se pudo iniciar", true); return; }
-    localStorage.setItem("tiempo_activo", JSON.stringify(d.data));
-    toast("Cronómetro en marcha");
-  } catch (e) {
-    const local = { faena_id: faenaId, categoria, inicio: new Date().toISOString(), fin: "", origen: "movil" };
-    localStorage.setItem("tiempo_activo", JSON.stringify(local));
-    toast("Cronómetro en marcha (sin red)");
-  }
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId))
-    || (state.terminadas || []).find(x => String(x.id) === String(faenaId));
-  if (f) refrescarTiemposFaena(f);
+    if (d.ok) return true;
+  } catch (e) {}
+  const cola = cargarCola();
+  cola.tiempos = cola.tiempos || [];
+  cola.tiempos.push(sesion);
+  guardarCola(cola);
+  return false;
 }
 
 async function pararTiempoFaena(faenaId) {
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/tiempos/parar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-      signal: AbortSignal.timeout(8000)
-    });
-    const d = await r.json();
-    if (!d.ok) { toast(d.error || "No se pudo parar", true); return; }
-    localStorage.removeItem("tiempo_activo");
-    toast("Tiempo guardado");
-  } catch (e) {
-    const local = JSON.parse(localStorage.getItem("tiempo_activo") || "null");
-    if (local && String(local.faena_id) === String(faenaId)) {
-      local.fin = new Date().toISOString();
-      const ini = new Date(local.inicio).getTime();
-      local.minutos = Math.max(0, (Date.now() - ini) / 60000);
-      const cola = cargarCola();
-      cola.tiempos = cola.tiempos || [];
-      cola.tiempos.push(local);
-      guardarCola(cola);
-      localStorage.removeItem("tiempo_activo");
-      toast("Tiempo guardado para sincronizar");
-    }
+  const local = leerTiempoActivo();
+  if (!local || String(local.faena_id) !== String(faenaId)) {
+    toast("No hay cronómetro en marcha", true);
+    return;
   }
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId))
-    || (state.terminadas || []).find(x => String(x.id) === String(faenaId));
+  local.fin = new Date().toISOString();
+  const ini = new Date(local.inicio).getTime();
+  local.minutos = Math.round(Math.max(0, (Date.now() - ini) / 60000) * 100) / 100;
+  localStorage.removeItem("tiempo_activo");
+  pararTickTiempo();
+  const ok = await guardarSesionTiempo(local);
+  toast(ok ? "Tiempo guardado en el registro" : "Tiempo guardado para sincronizar");
+  renderFaenas();
+  const f = faenaDeTiempo(state.faenaActualId) || faenaDeTiempo(faenaId);
   if (f) refrescarTiemposFaena(f);
 }
 
@@ -3154,6 +3264,7 @@ function renderFaenas() {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas en esta fase.<br><small>Crea la primera faena</small>"}</div>`;
     return;
   }
+  const cronoActivo = leerTiempoActivo();
   el.innerHTML = lista.map(f => {
     const esTemp = f._offline;
     const id = f.id || f._tempId;
@@ -3185,7 +3296,7 @@ function renderFaenas() {
           <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
           <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
         </select>
-        <button class="btn btn-s btn-inline" style="min-width:44px" onclick="abrirFaenaDesdeTiempos(event,'${id}')">⏱</button>
+        <button class="btn btn-s btn-inline" style="min-width:44px" onclick="abrirFaenaDesdeTiempos(event,'${id}')">${cronoActivo && String(cronoActivo.faena_id)===String(id) ? "■" : "⏱"}</button>
         <button class="btn btn-d btn-inline" style="min-width:44px" onclick="eliminarFaenaDesdeTarjeta(event,'${id}')">🗑️</button>
       </div>
     </div>`;
@@ -4652,7 +4763,9 @@ async function sincronizar() {
     if ((cola.tiempos||[]).length) {
       try {
         const sesiones = cola.tiempos.map(t => ({...t, faena_id: mapaFaenas[t.faena_id]?.id || t.faena_id}));
-        await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:AbortSignal.timeout(10000)});
+        const r = await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:AbortSignal.timeout(10000)});
+        const d = await r.json();
+        if (d.ok) cola.tiempos = [];
       } catch(e) {}
     }
 
@@ -4746,7 +4859,7 @@ async function sincronizar() {
       definicionesPendientes:[],
       bookEliminar:[],
       bookPendiente:[],
-      tiempos:[],
+      tiempos: cola.tiempos || [],
       faenasEliminar: colaFinal.faenasEliminar || []
     });
     const ahora = new Date().toLocaleString("es-ES");
@@ -4945,9 +5058,11 @@ async function recargarDatos() {
 async function init() {
   hidratarDesdeCache();
   state._cargando = !state.faenas.length;
+  initBarraTiempos();
+  if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=31", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=32", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

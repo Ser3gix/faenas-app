@@ -1458,6 +1458,8 @@ def sync_tiempos():
                 continue
             inicio = str(it.get("inicio") or "")
             fin = str(it.get("fin") or "")
+            if not inicio or not fin:
+                continue
             minutos = _to_float_seguro(it.get("minutos"))
             conn.execute(
                 "INSERT INTO tiempos_faena (faena_id, categoria, inicio, fin, minutos, origen) VALUES (?, ?, ?, ?, ?, ?)",
