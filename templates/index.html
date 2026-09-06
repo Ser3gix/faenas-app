@@ -1509,17 +1509,6 @@ const API = (function () {
   return "https://faenas-app.onrender.com/api";
 })();
 
-function esPaginaDelPc() {
-  const h = String(window.location.hostname || "").toLowerCase();
-  if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") return true;
-  if (h.endsWith(".onrender.com") || h.endsWith(".railway.app")) return false;
-  return /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(h);
-}
-
-const API_OCR = (esPaginaDelPc() && window.location.origin && window.location.origin !== "null")
-  ? `${window.location.origin}/api`
-  : API;
-
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -2831,17 +2820,12 @@ async function ticketPdfPreview(event) {
   const info = document.getElementById("ticket-pdf-info");
   if (info) {
     info.style.display = "block";
-    info.textContent = esPaginaDelPc()
-      ? ("PDF: " + file.name + " — leyendo en este PC…")
-      : ("PDF: " + file.name + " — abre Faenas en el PC para usar el OCR");
+    info.textContent = "PDF: " + file.name + " — leyendo…";
   }
   document.getElementById("ticket-preview").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "block";
   document.getElementById("ticket-paso3").style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-  if (!esPaginaDelPc()) {
-    toast("Para leer el PDF usa Faenas en el PC (Arrancar_Faenas.bat), no la web de internet", true);
-  }
   document.getElementById("s-materiales")?.scrollIntoView({ behavior: "smooth", block: "start" });
   await procesarTicketConIA();
 }
@@ -2877,7 +2861,7 @@ async function analizarDocumentoFaena(faenaId, nombre) {
     fd.append("guardar", "false");
     fd.append("faena_id", String(faenaId));
     fd.append("nombre", nombre || "documento.pdf");
-    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+    const r = await apiForm("POST", "/ia/procesar-documento", fd, 180000);
     if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
     abrirTicketConDatos(r.data, faenaId);
     toast("Revisa la tabla de tickets y guarda");
@@ -2944,7 +2928,7 @@ async function procesarTicketConIA() {
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "var(--muted)";
-    estado.textContent = esPaginaDelPc() ? "Leyendo el PDF en este PC…" : "Jimmi está leyendo…";
+    estado.textContent = "Leyendo el PDF…";
   }
   try {
     let data;
@@ -2953,9 +2937,9 @@ async function procesarTicketConIA() {
       fd.append("archivo", pdf, pdf.name || "factura.pdf");
       fd.append("guardar", "false");
       fd.append("nombre", pdf.name || "factura.pdf");
-      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000);
     } else {
-      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000, API_OCR);
+      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 80000);
     }
     if (data.ok && data.data) {
       const arts = (data.data.articulos || []).filter(a => {
@@ -3097,7 +3081,7 @@ async function procesarTextoManual() {
   const texto = document.getElementById("ticket-texto-manual").value.trim();
   if (!texto) { toast("Escribe o pega el texto primero", true); return; }
   toast("Enviando a Jimmi...");
-  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000, API_OCR);
+  const d = await apiLargo("POST", "/ia/procesar-texto", { texto, tipo_fuente: "texto", guardar: false }, 50000);
   if (d.ok) {
     ticketAnalisisActual = d.data;
     const jsonEl = document.getElementById("ticket-json-pc");
