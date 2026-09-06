@@ -13,27 +13,9 @@ $port = 5000
 $pythonExe = Join-Path $projectPath ".venv\Scripts\python.exe"
 
 function Update-FaenasApp {
-    Write-Host "Actualizando Faenas (no hace falta git pull)..."
+    Write-Host "Actualizando Faenas..."
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-
-    $gitDir = Join-Path $projectPath ".git"
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($gitCmd -and (Test-Path $gitDir)) {
-        Push-Location $projectPath
-        & git fetch origin main
-        if ($LASTEXITCODE -eq 0) {
-            & git pull --ff-only origin main
-        }
-        Pop-Location
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "App actualizada."
-            $ErrorActionPreference = $prev
-            return
-        }
-        Write-Host "Git no pudo actualizar. Pruebo a descargar la version nueva..."
-    }
-
     try {
         $tmp = Join-Path $env:TEMP ("faenas-update-" + [guid]::NewGuid().ToString("N"))
         New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -44,10 +26,10 @@ function Update-FaenasApp {
         $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
         if (-not $src) { throw "No se pudo descomprimir" }
         $xd = @("datos", "faenas-datos", ".git", ".venv", "__pycache__", "descargas_raul")
-        $args = @($src.FullName, $projectPath, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
-        foreach ($d in $xd) { $args += @("/XD", $d) }
-        $args += @("/XF", ".env")
-        & robocopy @args | Out-Null
+        $copyArgs = @($src.FullName, $projectPath, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
+        foreach ($d in $xd) { $copyArgs += @("/XD", $d) }
+        $copyArgs += @("/XF", ".env")
+        & robocopy @copyArgs | Out-Null
         Write-Host "App actualizada."
     } catch {
         Write-Host "No se pudo actualizar ahora. Sigo con la version que hay en la carpeta."
