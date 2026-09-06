@@ -495,7 +495,7 @@ Respeta la separación entre columnas: cantidad es el número de unidades, preci
 Si una línea tiene descuento, conserva el importe final pagado en total y calcula precio_unitario = total / cantidad cuando la cantidad sea conocida.
 Convierte los importes con coma decimal a números JSON usando punto decimal. Si una cifra o nombre no se lee con seguridad, usa null en ese campo, pero conserva la línea si el artículo se puede identificar.
 Ignora IVA, bases imponibles, recargos y totales fiscales. Usa el importe pagado de cada línea (sin desglose de IVA).
-Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y definicion si hay referencia o medida.
+Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y definicion si hay referencia o medida.
 
 {
     "proveedor": "Nombre del establecimiento",
@@ -507,7 +507,7 @@ Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y def
             "precio_unitario": 0.00,
             "total": 0.00,
             "unidad": "ud",
-            "categoria": "Herraje",
+            "categoria": "Herrajes",
             "definicion": ""
         }
     ],
@@ -2798,9 +2798,8 @@ def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
                     bruto_img = pix.tobytes("png")
                     mime = "image/png"
                 if bruto_img:
-                    imagenes.append(
-                        "data:%s;base64,%s" % (mime, base64.b64encode(bruto_img).decode("ascii"))
-                    )
+                    data_url = "data:%s;base64,%s" % (mime, base64.b64encode(bruto_img).decode("ascii"))
+                    imagenes.append(_comprimir_imagen_data_url(data_url))
             except Exception:
                 continue
     finally:
@@ -2822,6 +2821,25 @@ def _primera_pagina_pdf_base64(archivo_base64, nombre="", mime_type=""):
         return ""
     imgs = _imagenes_de_pdf_bytes(bruto, max_paginas=1)
     return imgs[0] if imgs else ""
+
+
+def _comprimir_imagen_data_url(data_url, max_lado=1280, calidad=72):
+    if not data_url or Image is None:
+        return data_url
+    try:
+        bruto = base64.b64decode(limpiar_data_b64(data_url))
+        img = Image.open(io.BytesIO(bruto)).convert("RGB")
+        w, h = img.size
+        lado = max(w, h) or 1
+        if lado > max_lado:
+            escala = max_lado / float(lado)
+            img = img.resize((max(1, int(w * escala)), max(1, int(h * escala))), getattr(Image, "LANCZOS", 1))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=calidad, optimize=True)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return data_url
+
 
 def _texto_ocr_desde_imagen_base64(data_b64):
     if not data_b64 or pytesseract is None or Image is None:
@@ -3007,7 +3025,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "rate", "too many requests"])
             is_unavailable = any(k in mensaje for k in ["503", "service unavailable", "temporarily unavailable", "currently experiencing high demand"])
             is_conn = any(k in mensaje for k in ["connection refused", "errno 111", "failed to establish", "name or service not known", "nodename nor servname"])
-            if not (is_timeout or is_quota or is_unavailable or is_conn):
+            if tipo not in {"ticket", "documento"} and not (is_timeout or is_quota or is_unavailable or is_conn):
                 raise
             # Fallback local cuando Gemini tarda demasiado o se queda sin cuota.
             if imagen:
@@ -3259,6 +3277,67 @@ def ia_procesar_ticket():
         return jsonify({"ok": False, "error": f"Error procesando ticket con IA: {str(e)}"}), 502
 
 
+def _lineas_de_respuesta_ia(data):
+    if not isinstance(data, dict):
+        return [], {}
+    arts = data.get("articulos") or data.get("materiales") or []
+    if not isinstance(arts, list):
+        arts = []
+    meta = {
+        "proveedor": data.get("proveedor"),
+        "fecha": data.get("fecha"),
+        "total_ticket": data.get("total_ticket"),
+    }
+    return arts, meta
+
+
+def _extraer_lineas_desde_pdf(texto, imagenes, nombre):
+    articulos = []
+    meta = {"proveedor": None, "fecha": None, "total_ticket": None}
+
+    def _acumular(data):
+        arts, m = _lineas_de_respuesta_ia(data)
+        if m.get("proveedor") and not meta.get("proveedor"):
+            meta["proveedor"] = m.get("proveedor")
+        if m.get("fecha") and not meta.get("fecha"):
+            meta["fecha"] = m.get("fecha")
+        if m.get("total_ticket") and not meta.get("total_ticket"):
+            meta["total_ticket"] = m.get("total_ticket")
+        for a in arts:
+            if isinstance(a, dict) and str(a.get("nombre") or "").strip():
+                articulos.append(a)
+
+    imgs = [_comprimir_imagen_data_url(x) for x in (imagenes or []) if x]
+    # Una o dos páginas juntas, como el ticket (menos peso para Gemini).
+    if imgs[:2] or texto:
+        try:
+            _acumular(_extraer_materiales_json_con_ia(
+                _prompt_ticket_base() if imgs else _prompt_documento_base(nombre),
+                texto=texto or None,
+                imagenes=imgs[:2] or None,
+                tipo="ticket" if imgs else "documento",
+            ))
+        except Exception as e:
+            print("pdf ia lote:", e)
+    # Si no hay líneas, cada página como foto de ticket.
+    if not articulos:
+        for img in imgs:
+            try:
+                _acumular(_extraer_materiales_json_con_ia(
+                    _prompt_ticket_base(),
+                    imagen=img,
+                    tipo="ticket",
+                ))
+            except Exception as e:
+                print("pdf ia pagina:", e)
+    return {
+        "proveedor": meta.get("proveedor"),
+        "fecha": meta.get("fecha"),
+        "total_ticket": meta.get("total_ticket"),
+        "articulos": articulos,
+    }
+
+
 @app.route("/api/ia/procesar-documento", methods=["POST"])
 def ia_procesar_documento():
     datos = request.get_json(silent=True) or {}
@@ -3305,13 +3384,7 @@ def ia_procesar_documento():
     if not texto and not imagenes:
         return jsonify({"ok": False, "error": "No se pudo abrir el PDF. Prueba de nuevo o usa una foto."}), 400
     try:
-        prompt_base = prompt or _prompt_documento_base(nombre)
-        data = _extraer_materiales_json_con_ia(
-            prompt_base,
-            texto=texto or None,
-            imagenes=imagenes or None,
-            tipo="documento",
-        )
+        data = _extraer_lineas_desde_pdf(texto, imagenes, nombre)
         if not isinstance(data, dict):
             data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
         articulos = data.get("articulos") or []
@@ -3320,21 +3393,18 @@ def ia_procesar_documento():
         data["nombre_documento"] = nombre
         data["guardado_en_nube"] = guardar
         if guardar:
-            data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "pdf", data)
-        data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
+            try:
+                data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "pdf", data)
+            except Exception as e:
+                print("pdf persistir:", e)
+        try:
+            data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
+        except Exception as e:
+            print("pdf ficha:", e)
+        if not data["articulos"]:
+            data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
         return jsonify({"ok": True, "data": data})
     except Exception as e:
-        if texto or imagenes:
-            return jsonify({"ok": True, "data": {
-                "proveedor": None,
-                "fecha": None,
-                "total_ticket": None,
-                "articulos": [],
-                "tipo_fuente": "documento",
-                "nombre_documento": nombre,
-                "aviso": "El PDF se abrió, pero no se pudieron sacar las líneas. Edítalas en la tabla y guarda.",
-                "error_ia": str(e),
-            }})
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
 
 
