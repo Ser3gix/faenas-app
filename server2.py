@@ -80,7 +80,7 @@ app = Flask(
     static_folder=os.path.join(APP_DIR, "static"),
     template_folder=os.path.join(APP_DIR, "templates")
 )
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 40 * 1024 * 1024
 CORS(app, origins="*", allow_headers=["Content-Type"], supports_credentials=False)
 
 @app.after_request
@@ -521,11 +521,11 @@ Las unidades pueden ser: ud (unidades), ml (mililitros), kg (kilogramos), caja, 
 def _prompt_documento_base(nombre="documento"):
     return f"""Analiza el documento '{nombre}' y devuelve ÚNICAMENTE este JSON, sin texto adicional:
 
-El documento puede ser la impresión o exportación de un correo electrónico. Ignora cabeceras del correo (De, Para, CC, Asunto), fechas de envío, firmas, avisos legales, respuestas repetidas y texto de conversación que no sea una compra. Busca en todo el cuerpo del mensaje, incluido el contenido reenviado, las tablas de pedido o factura y las líneas de materiales.
-Si el correo describe una compra sin tabla formal, convierte cada material mencionado con cantidad y precio en un artículo. No conviertas teléfonos, fechas, números de pedido, códigos postales ni importes de transporte o IVA en materiales. Usa el remitente, la empresa o el vendedor como proveedor solo cuando esté claro.
-Separa cantidad, precio unitario y total. Si solo aparece un importe total de línea, úsalo como total y calcula el precio unitario cuando haya cantidad. Si un dato no aparece o no se lee con seguridad, usa null.
+El documento puede ser una factura, un albarán, un ticket o la impresión de un correo. Ignora cabeceras del correo (De, Para, CC, Asunto), fechas de envío, firmas, avisos legales, respuestas repetidas y texto de conversación que no sea una compra. Busca en todo el cuerpo, tablas de pedido o factura y las líneas de materiales.
+Si describe una compra sin tabla formal, convierte cada material con cantidad y precio en un artículo. No conviertas teléfonos, fechas, números de pedido, códigos postales ni importes de transporte o IVA en materiales. Usa el proveedor o vendedor cuando esté claro.
+Separa cantidad, precio unitario y total. Si solo aparece un importe de línea, úsalo como total y calcula el precio unitario cuando haya cantidad. Si un dato no aparece, usa null.
 Ignora IVA, bases, recargos y totales fiscales. Usa el importe pagado de cada línea.
-Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y definicion si hay referencia o medida.
+Incluye categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros) y definicion si hay referencia o medida.
 
 {{
     "proveedor": "Nombre del establecimiento",
@@ -537,7 +537,7 @@ Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y def
             "precio_unitario": 0.00,
             "total": 0.00,
             "unidad": "ud",
-            "categoria": "Herraje",
+            "categoria": "Herrajes",
             "definicion": ""
         }}
     ],
@@ -2776,25 +2776,52 @@ def _leer_texto_documento_base64_para_ia(archivo_base64, nombre="", mime_type=""
     return ""
 
 
+def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
+    imagenes = []
+    if not bruto:
+        return imagenes
+    try:
+        import fitz
+        doc = fitz.open(stream=bruto, filetype="pdf")
+    except Exception:
+        return imagenes
+    try:
+        tope = min(len(doc), max_paginas)
+        for i in range(tope):
+            try:
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(1.7, 1.7), alpha=False)
+                bruto_img = None
+                mime = "image/jpeg"
+                try:
+                    bruto_img = pix.tobytes("jpeg")
+                except Exception:
+                    bruto_img = pix.tobytes("png")
+                    mime = "image/png"
+                if bruto_img:
+                    imagenes.append(
+                        "data:%s;base64,%s" % (mime, base64.b64encode(bruto_img).decode("ascii"))
+                    )
+            except Exception:
+                continue
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+    return imagenes
+
+
 def _primera_pagina_pdf_base64(archivo_base64, nombre="", mime_type=""):
     if not archivo_base64:
         return ""
-    ext = os.path.splitext((nombre or "").strip())[1].lower()
-    if ext != ".pdf" and "pdf" not in (mime_type or "").lower():
-        return ""
     try:
-        import fitz
         bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
-        doc = fitz.open(stream=bruto, filetype="pdf")
-        if not len(doc):
-            return ""
-        pixmap = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-        imagen = base64.b64encode(pixmap.tobytes("jpg")).decode("ascii")
-        doc.close()
-        return "data:image/jpeg;base64," + imagen
     except Exception:
         return ""
-
+    if not (bruto[:5] == b"%PDF-" or _es_pdf_nombre(nombre) or "pdf" in (mime_type or "").lower()):
+        return ""
+    imgs = _imagenes_de_pdf_bytes(bruto, max_paginas=1)
+    return imgs[0] if imgs else ""
 
 def _texto_ocr_desde_imagen_base64(data_b64):
     if not data_b64 or pytesseract is None or Image is None:
@@ -2893,8 +2920,14 @@ def _json_ticket_desde_ocr(texto):
     }
 
 
-def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticket"):
+def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=None, tipo="ticket"):
     instrucciones = prompt or ""
+    imgs = []
+    if imagen:
+        imgs.append(imagen)
+    if imagenes:
+        imgs.extend([x for x in imagenes if x])
+    imagen = imgs[0] if imgs else None
     esquema = {
         "type": "object",
         "properties": {
@@ -2931,23 +2964,23 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
     user_txt = instrucciones.strip()
     if texto:
         user_txt += "\n\nTEXTO:\n" + texto.strip()
-    if imagen:
-        user_content = [
-            {"type": "text", "text": user_txt or "Extrae los materiales del ticket."},
-            {"type": "image_url", "image_url": {"url": imagen, "detail": "high"}},
-        ]
+    if imgs:
+        user_content = [{"type": "text", "text": user_txt or "Extrae los materiales del ticket."}]
+        for img in imgs[:4]:
+            user_content.append({"type": "image_url", "image_url": {"url": img, "detail": "high"}})
     else:
         user_content = user_txt or "Extrae los materiales y devuelve JSON válido."
 
     ticket_key = TICKET_IA_API_KEY or IA_API_KEY
     ticket_model = TICKET_IA_MODEL or IA_MODEL
     if ticket_key and _ia_provider_activo() == "gemini":
+        parts_img = [_gemini_imagen_part(img) for img in imgs[:4]]
         contents = [
             {
                 "role": "user",
                 "parts": [
                     {"text": user_txt or "Extrae los materiales y devuelve JSON válido."},
-                ] + ([ _gemini_imagen_part(imagen) ] if imagen else []),
+                ] + [p for p in parts_img if p],
             }
         ]
         contents[0]["parts"] = [p for p in contents[0]["parts"] if p]
@@ -2956,11 +2989,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
                 contents=contents,
                 system_instruction=system,
                 response_mime_type="application/json",
-                max_tokens=1200,
+                max_tokens=2500 if tipo == "documento" else 1200,
                 temperature=0,
                 api_key=ticket_key,
                 model=ticket_model,
-                timeout=15 if tipo in {"ticket", "documento"} and imagen else 90,
+                timeout=70 if tipo in {"ticket", "documento"} else 90,
             )
             contenido = _gemini_extraer_texto(raw)
             data = _extraer_json_de_texto(contenido)
@@ -2973,7 +3006,8 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
             is_timeout = any(k in mensaje for k in ["timeout", "timed out", "time out", "socket timeout", "read timed out"])
             is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "rate", "too many requests"])
             is_unavailable = any(k in mensaje for k in ["503", "service unavailable", "temporarily unavailable", "currently experiencing high demand"])
-            if not (is_timeout or is_quota or is_unavailable):
+            is_conn = any(k in mensaje for k in ["connection refused", "errno 111", "failed to establish", "name or service not known", "nodename nor servname"])
+            if not (is_timeout or is_quota or is_unavailable or is_conn):
                 raise
             # Fallback local cuando Gemini tarda demasiado o se queda sin cuota.
             if imagen:
@@ -3007,18 +3041,29 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
         raise RuntimeError("La IA no devolvió JSON válido")
 
     # Fallback local con Ollama
+    if texto:
+        data = _json_ticket_desde_ocr(texto)
+        if isinstance(data, dict):
+            return data
     mensajes = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_txt or "Extrae los materiales y devuelve JSON válido."},
     ]
     if imagen:
         mensajes[-1]["images"] = [imagen]
-    respuesta = ollama_chat(mensajes, format_schema=esquema)
-    contenido = ((respuesta.get("message") or {}).get("content") or "").strip()
-    data = _extraer_json_de_texto(contenido)
-    if not isinstance(data, dict):
-        raise RuntimeError("La IA no devolvió JSON válido")
-    return data
+    try:
+        respuesta = ollama_chat(mensajes, format_schema=esquema)
+        contenido = ((respuesta.get("message") or {}).get("content") or "").strip()
+        data = _extraer_json_de_texto(contenido)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        if tipo in {"ticket", "documento"}:
+            return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
+        raise
+    if tipo in {"ticket", "documento"}:
+        return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
+    raise RuntimeError("La IA no devolvió JSON válido")
 
 
 # -------------------- JIMMI --------------------
@@ -3216,32 +3261,59 @@ def ia_procesar_ticket():
 
 @app.route("/api/ia/procesar-documento", methods=["POST"])
 def ia_procesar_documento():
-    datos = request.json or {}
+    datos = request.get_json(silent=True) or {}
+    nombre = (datos.get("nombre") or request.form.get("nombre") or "documento").strip() or "documento"
+    mime_type = (datos.get("mime_type") or datos.get("mime") or request.form.get("mime_type") or "").strip()
+    prompt = (datos.get("prompt") or "").strip()
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id") or request.form.get("faena_id"))
+    guardar_raw = datos.get("guardar") if isinstance(datos, dict) and "guardar" in datos else request.form.get("guardar")
+    guardar = _parse_bool_seguro(guardar_raw, True)
     texto = (datos.get("texto") or "").strip()
     ruta = (datos.get("ruta") or "").strip()
-    nombre = (datos.get("nombre") or "documento").strip()
-    prompt = (datos.get("prompt") or "").strip()
-    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
-    guardar = _parse_bool_seguro(datos.get("guardar"), True)
     archivo_base64 = (datos.get("archivo_base64") or datos.get("archivo") or datos.get("data") or "").strip()
-    mime_type = (datos.get("mime_type") or datos.get("mime") or "").strip()
+    bruto = b""
+    f = request.files.get("archivo") or request.files.get("file") or request.files.get("pdf")
+    if f:
+        bruto = f.read() or b""
+        if f.filename:
+            nombre = f.filename
+        mime_type = mime_type or (f.mimetype or "")
+    elif archivo_base64:
+        try:
+            bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
+        except Exception:
+            bruto = b""
     if not texto and ruta:
         texto = _leer_texto_documento_para_ia(ruta)
-    if not texto and archivo_base64:
+    imagenes = []
+    es_pdf = bruto[:5] == b"%PDF-" or _es_pdf_nombre(nombre) or "pdf" in (mime_type or "").lower()
+    if es_pdf and bruto:
+        if not texto:
+            texto = _texto_de_pdf_bytes(bruto)
+        imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
+    elif bruto and not es_pdf:
+        mime = mime_type or "image/jpeg"
+        if "png" in mime:
+            imagenes = ["data:image/png;base64," + base64.b64encode(bruto).decode("ascii")]
+        else:
+            imagenes = ["data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")]
+    if not texto and not imagenes and archivo_base64:
         texto = _leer_texto_documento_base64_para_ia(archivo_base64, nombre=nombre, mime_type=mime_type)
-    imagen_documento = ""
-    if not texto and archivo_base64:
-        imagen_documento = _primera_pagina_pdf_base64(archivo_base64, nombre=nombre, mime_type=mime_type)
-    if not texto and not imagen_documento:
-        return jsonify({"ok": False, "error": "No se pudo leer el PDF. Prueba con una foto del ticket o un PDF con OCR."}), 400
+        img = _primera_pagina_pdf_base64(archivo_base64, nombre=nombre, mime_type=mime_type)
+        if img:
+            imagenes = [img]
+    if not texto and not imagenes:
+        return jsonify({"ok": False, "error": "No se pudo abrir el PDF. Prueba de nuevo o usa una foto."}), 400
     try:
         prompt_base = prompt or _prompt_documento_base(nombre)
         data = _extraer_materiales_json_con_ia(
             prompt_base,
-            texto=texto,
-            imagen=imagen_documento or None,
+            texto=texto or None,
+            imagenes=imagenes or None,
             tipo="documento",
         )
+        if not isinstance(data, dict):
+            data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
         articulos = data.get("articulos") or []
         data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
         data["tipo_fuente"] = "documento"
@@ -3252,6 +3324,17 @@ def ia_procesar_documento():
         data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
         return jsonify({"ok": True, "data": data})
     except Exception as e:
+        if texto or imagenes:
+            return jsonify({"ok": True, "data": {
+                "proveedor": None,
+                "fecha": None,
+                "total_ticket": None,
+                "articulos": [],
+                "tipo_fuente": "documento",
+                "nombre_documento": nombre,
+                "aviso": "El PDF se abrió, pero no se pudieron sacar las líneas. Edítalas en la tabla y guarda.",
+                "error_ia": str(e),
+            }})
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
 
 

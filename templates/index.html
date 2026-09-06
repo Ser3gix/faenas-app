@@ -642,8 +642,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <h2>Materiales</h2>
     <div class="btn-row">
       <button class="btn btn-s btn-sm" onclick="abrirModal('m-categorias')">Categorías</button>
-      <input type="file" id="pdf-catalogo-input" accept="application/pdf,.pdf" onchange="enviarPdfCatalogo(event)" style="display:none">
-      <button class="btn btn-s btn-sm" onclick="document.getElementById('pdf-catalogo-input').click()">📄 Importar PDF</button>
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('ticket-pdf-input').click()">📄 Importar PDF</button>
       <button class="btn btn-p btn-sm" onclick="abrirModalNuevoMaterial()">+ Nuevo material</button>
     </div>
   </div>
@@ -657,7 +656,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       Introducir datos
       <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto del ticket o PDF de compra. Jimmi lo lee y tú revisas la lista antes de guardar. Sin IVA.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto o PDF de factura/ticket. Jimmi saca la lista para que la revises y edites antes de guardar. Sin IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
@@ -1626,7 +1625,7 @@ async function parsearRespuesta(r) {
   const texto = await r.text();
   if (!texto) return { ok: false, error: r.ok ? "Respuesta vacía" : ("Error del servidor (" + r.status + ")") };
   try { return JSON.parse(texto); } catch (e) {
-    return { ok: false, error: r.status === 413 ? "La foto es demasiado grande" : ("Error del servidor (" + r.status + ")") };
+    return { ok: false, error: r.status === 413 ? "El archivo es demasiado grande" : ("Error del servidor (" + r.status + ")") };
   }
 }
 
@@ -2592,22 +2591,7 @@ async function crearInter() {
 
 // ===== MATERIALES =====
 async function enviarPdfCatalogo(event) {
-  const file = event.target.files && event.target.files[0];
-  event.target.value = "";
-  if (!file) return;
-  const panel = document.getElementById("pdf-import-panel");
-  panel.style.display = "block";
-  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  const estado = document.getElementById("pdf-import-estado");
-  estado.textContent = "Leyendo PDF…";
-  document.getElementById("pdf-prompt-box").style.display = "none";
-  const fd = new FormData();
-  fd.append("archivo", file);
-  const r = await apiForm("POST", "/materiales/importar-pdf", fd, 120000);
-  if (!r.ok) { estado.textContent = "⚠️ " + (r.error || "Error al procesar el PDF"); return; }
-  estado.innerHTML = `<strong>${esc(r.data.nombre_pdf)}</strong> — ${(r.data.caracteres || 0).toLocaleString()} caracteres extraídos.`;
-  document.getElementById("pdf-prompt-txt").textContent = r.data.prompt;
-  document.getElementById("pdf-prompt-box").style.display = "block";
+  await ticketPdfPreview(event);
 }
 async function importarPDF() {
   document.getElementById("pdf-catalogo-input").click();
@@ -2836,12 +2820,14 @@ async function ticketPdfPreview(event) {
   const info = document.getElementById("ticket-pdf-info");
   if (info) {
     info.style.display = "block";
-    info.textContent = "PDF: " + file.name;
+    info.textContent = "PDF: " + file.name + " — Jimmi está leyendo…";
   }
   document.getElementById("ticket-preview").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "block";
   document.getElementById("ticket-paso3").style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+  document.getElementById("s-materiales")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  await procesarTicketConIA();
 }
 
 function abrirTicketConDatos(data, faenaId) {
@@ -2870,19 +2856,12 @@ async function analizarDocumentoFaena(faenaId, nombre) {
     const resp = await fetch(API + `/faenas/${faenaId}/documentos/${encodeURIComponent(nombre)}/descargar`);
     if (!resp.ok) throw new Error("No se pudo descargar el documento");
     const blob = await resp.blob();
-    const archivo_base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-    const r = await apiLargo("POST", "/ia/procesar-documento", {
-      archivo_base64,
-      nombre,
-      mime_type: blob.type || "",
-      faena_id: faenaId,
-      guardar: false
-    }, 60000);
+    const fd = new FormData();
+    fd.append("archivo", blob, nombre || "documento.pdf");
+    fd.append("guardar", "false");
+    fd.append("faena_id", String(faenaId));
+    fd.append("nombre", nombre || "documento.pdf");
+    const r = await apiForm("POST", "/ia/procesar-documento", fd, 120000);
     if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
     abrirTicketConDatos(r.data, faenaId);
     toast("Revisa la tabla de tickets y guarda");
@@ -2954,15 +2933,11 @@ async function procesarTicketConIA() {
   try {
     let data;
     if (pdf) {
-      const archivo_base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || "").split(",")[1] || reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(pdf);
-      });
-      data = await apiLargo("POST", "/ia/procesar-documento", {
-        archivo_base64, nombre: pdf.name, mime_type: pdf.type || "application/pdf", guardar: false
-      }, 60000);
+      const fd = new FormData();
+      fd.append("archivo", pdf, pdf.name || "factura.pdf");
+      fd.append("guardar", "false");
+      fd.append("nombre", pdf.name || "factura.pdf");
+      data = await apiForm("POST", "/ia/procesar-documento", fd, 120000);
     } else {
       data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
     }
@@ -2976,10 +2951,12 @@ async function procesarTicketConIA() {
       await mostrarCruceTicket(data.data.articulos || []);
       const n = (data.data.articulos || []).length;
       if (estado) {
-        estado.style.color = "var(--green)";
-        estado.textContent = `Jimmi encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa, elige destino y acepta.`;
+        estado.style.color = n ? "var(--green)" : "var(--muted)";
+        estado.textContent = n
+          ? `Jimmi encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa, edita y acepta.`
+          : (data.data.aviso || "No se leyeron líneas. Completa la tabla y guarda.");
       }
-      toast("Revisa la lista y acepta");
+      toast(n ? "Revisa la lista, edita si hace falta y acepta" : "No se leyeron líneas. Edita la tabla y guarda");
     } else {
       if (estado) { estado.style.color = "var(--red)"; estado.textContent = data.error || "Jimmi no pudo leer el ticket"; }
       toast(data.error || "Error al procesar con Jimmi", true);
