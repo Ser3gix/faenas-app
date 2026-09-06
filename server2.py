@@ -26,7 +26,10 @@ from database import (
     fila_a_dict, filas_a_lista
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
-from secretario import chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle, escribir_contexto, borrar_linea_contexto
+from secretario import (
+    chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle,
+    escribir_contexto, borrar_linea_contexto, guardar_extraccion_compra, extraer_referencia_faena,
+)
 
 try:
     import sys
@@ -490,6 +493,8 @@ Lee la imagen por zonas y revisa dos veces cada línea de artículos. No invente
 Respeta la separación entre columnas: cantidad es el número de unidades, precio_unitario es el precio de una unidad y total es cantidad multiplicada por precio_unitario. No uses el subtotal, IVA o total del ticket como precio de un artículo.
 Si una línea tiene descuento, conserva el importe final pagado en total y calcula precio_unitario = total / cantidad cuando la cantidad sea conocida.
 Convierte los importes con coma decimal a números JSON usando punto decimal. Si una cifra o nombre no se lee con seguridad, usa null en ese campo, pero conserva la línea si el artículo se puede identificar.
+Ignora IVA, bases imponibles, recargos y totales fiscales. Usa el importe pagado de cada línea (sin desglose de IVA).
+Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y definicion si hay referencia o medida.
 
 {
     "proveedor": "Nombre del establecimiento",
@@ -500,7 +505,9 @@ Convierte los importes con coma decimal a números JSON usando punto decimal. Si
             "cantidad": 1,
             "precio_unitario": 0.00,
             "total": 0.00,
-            "unidad": "ud"
+            "unidad": "ud",
+            "categoria": "Herraje",
+            "definicion": ""
         }
     ],
     "total_ticket": 0.00
@@ -516,6 +523,8 @@ def _prompt_documento_base(nombre="documento"):
 El documento puede ser la impresión o exportación de un correo electrónico. Ignora cabeceras del correo (De, Para, CC, Asunto), fechas de envío, firmas, avisos legales, respuestas repetidas y texto de conversación que no sea una compra. Busca en todo el cuerpo del mensaje, incluido el contenido reenviado, las tablas de pedido o factura y las líneas de materiales.
 Si el correo describe una compra sin tabla formal, convierte cada material mencionado con cantidad y precio en un artículo. No conviertas teléfonos, fechas, números de pedido, códigos postales ni importes de transporte o IVA en materiales. Usa el remitente, la empresa o el vendedor como proveedor solo cuando esté claro.
 Separa cantidad, precio unitario y total. Si solo aparece un importe total de línea, úsalo como total y calcula el precio unitario cuando haya cantidad. Si un dato no aparece o no se lee con seguridad, usa null.
+Ignora IVA, bases, recargos y totales fiscales. Usa el importe pagado de cada línea.
+Incluye categoria (Herraje, Consumible, Cola, Tornillería, Tablero, Otro) y definicion si hay referencia o medida.
 
 {{
     "proveedor": "Nombre del establecimiento",
@@ -526,7 +535,9 @@ Separa cantidad, precio unitario y total. Si solo aparece un importe total de l�
             "cantidad": 1,
             "precio_unitario": 0.00,
             "total": 0.00,
-            "unidad": "ud"
+            "unidad": "ud",
+            "categoria": "Herraje",
+            "definicion": ""
         }}
     ],
     "total_ticket": 0.00
@@ -1272,6 +1283,10 @@ def _terminar_faena(id):
         conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
     conn.commit()
     conn.close()
+    try:
+        extraer_referencia_faena(id)
+    except Exception:
+        pass
     return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip", "importe": importe}})
 
 
@@ -1300,6 +1315,159 @@ def cambiar_fase_faena(id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "data": {"fase": fase}})
+
+
+CATEGORIAS_TIEMPO = ("medicion_diseno", "compras_gestion", "trabajo")
+
+
+def _fila_tiempo(fila):
+    if not fila:
+        return None
+    d = fila_a_dict(fila)
+    return d
+
+
+def _tiempo_activo(conn, faena_id=None):
+    try:
+        if faena_id:
+            return conn.execute(
+                "SELECT * FROM tiempos_faena WHERE faena_id=? AND COALESCE(fin,'')='' ORDER BY id DESC LIMIT 1",
+                (faena_id,),
+            ).fetchone()
+        return conn.execute(
+            "SELECT * FROM tiempos_faena WHERE COALESCE(fin,'')='' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    except Exception:
+        return None
+
+
+@app.route("/api/tiempos/activo", methods=["GET"])
+def tiempos_activo():
+    conn = get_connection()
+    try:
+        fila = _tiempo_activo(conn)
+        return jsonify({"ok": True, "data": _fila_tiempo(fila)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/faenas/<int:id>/tiempos", methods=["GET"])
+def listar_tiempos(id):
+    conn = get_connection()
+    try:
+        sesiones = filas_a_lista(conn.execute(
+            "SELECT * FROM tiempos_faena WHERE faena_id=? ORDER BY id DESC LIMIT 80",
+            (id,),
+        ).fetchall())
+        totales = filas_a_lista(conn.execute(
+            "SELECT categoria, SUM(minutos) AS minutos FROM tiempos_faena WHERE faena_id=? AND COALESCE(fin,'')<>'' GROUP BY categoria",
+            (id,),
+        ).fetchall())
+        activo = _fila_tiempo(_tiempo_activo(conn, id))
+        return jsonify({"ok": True, "data": {"sesiones": sesiones, "totales": totales, "activo": activo}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/faenas/<int:id>/tiempos/iniciar", methods=["POST"])
+def iniciar_tiempo(id):
+    datos = request.json or {}
+    categoria = (datos.get("categoria") or "").strip()
+    if categoria not in CATEGORIAS_TIEMPO:
+        return jsonify({"ok": False, "error": "Categoría no válida"}), 400
+    conn = get_connection()
+    try:
+        faena = conn.execute("SELECT id FROM faenas WHERE id=?", (id,)).fetchone()
+        if not faena:
+            return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+        activo = _tiempo_activo(conn)
+        if activo:
+            act = fila_a_dict(activo)
+            if int(act.get("faena_id") or 0) != id:
+                return jsonify({"ok": False, "error": "Ya hay un cronómetro en marcha en otra faena", "data": act}), 409
+            if act.get("categoria") == categoria:
+                return jsonify({"ok": True, "data": act})
+            return jsonify({"ok": False, "error": "Para el cronómetro actual antes de cambiar de categoría", "data": act}), 409
+        from datetime import datetime, timezone
+        inicio = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tiempos_faena (faena_id, categoria, inicio, fin, minutos, origen) VALUES (?, ?, ?, '', 0, ?)",
+            (id, categoria, inicio, (datos.get("origen") or "movil")),
+        )
+        conn.commit()
+        tid = cur.lastrowid
+        fila = conn.execute("SELECT * FROM tiempos_faena WHERE id=?", (tid,)).fetchone()
+        return jsonify({"ok": True, "data": _fila_tiempo(fila)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/faenas/<int:id>/tiempos/parar", methods=["POST"])
+def parar_tiempo(id):
+    conn = get_connection()
+    try:
+        activo = _tiempo_activo(conn, id) or _tiempo_activo(conn)
+        if not activo:
+            return jsonify({"ok": False, "error": "No hay cronómetro en marcha"}), 400
+        act = fila_a_dict(activo)
+        if int(act.get("faena_id") or 0) != id:
+            return jsonify({"ok": False, "error": "El cronómetro activo es de otra faena"}), 409
+        from datetime import datetime, timezone
+        fin = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        minutos = 0
+        try:
+            ini = datetime.fromisoformat(str(act.get("inicio") or "").replace("Z", "+00:00"))
+            minutos = max(0, (datetime.now(timezone.utc) - ini).total_seconds() / 60.0)
+        except Exception:
+            minutos = 0
+        conn.execute(
+            "UPDATE tiempos_faena SET fin=?, minutos=? WHERE id=?",
+            (fin, round(minutos, 2), act.get("id")),
+        )
+        conn.commit()
+        fila = conn.execute("SELECT * FROM tiempos_faena WHERE id=?", (act.get("id"),)).fetchone()
+        return jsonify({"ok": True, "data": _fila_tiempo(fila)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/sync/tiempos", methods=["POST"])
+def sync_tiempos():
+    datos = request.json or {}
+    items = datos.get("sesiones") or datos.get("tiempos") or []
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "error": "Faltan sesiones"}), 400
+    conn = get_connection()
+    creados = 0
+    try:
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            faena_id = _parse_faena_id_seguro(it.get("faena_id"))
+            categoria = (it.get("categoria") or "").strip()
+            if not faena_id or categoria not in CATEGORIAS_TIEMPO:
+                continue
+            inicio = str(it.get("inicio") or "")
+            fin = str(it.get("fin") or "")
+            minutos = _to_float_seguro(it.get("minutos"))
+            conn.execute(
+                "INSERT INTO tiempos_faena (faena_id, categoria, inicio, fin, minutos, origen) VALUES (?, ?, ?, ?, ?, ?)",
+                (faena_id, categoria, inicio, fin, minutos, it.get("origen") or "movil"),
+            )
+            creados += 1
+        conn.commit()
+        return jsonify({"ok": True, "data": {"creados": creados}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 @app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
@@ -2637,6 +2805,10 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
                         "precio_unitario": {"type": ["number", "integer", "null"]},
                         "total": {"type": ["number", "integer", "null"]},
                         "unidad": {"type": ["string", "null"]},
+                        "categoria": {"type": ["string", "null"]},
+                        "definicion": {"type": ["string", "null"]},
+                        "fuente": {"type": ["string", "null"]},
+                        "url": {"type": ["string", "null"]},
                     },
                     "required": ["nombre"],
                 },
@@ -2647,8 +2819,8 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, tipo="ticke
 
     system = (
         f"Eres un extractor de materiales desde {tipo}. Devuelve SOLO JSON válido, sin texto extra. "
-        "Usa este formato: {proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad}]}. "
-        "Si un campo no existe, usa null. Normaliza nombres de artículos."
+        "Usa este formato: {proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion}]}. "
+        "Ignora IVA. Si un campo no existe, usa null. Normaliza nombres de artículos."
     )
     user_txt = instrucciones.strip()
     if texto:
@@ -2821,6 +2993,7 @@ def secretario_aplicar():
                 payload = {"articulos": articulos, "proveedor": datos.get("proveedor") or ""}
             origen = "ticket" if tipo != "almacen" else "almacen"
             resumen = _persistir_resultado_ia_en_nube(faena_id, origen, payload if isinstance(payload, dict) else {"articulos": articulos})
+            guardar_extraccion_compra(origen, payload if isinstance(payload, dict) else {"articulos": articulos}, faena_id)
             destino = f"faena {faena_id}" if faena_id else "almacén"
             anotar_contexto(f"Aceptó ticket → {destino}: {resumen.get('gastos_creados', 0)} gastos, {resumen.get('materiales_creados', 0)} materiales nuevos, {resumen.get('precios_actualizados', 0)} precios")
             return jsonify({"ok": True, "data": resumen})
@@ -2904,6 +3077,7 @@ def ia_procesar_texto():
         data["guardado_en_nube"] = guardar
         if guardar:
             data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "texto", data)
+        data["ficha"] = guardar_extraccion_compra("texto", data, faena_id)
         return jsonify({"ok": True, "data": data})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error procesando texto con IA: {str(e)}"}), 502
@@ -2928,6 +3102,7 @@ def ia_procesar_ticket():
         data["guardado_en_nube"] = guardar
         if guardar:
             data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "ticket", data)
+        data["ficha"] = guardar_extraccion_compra("ticket", data, faena_id)
         return jsonify({"ok": True, "data": data})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error procesando ticket con IA: {str(e)}"}), 502
@@ -2968,6 +3143,7 @@ def ia_procesar_documento():
         data["guardado_en_nube"] = guardar
         if guardar:
             data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "pdf", data)
+        data["ficha"] = guardar_extraccion_compra("pdf", data, faena_id, nombre)
         return jsonify({"ok": True, "data": data})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
@@ -2989,6 +3165,7 @@ def ia_guardar_json():
         if not payload["articulos"]:
             return jsonify({"ok": False, "error": "No hay artículos para guardar"}), 400
         resumen = _persistir_resultado_ia_en_nube(faena_id, origen, payload)
+        guardar_extraccion_compra(origen or "ticket", payload, faena_id)
         return jsonify({"ok": True, "data": {"resumen_guardado": resumen}})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error guardando en nube: {str(e)}"}), 502

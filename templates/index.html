@@ -697,11 +697,14 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
   <div class="form-box">
     <div class="form-title">Paso 1 — Foto del ticket</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Una foto cada vez. Jimmi la lee y tú revisas la lista antes de guardar.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6">Foto del ticket o PDF de compra (solo en el PC). Jimmi lo lee y tú revisas la lista antes de guardar. Sin IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
+    <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
       <button class="btn btn-p" onclick="document.getElementById('ticket-foto-input').click()">Elegir foto</button>
+      <button class="btn btn-s" onclick="document.getElementById('ticket-pdf-input').click()">Elegir PDF</button>
     </div>
+    <div id="ticket-pdf-info" style="display:none;margin-top:10px;font-size:0.85rem;color:var(--muted)"></div>
     <div id="ticket-preview" style="display:none;margin-top:12px">
       <img id="ticket-img" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid var(--line);object-fit:contain">
       <div class="btn-row" style="margin-top:8px">
@@ -1913,11 +1916,12 @@ async function eliminarMaterialDesdeModal() {
 async function verDetalle(id) {
   let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
   if (!f) return;
-  const [rAnot, rConceptos, rDocs, rFotos] = await Promise.all([
+  const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
     api("GET", `/faenas/${id}/anotaciones`),
     api("GET", `/faenas/${id}/conceptos`),
     api("GET", `/faenas/${id}/documentos`),
-    api("GET", `/faenas/${id}/fotos`)
+    api("GET", `/faenas/${id}/fotos`),
+    api("GET", `/faenas/${id}/tiempos`)
   ]);
   const cliente = state.clientes.find(c => c.id === f.cliente_id);
   const tel = cliente?.telefono || f.cliente_tel || "";
@@ -1952,6 +1956,13 @@ async function verDetalle(id) {
     <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion || "—"}</span></div>
     <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
+    ${(() => {
+      const tot = (rTiempos.ok && rTiempos.data && rTiempos.data.totales) ? rTiempos.data.totales : [];
+      const labels = { medicion_diseno: "Medición y diseño", compras_gestion: "Compras y gestión", trabajo: "Trabajo" };
+      if (!tot.length) return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+      const txt = tot.map(t => `${labels[t.categoria] || t.categoria}: ${((t.minutos||0)/60).toFixed(1)} h`).join(" · ");
+      return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">${txt}</span></div>`;
+    })()}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">📷 Fotos (${fotos.length})</strong>
@@ -1984,6 +1995,7 @@ async function verDetalle(id) {
               <div style="font-size:0.68rem;color:#aaa">${formatBytes(d.tamaño)}</div>
             </div>
             <button class="btn btn-s btn-sm" onclick="abrirDocumento(${f.id},'${d.nombre}')">Descargar</button>
+            <button class="btn btn-p btn-sm" onclick="analizarDocumentoFaena(${f.id},'${String(d.nombre||"").replace(/'/g, "\\'")}')">Analizar</button>
             <button class="btn btn-d btn-sm" onclick="eliminarDocumento(${f.id},'${d.nombre}')">×</button>
           </div>
         `).join("")}
@@ -2648,7 +2660,73 @@ function _leerTablaAnalisisTicket(containerId) {
 function ticketPreview(event) {
   const file = event.target.files[0];
   if (!file) return;
+  window._ticketPdfFile = null;
+  const info = document.getElementById("ticket-pdf-info");
+  if (info) { info.style.display = "none"; info.textContent = ""; }
   _leerFotoTicket(file);
+}
+
+async function ticketPdfPreview(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  ticketFotoBase64 = null;
+  window._ticketPdfFile = file;
+  const info = document.getElementById("ticket-pdf-info");
+  if (info) {
+    info.style.display = "block";
+    info.textContent = "PDF: " + file.name;
+  }
+  document.getElementById("ticket-preview").style.display = "none";
+  document.getElementById("ticket-paso2").style.display = "block";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+}
+
+function abrirTicketConDatos(data, faenaId) {
+  if (!data || !Array.isArray(data.articulos)) { toast("No hay artículos para revisar", true); return; }
+  nav("tickets");
+  ticketAnalisisActual = data;
+  const jsonEl = document.getElementById("ticket-json-pc");
+  if (jsonEl) jsonEl.value = JSON.stringify(data, null, 2);
+  _renderTablaAnalisisTicket(data);
+  document.getElementById("ticket-paso2").style.display = "none";
+  document.getElementById("ticket-paso3").style.display = "block";
+  document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+  rellenarFaenasTicketDestino();
+  if (faenaId) {
+    const dest = document.getElementById("ticket-destino");
+    if (dest) dest.value = "faena";
+    actualizarDestinoTicket();
+    const sel = document.getElementById("ticket-destino-faena");
+    if (sel) sel.value = String(faenaId);
+  }
+}
+
+async function analizarDocumentoFaena(faenaId, nombre) {
+  toast("Jimmi está leyendo el documento…");
+  try {
+    const resp = await fetch(API + `/faenas/${faenaId}/documentos/${encodeURIComponent(nombre)}/descargar`);
+    if (!resp.ok) throw new Error("No se pudo descargar el documento");
+    const blob = await resp.blob();
+    const archivo_base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const r = await apiLargo("POST", "/ia/procesar-documento", {
+      archivo_base64,
+      nombre,
+      mime_type: blob.type || "",
+      faena_id: faenaId,
+      guardar: false
+    }, 60000);
+    if (!r.ok || !r.data) { toast(r.error || "No se pudo analizar", true); return; }
+    abrirTicketConDatos(r.data, faenaId);
+    toast("Revisa la tabla de tickets y guarda");
+  } catch (e) {
+    toast(e.message || "No se pudo analizar", true);
+  }
 }
 
 async function _leerFotoTicket(file) {
@@ -2687,7 +2765,11 @@ function cancelarTicket(mostrarMensaje) {
   document.getElementById("ticket-paso4").style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "none";
   ticketFotoBase64 = null;
-  ticketAnalisisActual = null;
+  window._ticketPdfFile = null;
+  const pdfIn = document.getElementById("ticket-pdf-input");
+  if (pdfIn) pdfIn.value = "";
+  const info = document.getElementById("ticket-pdf-info");
+  if (info) { info.style.display = "none"; info.textContent = ""; }
   if (mostrarMensaje) toast("Ticket cancelado");
 }
 
@@ -2697,17 +2779,31 @@ function limpiarImagenTicket() {
 }
 
 async function procesarTicketConIA() {
-  if (!ticketFotoBase64) { toast("Elige una foto del ticket primero", true); return; }
+  const pdf = window._ticketPdfFile;
+  if (!ticketFotoBase64 && !pdf) { toast("Elige una foto o un PDF primero", true); return; }
   const btn = document.getElementById("btn-ai-ticket");
   const estado = document.getElementById("ticket-ai-estado");
   if (btn) { btn.disabled = true; btn.textContent = "Jimmi leyendo..."; }
   if (estado) {
     estado.style.display = "block";
     estado.style.color = "var(--muted)";
-    estado.textContent = "Jimmi está leyendo el ticket…";
+    estado.textContent = "Jimmi está leyendo…";
   }
   try {
-    const data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
+    let data;
+    if (pdf) {
+      const archivo_base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || "").split(",")[1] || reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(pdf);
+      });
+      data = await apiLargo("POST", "/ia/procesar-documento", {
+        archivo_base64, nombre: pdf.name, mime_type: pdf.type || "application/pdf", guardar: false
+      }, 60000);
+    } else {
+      data = await apiLargo("POST", "/ia/procesar-ticket", { imagen: ticketFotoBase64, guardar: false }, 50000);
+    }
     if (data.ok && data.data) {
       ticketAnalisisActual = data.data;
       const jsonEl = document.getElementById("ticket-json-pc");
@@ -3234,7 +3330,15 @@ async function enviarConsulta() {
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
-    if (data.ok) { añadirMensaje(data.data.respuesta, "asistente"); cargarContextoJimmi(); } else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
+    if (data.ok) {
+      añadirMensaje(data.data.respuesta, "asistente");
+      cargarContextoJimmi();
+      if (data.data.ticket && (data.data.ticket.articulos || []).length) {
+        const fid = faenaId ? parseInt(faenaId) : null;
+        añadirMensaje("Hay materiales para revisar en Tickets.", "asistente");
+        abrirTicketConDatos(data.data.ticket, fid);
+      }
+    } else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
   } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente"); }
   btn.disabled = false; btn.textContent = "Enviar";
 }

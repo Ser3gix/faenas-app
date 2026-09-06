@@ -461,6 +461,45 @@ def _crear_esquema_sqlite(cursor):
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS extracciones_compra (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            origen TEXT NOT NULL DEFAULT 'ticket',
+            nombre_archivo TEXT DEFAULT '',
+            proveedor TEXT DEFAULT '',
+            fecha_documento TEXT DEFAULT '',
+            faena_id INTEGER DEFAULT 0,
+            resumen TEXT DEFAULT '',
+            datos_json TEXT DEFAULT '',
+            fecha TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS referencias_faena (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faena_id INTEGER NOT NULL,
+            numero TEXT DEFAULT '',
+            tipo_trabajo TEXT DEFAULT '',
+            resumen TEXT DEFAULT '',
+            datos_json TEXT DEFAULT '',
+            fecha TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tiempos_faena (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faena_id INTEGER NOT NULL,
+            categoria TEXT NOT NULL,
+            inicio TEXT NOT NULL DEFAULT '',
+            fin TEXT DEFAULT '',
+            minutos REAL DEFAULT 0,
+            origen TEXT DEFAULT 'movil',
+            fecha TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
 
 def _crear_esquema_mysql(cursor):
     sentencias = [
@@ -649,6 +688,46 @@ def _crear_esquema_mysql(cursor):
             id INT NOT NULL PRIMARY KEY,
             resumen LONGTEXT NOT NULL,
             actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS extracciones_compra (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            origen VARCHAR(50) NOT NULL DEFAULT 'ticket',
+            nombre_archivo VARCHAR(255) NOT NULL DEFAULT '',
+            proveedor VARCHAR(255) NOT NULL DEFAULT '',
+            fecha_documento VARCHAR(32) NOT NULL DEFAULT '',
+            faena_id INT NOT NULL DEFAULT 0,
+            resumen VARCHAR(2000) NOT NULL DEFAULT '',
+            datos_json LONGTEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_extracciones_faena (faena_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS referencias_faena (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            faena_id INT NOT NULL,
+            numero VARCHAR(50) NOT NULL DEFAULT '',
+            tipo_trabajo VARCHAR(255) NOT NULL DEFAULT '',
+            resumen VARCHAR(4000) NOT NULL DEFAULT '',
+            datos_json LONGTEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_referencias_faena (faena_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS tiempos_faena (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            faena_id INT NOT NULL,
+            categoria VARCHAR(50) NOT NULL,
+            inicio VARCHAR(64) NOT NULL DEFAULT '',
+            fin VARCHAR(64) NOT NULL DEFAULT '',
+            minutos DOUBLE NOT NULL DEFAULT 0,
+            origen VARCHAR(20) NOT NULL DEFAULT 'movil',
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_tiempos_faena (faena_id),
+            KEY idx_tiempos_fin (fin)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
     ]
