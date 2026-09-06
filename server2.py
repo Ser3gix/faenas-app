@@ -2914,13 +2914,24 @@ def _linea_ocr_es_ruido(linea):
         return True
     if re.fullmatch(r"[\d\s.,€%$/-]+", baja):
         return True
-    return any(p in baja for p in (
-        "iva", "base imponible", "cif", "nif", "total factura", "importe total",
-        "total pedido", "cuota iva", "gracias", "www.", "http", "albaran",
-        "aviso importante", "forma de pago", "delegacion", "observaciones al presupuesto",
-        "su referencia", "nº presupuesto", "n° presupuesto", "presupuesto fecha",
-        "tel.:", "tel:", "fax:", "avda.", "datos de envio",
-    ))
+    frases = (
+        "base imponible", "total factura", "importe total", "total pedido",
+        "cuota iva", "aviso importante", "forma de pago", "datos de envio",
+        "observaciones al presupuesto", "su referencia",
+    )
+    if any(p in baja for p in frases):
+        return True
+    if any(p in baja for p in ("www.", "http://", "https://", "gracias", "albaran")):
+        return True
+    if re.search(r"\b(iva|cif|nif)\b", baja) and not re.search(r"[a-z]{4,}", re.sub(r"\b(iva|cif|nif|eur|total|cuota)\b", " ", baja)):
+        return True
+    if re.search(r"\b(delegacion|tel|fax|avda)\b", baja) and "cant" not in baja:
+        return True
+    if re.match(r"^fecha\b", baja) and not re.search(r"\d+[.,]\d{2}", baja):
+        return True
+    if re.match(r"^(total|portes)\b", baja):
+        return True
+    return False
 
 
 def _parse_fila_compra_ocr(linea):
@@ -2929,7 +2940,7 @@ def _parse_fila_compra_ocr(linea):
     partes = (linea or "").strip().split()
     if len(partes) < 2:
         return None
-    if not re.fullmatch(r"\d+[.,]\d{2}", partes[-1]):
+    if not re.fullmatch(r"\d+[.,]\d{1,2}", partes[-1]):
         return None
     total = _parse_numero(partes[-1])
     i = len(partes) - 2
@@ -2937,18 +2948,27 @@ def _parse_fila_compra_ocr(linea):
         dto = int(partes[i])
         if 0 <= dto <= 90:
             i -= 1
-    if i < 0 or not re.fullmatch(r"\d+[.,]\d{1,2}", partes[i]):
-        return None
-    precio = _parse_numero(partes[i])
-    i -= 1
+    precio = total
+    if i >= 0 and re.fullmatch(r"\d+[.,]\d{1,2}", partes[i]):
+        precio = _parse_numero(partes[i])
+        i -= 1
     if i >= 0 and re.fullmatch(r"\d+[.,]\d{3,4}", partes[i]):
         i -= 1
     qty = 1.0
     if i >= 0 and re.fullmatch(r"\d+(?:[.,]\d+)?", partes[i]):
         qty = _parse_numero(partes[i]) or 1
         i -= 1
-    nombre = " ".join(partes[: i + 1]).strip(" -:;·'\t")
+    nombre_parts = partes[: i + 1]
+    if len(nombre_parts) >= 2 and re.fullmatch(r"\d+(?:[.,]\d+)?", nombre_parts[0]) and nombre_parts[1].lower() in {"x", "×"}:
+        qty = _parse_numero(nombre_parts[0]) or qty
+        nombre_parts = nombre_parts[2:]
+    elif nombre_parts and re.fullmatch(r"\d+(?:[.,]\d+)?x", nombre_parts[0], re.I):
+        qty = _parse_numero(nombre_parts[0][:-1]) or qty
+        nombre_parts = nombre_parts[1:]
+    nombre = " ".join(nombre_parts).strip(" -:;·'\t")
     if len(nombre) < 3:
+        return None
+    if re.match(r"^(total|portes|dto|descuento)\b", nombre, re.I):
         return None
     return {
         "nombre": nombre,
@@ -3012,7 +3032,10 @@ def _json_ticket_desde_ocr(texto):
                 fusionadas.append(l)
             pendiente = ""
         elif not _linea_ocr_es_ruido(l) and len(l) <= 90:
-            pendiente = l
+            if re.search(r"\bS\.A\.|\bS\.L\.|\bfecha\b", l, re.I) and not re.search(r"\d+[.,]\d{2}\s*$", l):
+                pendiente = ""
+            else:
+                pendiente = l
         else:
             pendiente = ""
 
