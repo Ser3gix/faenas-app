@@ -1,0 +1,10 @@
+.git
+datos
+faenas-datos
+descargas_raul
+*.dwg
+*.zip
+Planta_Raul*
+__pycache__
+*.pyc
+.env

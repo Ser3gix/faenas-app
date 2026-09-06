@@ -2781,17 +2781,12 @@ def _imagenes_de_pdf_bytes(bruto, max_paginas=4):
         tope = min(len(doc), max_paginas)
         for i in range(tope):
             try:
-                pix = doc[i].get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
-                bruto_img = None
-                mime = "image/jpeg"
-                try:
-                    bruto_img = pix.tobytes("jpeg")
-                except Exception:
-                    bruto_img = pix.tobytes("png")
-                    mime = "image/png"
-                if bruto_img:
-                    data_url = "data:%s;base64,%s" % (mime, base64.b64encode(bruto_img).decode("ascii"))
-                    imagenes.append(_comprimir_imagen_data_url(data_url, max_lado=1600, calidad=85))
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(2.2, 2.2), alpha=False)
+                png = pix.tobytes("png")
+                data_url = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+                if len(png) > 3_500_000:
+                    data_url = _comprimir_imagen_data_url(data_url, max_lado=1800, calidad=88)
+                imagenes.append(data_url)
             except Exception:
                 continue
     finally:
