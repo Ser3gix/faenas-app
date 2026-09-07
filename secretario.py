@@ -108,6 +108,8 @@ _QUITAR_BUSQUEDA = {
     "nota", "notas", "anotacion", "anotaciones",
     "informacion", "datos", "resumen", "gastos", "tiempos", "fotos",
     "telefono",
+    "ultima", "ultimo", "ultimas", "ultimos", "reciente", "recientes",
+    "adicional", "adicionales",
 }
 
 _CLAVES_MATERIALES = (
@@ -197,6 +199,16 @@ def _pide_ficha(pregunta):
         "informacion", "datos", "resumen", "ficha",
         "presupuesto", "direccion", "gastos", "tiempos", "fotos", "telefono",
     })
+
+
+def _pide_notas(pregunta):
+    pal = set(_norm_txt(pregunta).split())
+    return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
+
+
+def _pide_ultima(pregunta):
+    pal = set(_norm_txt(pregunta).split())
+    return bool(pal & {"ultima", "ultimo", "ultimas", "ultimos", "reciente", "recientes", "actual"})
 
 
 def _numeros_pregunta(pregunta):
@@ -294,6 +306,20 @@ def _mejor_faena_por_tokens(conn, tokens):
     return _faena_por_id(conn, pool[0].get("id")) or pool[0]
 
 
+def _ultima_por_cliente(conn, tokens):
+    if not tokens:
+        return None
+    hits = []
+    for f in _todas_faenas(conn):
+        nombre = _norm_txt(f.get("cliente_nombre") or "")
+        if nombre and all(t in nombre for t in tokens):
+            hits.append(f)
+    if not hits:
+        return None
+    hits.sort(key=lambda x: int(x.get("id") or 0), reverse=True)
+    return _faena_por_id(conn, hits[0].get("id")) or hits[0]
+
+
 def _pide_listado_faenas(pregunta):
     txt = _norm_txt(pregunta)
     return any(k in txt for k in (
@@ -302,15 +328,20 @@ def _pide_listado_faenas(pregunta):
 
 
 def _resolver_faena(conn, pregunta, faena_id=None):
+    tokens = _tokens_busqueda(pregunta)
     for num in _numeros_pregunta(pregunta):
         faena = _buscar_faena_por_numero(conn, num)
         if faena:
             return faena
+    if _pide_ultima(pregunta) and tokens:
+        ultima = _ultima_por_cliente(conn, tokens)
+        if ultima:
+            return ultima
     if faena_id:
         f = _faena_por_id(conn, faena_id)
         if f:
             return f
-    hallada = _mejor_faena_por_tokens(conn, _tokens_busqueda(pregunta))
+    hallada = _mejor_faena_por_tokens(conn, tokens)
     if hallada:
         return hallada
     if getattr(conn, "_backend", "") == "mysql":
@@ -321,11 +352,15 @@ def _resolver_faena(conn, pregunta, faena_id=None):
                 faena = _buscar_faena_por_numero(sqlite, num)
                 if faena:
                     return faena
+            if _pide_ultima(pregunta) and tokens:
+                ultima = _ultima_por_cliente(sqlite, tokens)
+                if ultima:
+                    return ultima
             if faena_id:
                 f = _faena_por_id(sqlite, faena_id)
                 if f:
                     return f
-            return _mejor_faena_por_tokens(sqlite, _tokens_busqueda(pregunta))
+            return _mejor_faena_por_tokens(sqlite, tokens)
         except Exception as e:
             print("jimmi sqlite faena:", e)
             return None
@@ -715,6 +750,9 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
                 fnum = _buscar_faena_por_numero(conn, num)
                 if fnum and fnum.get("id") and fnum.get("id") not in ids_detalle:
                     ids_detalle.append(fnum.get("id"))
+            resuelta = _resolver_faena(conn, pregunta or "", faena_id)
+            if resuelta and resuelta.get("id") and resuelta.get("id") not in ids_detalle:
+                ids_detalle.append(resuelta.get("id"))
             for fid in ids_detalle[:3]:
                 fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (fid,)).fetchone()
                 if not fila_id:
@@ -1074,7 +1112,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
     tokens = _tokens_busqueda(pregunta)
     quiere_m = _huele_materiales(pregunta, modo)
     quiere_f = _huele_faenas(pregunta, modo)
-    if _numeros_pregunta(pregunta) or _pide_ficha(pregunta):
+    if _numeros_pregunta(pregunta) or _pide_ficha(pregunta) or _pide_ultima(pregunta):
         quiere_f = True
     if modo == "faenas":
         quiere_m = False
@@ -1104,8 +1142,14 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
             concreta = _resolver_faena(conn, pregunta, faena_id)
             listado = _pide_listado_faenas(pregunta)
             if concreta and not listado:
-                texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
-            elif not concreta and (_pide_ficha(pregunta) or _numeros_pregunta(pregunta)) and not listado:
+                if _pide_notas(pregunta):
+                    notas = _anotaciones_de_faena(
+                        conn, concreta.get("id"), numero=concreta.get("numero") or "",
+                    )
+                    texto_f = _texto_notas_faena(concreta, notas)
+                else:
+                    texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
+            elif not concreta and (_pide_ficha(pregunta) or _numeros_pregunta(pregunta) or _pide_ultima(pregunta)) and not listado:
                 if _numeros_pregunta(pregunta):
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
                 else:
