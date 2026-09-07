@@ -27,7 +27,7 @@ from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_D
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
-    fila_a_dict, filas_a_lista,
+    fila_a_dict, filas_a_lista, listar_anotaciones_faena,
     CATEGORIAS_MATERIAL_DEFECTO,
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
@@ -1613,12 +1613,13 @@ def descargar_zip_faena(id):
 # -------------------- ANOTACIONES --------------------
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["GET"])
 def get_anotaciones(id):
+    numero = None
     conn = _conn_para_faena(id)
-    filas = conn.execute(
-        "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY fecha DESC", (id,)
-    ).fetchall()
+    fila = conn.execute("SELECT numero FROM faenas WHERE id=?", (id,)).fetchone()
+    if fila:
+        numero = fila["numero"] if isinstance(fila, dict) else fila[0]
     conn.close()
-    return jsonify({"ok": True, "data": filas_a_lista(filas)})
+    return jsonify({"ok": True, "data": listar_anotaciones_faena(id, numero)})
 
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["POST"])
 def crear_anotacion(id):

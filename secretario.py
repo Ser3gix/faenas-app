@@ -4,7 +4,7 @@ MAX_MEMORIA_MODO = 2500
 
 import json
 
-from database import get_connection, get_sqlite_local, fila_a_dict, filas_a_lista
+from database import get_connection, get_sqlite_local, fila_a_dict, filas_a_lista, listar_anotaciones_faena
 
 
 def leer_contexto():
@@ -336,58 +336,7 @@ def _resolver_faena(conn, pregunta, faena_id=None):
 
 
 def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
-    acc = []
-    vistos = set()
-
-    def ids_en(cn):
-        hallados = set()
-        if faena_id not in (None, ""):
-            try:
-                hallados.add(int(faena_id))
-            except Exception:
-                pass
-        if numero:
-            for v in _variantes_numero(numero):
-                for r in _filas_faena_sql(
-                    cn,
-                    "SELECT id FROM faenas WHERE numero=? OR REPLACE(numero,'-','')=?",
-                    (v, v),
-                ):
-                    if r.get("id") is not None:
-                        hallados.add(int(r["id"]))
-        return hallados
-
-    def leer(cn, fid):
-        try:
-            filas = filas_a_lista(cn.execute(
-                "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC",
-                (int(fid),),
-            ).fetchall())
-        except Exception as e:
-            print("jimmi anotaciones:", e)
-            return
-        for a in filas:
-            contenido = str(a.get("contenido") or a.get("texto") or a.get("nota") or "")
-            clave = (str(a.get("fecha") or ""), contenido[:240], str(a.get("tipo") or ""))
-            if clave in vistos:
-                continue
-            vistos.add(clave)
-            acc.append(a)
-
-    for fid in ids_en(conn):
-        leer(conn, fid)
-    if getattr(conn, "_backend", "") == "mysql":
-        sqlite = None
-        try:
-            sqlite = get_sqlite_local()
-            for fid in ids_en(sqlite):
-                leer(sqlite, fid)
-        except Exception as e:
-            print("jimmi anotaciones sqlite:", e)
-        finally:
-            if sqlite:
-                sqlite.close()
-    return acc[:limite]
+    return listar_anotaciones_faena(faena_id, numero)[:limite]
 
 
 def _filas_faena_sql(conn, sql, params):
@@ -1125,8 +1074,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
     tokens = _tokens_busqueda(pregunta)
     quiere_m = _huele_materiales(pregunta, modo)
     quiere_f = _huele_faenas(pregunta, modo)
-    if modo == "materiales":
-        quiere_f = False
+    if _numeros_pregunta(pregunta) or _pide_ficha(pregunta):
+        quiere_f = True
     if modo == "faenas":
         quiere_m = False
     if not quiere_m and not quiere_f:

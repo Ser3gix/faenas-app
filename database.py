@@ -216,6 +216,92 @@ def get_sqlite_local():
     return _sqlite_conectar_local()
 
 
+def _variantes_numero_faena(numero):
+    n = "".join(ch for ch in str(numero or "") if ch.isdigit())
+    if not n:
+        return []
+    out = []
+    for v in (n, n.lstrip("0") or "0"):
+        if v not in out:
+            out.append(v)
+    if len(n) < 5:
+        z = n.zfill(5)
+        if z not in out:
+            out.append(z)
+    return out
+
+
+def listar_anotaciones_faena(faena_id=None, numero=None):
+    """Las mismas anotaciones que ve el PC: MySQL/TiDB y SQLite, por id y por número."""
+    conns = []
+    try:
+        principal = get_connection()
+        conns.append(principal)
+        if getattr(principal, "_backend", "") == "mysql":
+            conns.append(get_sqlite_local())
+        acc = []
+        vistos = set()
+        ids = []
+        if faena_id not in (None, ""):
+            try:
+                ids.append(int(faena_id))
+            except Exception:
+                pass
+        for conn in conns:
+            if numero:
+                for v in _variantes_numero_faena(numero):
+                    try:
+                        filas = filas_a_lista(conn.execute(
+                            "SELECT id FROM faenas WHERE numero=? OR REPLACE(numero,'-','')=? "
+                            "OR REPLACE(REPLACE(numero,'-',''),'.','')=?",
+                            (v, v, v),
+                        ).fetchall())
+                    except Exception:
+                        filas = []
+                    for fila in filas:
+                        try:
+                            i = int(fila.get("id"))
+                        except Exception:
+                            continue
+                        if i not in ids:
+                            ids.append(i)
+            consultas = [
+                ("SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC", (fid,))
+                for fid in ids
+            ]
+            if numero:
+                for v in _variantes_numero_faena(numero):
+                    consultas.append((
+                        "SELECT a.* FROM anotaciones a INNER JOIN faenas f ON f.id=a.faena_id "
+                        "WHERE f.numero=? OR REPLACE(f.numero,'-','')=?",
+                        (v, v),
+                    ))
+            for sql, params in consultas:
+                try:
+                    filas = filas_a_lista(conn.execute(sql, params).fetchall())
+                except Exception as e:
+                    print("anotaciones:", e)
+                    continue
+                for a in filas:
+                    clave = (
+                        str(a.get("id") or ""),
+                        str(a.get("faena_id") or ""),
+                        str(a.get("contenido") or a.get("texto") or "")[:240],
+                        str(a.get("fecha") or ""),
+                    )
+                    if clave in vistos:
+                        continue
+                    vistos.add(clave)
+                    acc.append(a)
+        return acc
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def inicializar_sqlite_local():
     """Asegura que el esquema SQLite local existe (necesario cuando el backend es MySQL)."""
     os.makedirs(CARPETA_RAIZ, exist_ok=True)
