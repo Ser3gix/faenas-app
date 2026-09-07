@@ -106,7 +106,7 @@ _QUITAR_BUSQUEDA = {
     "terminada", "terminadas", "archivada", "archivadas", "abierta", "abiertas",
     "curso", "pendiente", "pendientes", "taller",
     "nota", "notas", "anotacion", "anotaciones",
-    "informacion", "datos", "resumen", "ficha", "gastos", "tiempos", "fotos",
+    "informacion", "datos", "resumen", "gastos", "tiempos", "fotos",
     "telefono",
 }
 
@@ -235,15 +235,82 @@ def _sql_faena_campos():
     )
 
 
+def _sql_faena_campos_min():
+    return (
+        "SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, "
+        "c.nombre AS cliente_nombre "
+        "FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id"
+    )
+
+
+def _fila_faena(conn, sql, params):
+    try:
+        fila = conn.execute(sql, params).fetchone()
+        return fila_a_dict(fila) if fila else None
+    except Exception:
+        return None
+
+
+def _faena_por_id(conn, faena_id):
+    f = _fila_faena(conn, _sql_faena_campos() + " WHERE f.id=?", (faena_id,))
+    if f:
+        return f
+    return _fila_faena(conn, _sql_faena_campos_min() + " WHERE f.id=?", (faena_id,))
+
+
 def _buscar_faena_por_numero(conn, numero):
     for v in _variantes_numero(numero):
-        fila = conn.execute(
-            _sql_faena_campos() + " WHERE f.numero=? OR REPLACE(f.numero,'-','')=?",
-            (v, v),
-        ).fetchone()
-        if fila:
-            return fila_a_dict(fila)
+        like = f"%{v}%"
+        for sql in (_sql_faena_campos(), _sql_faena_campos_min()):
+            f = _fila_faena(
+                conn,
+                sql + " WHERE f.numero=? OR REPLACE(f.numero,'-','')=? OR REPLACE(REPLACE(f.numero,'-',''),'.','')=? OR f.numero LIKE ?",
+                (v, v, v, like),
+            )
+            if f:
+                return f
     return None
+
+
+def _todas_faenas(conn):
+    filas = _filas_faena_sql(conn, _sql_faena_campos() + " ORDER BY f.id DESC", ())
+    if filas:
+        return filas
+    return _faenas_activas(conn, 800) + _faenas_terminadas(conn, 800)
+
+
+def _mejor_faena_por_tokens(conn, tokens):
+    if not tokens:
+        return None
+    pool = _filtra_por_tokens(
+        _todas_faenas(conn),
+        tokens,
+        lambda f: " ".join(str(f.get(k) or "") for k in (
+            "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
+        )),
+    )
+    if not pool:
+        return None
+    return _faena_por_id(conn, pool[0].get("id")) or pool[0]
+
+
+def _pide_listado_faenas(pregunta):
+    txt = _norm_txt(pregunta)
+    return any(k in txt for k in (
+        "cuantas", "cuantos", "activas", "terminadas", "listado", "todas las faenas", "que faenas",
+    ))
+
+
+def _resolver_faena(conn, pregunta, faena_id=None):
+    for num in _numeros_pregunta(pregunta):
+        faena = _buscar_faena_por_numero(conn, num)
+        if faena:
+            return faena
+    if faena_id:
+        f = _faena_por_id(conn, faena_id)
+        if f:
+            return f
+    return _mejor_faena_por_tokens(conn, _tokens_busqueda(pregunta))
 
 
 def _anotaciones_de_faena(conn, faena_id, limite=40):
@@ -261,18 +328,6 @@ def _filas_faena_sql(conn, sql, params):
         return filas_a_lista(conn.execute(sql, params).fetchall())
     except Exception:
         return []
-
-
-def _resolver_faena(conn, pregunta, faena_id=None):
-    for num in _numeros_pregunta(pregunta):
-        faena = _buscar_faena_por_numero(conn, num)
-        if faena:
-            return faena
-    if faena_id:
-        fila = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (faena_id,)).fetchone()
-        if fila:
-            return fila_a_dict(fila)
-    return None
 
 
 def _cargar_faena_completa(conn, faena):
@@ -1027,11 +1082,14 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
             concreta = _resolver_faena(conn, pregunta, faena_id)
-            if _numeros_pregunta(pregunta) or _pide_ficha(pregunta):
-                if concreta:
-                    texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
-                elif _numeros_pregunta(pregunta):
+            listado = _pide_listado_faenas(pregunta)
+            if concreta and not listado:
+                texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
+            elif not concreta and (_pide_ficha(pregunta) or _numeros_pregunta(pregunta)) and not listado:
+                if _numeros_pregunta(pregunta):
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
+                else:
+                    texto_f = "Dime el número de la faena o el nombre del cliente y te paso todos los datos."
             if not texto_f:
                 estado = _estado_faena_pregunta(pregunta)
                 activas = _faenas_activas(conn, 500)
@@ -1070,7 +1128,8 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
     local = None
     try:
         local = _respuesta_local_datos(pregunta, modo, faena_id=faena_id)
-    except Exception:
+    except Exception as e:
+        print("jimmi local:", e)
         local = None
     if local and local.get("usar") and not _pide_web(pregunta):
         return {
