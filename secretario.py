@@ -4,7 +4,7 @@ MAX_MEMORIA_MODO = 2500
 
 import json
 
-from database import get_connection, fila_a_dict, filas_a_lista
+from database import get_connection, get_sqlite_local, fila_a_dict, filas_a_lista
 
 
 def leer_contexto():
@@ -310,17 +310,84 @@ def _resolver_faena(conn, pregunta, faena_id=None):
         f = _faena_por_id(conn, faena_id)
         if f:
             return f
-    return _mejor_faena_por_tokens(conn, _tokens_busqueda(pregunta))
+    hallada = _mejor_faena_por_tokens(conn, _tokens_busqueda(pregunta))
+    if hallada:
+        return hallada
+    if getattr(conn, "_backend", "") == "mysql":
+        sqlite = None
+        try:
+            sqlite = get_sqlite_local()
+            for num in _numeros_pregunta(pregunta):
+                faena = _buscar_faena_por_numero(sqlite, num)
+                if faena:
+                    return faena
+            if faena_id:
+                f = _faena_por_id(sqlite, faena_id)
+                if f:
+                    return f
+            return _mejor_faena_por_tokens(sqlite, _tokens_busqueda(pregunta))
+        except Exception as e:
+            print("jimmi sqlite faena:", e)
+            return None
+        finally:
+            if sqlite:
+                sqlite.close()
+    return None
 
 
-def _anotaciones_de_faena(conn, faena_id, limite=40):
-    try:
-        return filas_a_lista(conn.execute(
-            "SELECT tipo, contenido, fecha FROM anotaciones WHERE faena_id=? ORDER BY id DESC LIMIT ?",
-            (faena_id, limite),
-        ).fetchall())
-    except Exception:
-        return []
+def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
+    acc = []
+    vistos = set()
+
+    def ids_en(cn):
+        hallados = set()
+        if faena_id not in (None, ""):
+            try:
+                hallados.add(int(faena_id))
+            except Exception:
+                pass
+        if numero:
+            for v in _variantes_numero(numero):
+                for r in _filas_faena_sql(
+                    cn,
+                    "SELECT id FROM faenas WHERE numero=? OR REPLACE(numero,'-','')=?",
+                    (v, v),
+                ):
+                    if r.get("id") is not None:
+                        hallados.add(int(r["id"]))
+        return hallados
+
+    def leer(cn, fid):
+        try:
+            filas = filas_a_lista(cn.execute(
+                "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC",
+                (int(fid),),
+            ).fetchall())
+        except Exception as e:
+            print("jimmi anotaciones:", e)
+            return
+        for a in filas:
+            contenido = str(a.get("contenido") or a.get("texto") or a.get("nota") or "")
+            clave = (str(a.get("fecha") or ""), contenido[:240], str(a.get("tipo") or ""))
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            acc.append(a)
+
+    for fid in ids_en(conn):
+        leer(conn, fid)
+    if getattr(conn, "_backend", "") == "mysql":
+        sqlite = None
+        try:
+            sqlite = get_sqlite_local()
+            for fid in ids_en(sqlite):
+                leer(sqlite, fid)
+        except Exception as e:
+            print("jimmi anotaciones sqlite:", e)
+        finally:
+            if sqlite:
+                sqlite.close()
+    return acc[:limite]
 
 
 def _filas_faena_sql(conn, sql, params):
@@ -357,7 +424,7 @@ def _cargar_faena_completa(conn, faena):
     )
     return {
         "faena": faena,
-        "anotaciones": _anotaciones_de_faena(conn, fid),
+        "anotaciones": _anotaciones_de_faena(conn, fid, numero=faena.get("numero") or ""),
         "gastos": gastos,
         "presupuesto": presupuesto,
         "tiempos": _tiempos_de_faena(conn, fid),
@@ -454,15 +521,19 @@ def _texto_notas_faena(faena, anotaciones):
     lineas = []
     for a in anotaciones:
         tipo = str(a.get("tipo") or "texto").strip().lower()
-        contenido = str(a.get("contenido") or "").strip()
+        contenido = str(a.get("contenido") or a.get("texto") or a.get("nota") or "").strip()
         fecha = str(a.get("fecha") or "").strip()
         pref = f"[{fecha}] " if fecha else ""
-        if tipo in {"foto", "imagen", "image", "photo"} or contenido.startswith("data:"):
+        if contenido.startswith("data:") or (tipo in {"foto", "imagen", "image", "photo"} and len(contenido) > 200):
             lineas.append(f"- {pref}foto".strip())
             continue
-        if not contenido:
+        if tipo == "archivo" and (not contenido or contenido.startswith("/") or "." in contenido[:40] and " " not in contenido):
+            lineas.append(f"- {pref}archivo {contenido[:120]}".strip())
             continue
-        lineas.append(f"- {pref}{contenido[:800]}".strip())
+        if not contenido:
+            lineas.append(f"- {pref}({tipo or 'nota vacía'})".strip())
+            continue
+        lineas.append(f"- {pref}{contenido[:1200]}".strip())
     if not lineas:
         return f"La faena {num} ({cliente}, {trabajo}) no tiene anotaciones de texto."
     return f"Anotaciones de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas)
