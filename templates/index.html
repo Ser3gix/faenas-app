@@ -1154,7 +1154,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div class="modal">
     <div class="modal-title">🔨 Nueva Faena</div>
     <div class="form-grid">
-      <div><label>Cliente *</label><select id="f-cliente"></select></div>
+      <div><label>Cliente *</label><select id="f-cliente" onchange="rellenarDatosClienteNuevaFaena()"></select></div>
       <div><label>Intermediario</label><select id="f-inter"></select></div>
     </div>
     <div class="form-grid g1">
@@ -1893,6 +1893,26 @@ function toast(msg, error = false) {
 }
 
 // ===== POBLAR SELECTS =====
+function direccionDeFaena(f) {
+  return (f && (f.direccion || f.cliente_direccion)) || "";
+}
+
+function telefonoDeFaena(f) {
+  if (!f) return "";
+  const cliente = (state.clientes || []).find(c => String(c.id) === String(f.cliente_id));
+  return f.cliente_telefono || f.cliente_tel || f.telefono || cliente?.telefono || "";
+}
+
+function rellenarDatosClienteNuevaFaena() {
+  const id = document.getElementById("f-cliente")?.value;
+  const c = (state.clientes || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  const dir = document.getElementById("f-dir");
+  if (dir && !(dir.value || "").trim()) dir.value = c.direccion || "";
+  const inter = document.getElementById("f-inter");
+  if (inter && c.intermediario_id != null && c.intermediario_id !== "") inter.value = String(c.intermediario_id);
+}
+
 function poblarSelects() {
   const sc = document.getElementById("f-cliente");
   if (sc) sc.innerHTML = state.clientes.map(c => `<option value="${c.id}">${c.nombre}</option>`).join("");
@@ -1916,7 +1936,8 @@ function renderFaenas() {
     return (f.numero || "").toLowerCase().includes(q) ||
            (f.cliente_nombre || "").toLowerCase().includes(q) ||
            (f.tipo_trabajo || "").toLowerCase().includes(q) ||
-           (f.direccion || "").toLowerCase().includes(q);
+           (f.direccion || "").toLowerCase().includes(q) ||
+           (f.cliente_direccion || "").toLowerCase().includes(q);
   });
   const el = document.getElementById("lista-faenas");
   const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
@@ -1952,7 +1973,7 @@ function renderFaenas() {
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${esDirecto ? "Directo" : (f.intermediario_nombre || "")}</div>
         </td>
         <td>${f.tipo_trabajo || "—"}</td>
-        <td>${f.direccion || "—"}</td>
+        <td>${direccionDeFaena(f) || "—"}</td>
         <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
         <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
         <td class="acciones">${acciones}</td>
@@ -2138,8 +2159,8 @@ async function verDetalle(id) {
     api("GET", `/faenas/${id}/fotos`),
     api("GET", `/faenas/${id}/tiempos`)
   ]);
-  const cliente = state.clientes.find(c => c.id === f.cliente_id);
-  const tel = cliente?.telefono || f.cliente_tel || "";
+  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
+  const tel = telefonoDeFaena(f) || cliente?.telefono || "";
   const anotaciones = rAnot.ok ? rAnot.data : [];
   const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
   const presupuesto = conceptos.presupuesto || [];
@@ -2168,7 +2189,7 @@ async function verDetalle(id) {
     </div>
     <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${f.tipo_trabajo || "—"}</span></div>
     <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre}${tel ? `<br><a href="tel:${tel}" style="color:var(--green);font-size:0.78rem">📞 ${tel}</a>` : ""}</span></div>
-    <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${f.direccion || "—"}</span></div>
+    <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${direccionDeFaena(f) || "—"}</span></div>
     <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
     ${(() => {
@@ -2437,7 +2458,7 @@ function abrirEditarFaena(id) {
   const f = state.faenas.find(x => x.id === id);
   if (!f) return;
   document.getElementById("ef-id").value = f.id;
-  document.getElementById("ef-dir").value = f.direccion || "";
+  document.getElementById("ef-dir").value = direccionDeFaena(f);
   document.getElementById("ef-tipo").value = f.tipo_trabajo || "";
   document.getElementById("ef-importe").value = f.importe || "";
   document.getElementById("ef-fecha").value = f.fecha_inicio || "";
@@ -2480,10 +2501,13 @@ async function guardarEditarCliente() {
 
 // ===== ACCIONES FAENAS =====
 async function crearFaena() {
+  const clienteId = parseInt(document.getElementById("f-cliente").value);
+  const cliente = (state.clientes || []).find(c => String(c.id) === String(clienteId));
+  const direccion = (document.getElementById("f-dir").value || "").trim() || (cliente && cliente.direccion) || "";
   const r = await api("POST", "/faenas", {
-    cliente_id: parseInt(document.getElementById("f-cliente").value),
+    cliente_id: clienteId,
     intermediario_id: parseInt(document.getElementById("f-inter").value),
-    direccion: document.getElementById("f-dir").value,
+    direccion,
     tipo_trabajo: document.getElementById("f-tipo").value,
     importe: parseFloat(document.getElementById("f-importe").value) || 0,
     fecha_inicio: document.getElementById("f-fecha").value

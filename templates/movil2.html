@@ -2006,7 +2006,7 @@ function renderPanelDatos(f) {
     </div>
     <div class="datos-campo">
       <div class="datos-k">Dirección</div>
-      <div class="datos-v">${escHtml(f.direccion || "—")}</div>
+      <div class="datos-v">${escHtml(f.direccion || direccionDeFaenaMovil(f) || "—")}</div>
     </div>
     <div class="datos-campo">
       <div class="datos-k">Importe</div>
@@ -3338,7 +3338,7 @@ function renderFaenas() {
       </div>
       <div class="fc-cliente">${escHtml(f.cliente_nombre||"—")}</div>
       <div class="fc-tipo">${escHtml(f.tipo_trabajo||"Sin descripción")}</div>
-      ${f.direccion ? `<div class="fc-dir">${escHtml(f.direccion)}</div>` : ""}
+      ${direccionDeFaenaMovil(f) ? `<div class="fc-dir">${escHtml(direccionDeFaenaMovil(f))}</div>` : ""}
       <div class="fc-footer">
         ${(f.anotaciones?.length||0) > 0 ? `<span class="badge b-gray">📝 ${f.anotaciones.length}</span>` : ""}
         ${gastosReales.length > 0 ? `<span class="badge b-green">💶 ${gastosReales.length}</span>` : ""}
@@ -3431,6 +3431,16 @@ function buscarClientePorId(id) {
   const todos = [...(state.clientes || []), ...(cola.clientes || [])];
   const clave = String(id);
   return todos.find(c => String(c.id) === clave || String(c._tempId || "") === clave) || null;
+}
+
+function direccionDeFaenaMovil(f) {
+  if (!f) return "";
+  const propia = (f.direccion || "").trim();
+  if (propia) return propia;
+  const deCliente = (f.cliente_direccion || "").trim();
+  if (deCliente) return deCliente;
+  const c = buscarClientePorId(f.cliente_id);
+  return ((c && c.direccion) || "").trim();
 }
 
 function abrirNuevaFaena() {
@@ -5149,7 +5159,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=33", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=34", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

@@ -925,6 +925,67 @@ def _asegurar_categorias_material(cursor, mysql=False):
         pass
 
 
+def _completar_datos_cliente_en_faenas(cursor, mysql=False):
+    """Copia dirección e intermediario del cliente a faenas que los tienen vacíos."""
+    try:
+        if mysql:
+            cursor.execute(
+                """
+                UPDATE faenas f
+                INNER JOIN clientes c ON c.id = f.cliente_id
+                SET f.direccion = TRIM(c.direccion)
+                WHERE TRIM(COALESCE(f.direccion, '')) = ''
+                  AND TRIM(COALESCE(c.direccion, '')) <> ''
+                """
+            )
+            n_dir = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+            cursor.execute(
+                """
+                UPDATE faenas f
+                INNER JOIN clientes c ON c.id = f.cliente_id
+                SET f.intermediario_id = c.intermediario_id
+                WHERE COALESCE(f.intermediario_id, 0) = 0
+                  AND COALESCE(c.intermediario_id, 0) <> 0
+                """
+            )
+            n_inter = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+        else:
+            cursor.execute(
+                """
+                UPDATE faenas
+                SET direccion = (
+                    SELECT TRIM(c.direccion) FROM clientes c WHERE c.id = faenas.cliente_id
+                )
+                WHERE TRIM(COALESCE(direccion, '')) = ''
+                  AND EXISTS (
+                    SELECT 1 FROM clientes c
+                    WHERE c.id = faenas.cliente_id
+                      AND TRIM(COALESCE(c.direccion, '')) != ''
+                  )
+                """
+            )
+            n_dir = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+            cursor.execute(
+                """
+                UPDATE faenas
+                SET intermediario_id = (
+                    SELECT c.intermediario_id FROM clientes c WHERE c.id = faenas.cliente_id
+                )
+                WHERE COALESCE(intermediario_id, 0) = 0
+                  AND EXISTS (
+                    SELECT 1 FROM clientes c
+                    WHERE c.id = faenas.cliente_id
+                      AND COALESCE(c.intermediario_id, 0) != 0
+                  )
+                """
+            )
+            n_inter = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+        if n_dir or n_inter:
+            print(f"✓ Faenas completadas con datos del cliente: direccion={n_dir}, intermediario={n_inter}")
+    except Exception as exc:
+        print(f"completar datos cliente en faenas: {exc}")
+
+
 def inicializar_db():
     os.makedirs(CARPETA_RAIZ, exist_ok=True)
     if _usar_mysql():
@@ -934,8 +995,10 @@ def inicializar_db():
     try:
         if _usar_mysql():
             _crear_esquema_mysql(cursor)
+            _completar_datos_cliente_en_faenas(cursor, mysql=True)
         else:
             _crear_esquema_sqlite(cursor)
+            _completar_datos_cliente_en_faenas(cursor, mysql=False)
         conn.commit()
     finally:
         conn.close()
