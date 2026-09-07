@@ -64,19 +64,18 @@ TICKET_IA_API_KEY = (os.environ.get("TICKET_CLAVE_API") or "").strip()
 IA_PROVIDER = (os.environ.get("IA_PROVIDER") or "gemini").strip().lower()
 IA_API_URL = os.environ.get("IA_API_URL", "").strip()
 IA_MODEL = (os.environ.get("IA_MODEL") or "").strip()
-TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or "gemini-flash-latest").strip()
+_GEMINI_MODELO_POR_DEFECTO = "gemini-3.5-flash-lite"
+TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or _GEMINI_MODELO_POR_DEFECTO).strip()
 IA_MODO = (os.environ.get("IA_MODO") or "local").strip().lower()
 _GEMINI_MODEL_CACHE = {}
 _GEMINI_ULTIMO_MODELO = ""
 _GEMINI_MODELOS_CANDIDATOS = [
-    "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-flash-lite-latest",
+    "gemini-flash-latest",
     "gemini-pro-latest",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-pro",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
 ]
 
 if pytesseract is not None:
@@ -518,8 +517,60 @@ Devuelve SOLO JSON con proveedor, fecha, total_ticket y articulos (nombre, canti
 Ignora IVA, portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
+def _gemini_nombre_modelo(nombre):
+    return (nombre or "").split("/")[-1].strip()
+
+
+def _gemini_modelo_retirado(nombre):
+    n = _gemini_nombre_modelo(nombre).lower()
+    if not n:
+        return True
+    if n.startswith("gemini-1.5-") or n.startswith("gemini-2.0-") or n.startswith("gemini-2.5-"):
+        return True
+    if n == "gemini-pro":
+        return True
+    return False
+
+
+def _gemini_modelo_sugerido(detalle):
+    hallado = re.search(r"use models/([a-zA-Z0-9._-]+)", detalle or "", re.I)
+    if not hallado:
+        return ""
+    sugerido = _gemini_nombre_modelo(hallado.group(1))
+    if _gemini_modelo_retirado(sugerido):
+        return ""
+    return sugerido
+
+
+def _gemini_hay_que_cambiar_modelo(code, detalle):
+    txt = (detalle or "").lower()
+    if int(code or 0) == 404:
+        return True
+    if "no longer available" in txt:
+        return True
+    if "not_found" in txt and "model" in txt:
+        return True
+    return False
+
+
+def _gemini_candidatos(modelo_preferido=None):
+    vistos = []
+    for nombre in (
+        modelo_preferido,
+        TICKET_IA_MODEL,
+        IA_MODEL,
+        _GEMINI_MODELO_POR_DEFECTO,
+        *_GEMINI_MODELOS_CANDIDATOS,
+    ):
+        n = _gemini_nombre_modelo(nombre)
+        if not n or n in vistos or _gemini_modelo_retirado(n):
+            continue
+        vistos.append(n)
+    return vistos or [_GEMINI_MODELO_POR_DEFECTO]
+
+
 def _gemini_endpoint(model=None, api_key=None):
-    modelo = (model or _gemini_model_activo(api_key=api_key, modelo_preferido=IA_MODEL or None) or IA_MODEL or "gemini-flash-latest").strip()
+    modelo = (model or _gemini_model_activo(api_key=api_key, modelo_preferido=IA_MODEL or None) or _GEMINI_MODELO_POR_DEFECTO).strip()
     clave = (api_key or IA_API_KEY).strip()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={clave}"
 
@@ -527,19 +578,14 @@ def _gemini_endpoint(model=None, api_key=None):
 def _gemini_model_activo(api_key=None, modelo_preferido=None):
     clave = (api_key or IA_API_KEY or "").strip()
     cache_key = clave or "default"
-    if cache_key in _GEMINI_MODEL_CACHE:
-        return _GEMINI_MODEL_CACHE[cache_key]
+    cacheado = _GEMINI_MODEL_CACHE.get(cache_key) or ""
+    if cacheado and not _gemini_modelo_retirado(cacheado):
+        return cacheado
+    if cacheado:
+        _GEMINI_MODEL_CACHE.pop(cache_key, None)
+    preferidos = _gemini_candidatos(modelo_preferido)
     if not clave:
-        return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
-    candidatos_prioritarios = [
-        modelo_preferido,
-        TICKET_IA_MODEL,
-        IA_MODEL,
-        *_GEMINI_MODELOS_CANDIDATOS,
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro",
-    ]
+        return preferidos[0]
     try:
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models?key={clave}",
@@ -550,12 +596,12 @@ def _gemini_model_activo(api_key=None, modelo_preferido=None):
         modelos = raw.get("models") if isinstance(raw, dict) else []
         disponibles = []
         for modelo in modelos or []:
-            nombre = (modelo.get("name") or "").split("/")[-1]
+            nombre = _gemini_nombre_modelo(modelo.get("name") or "")
             metodos = modelo.get("supportedGenerationMethods") or []
-            if nombre and ("generateContent" in metodos or not metodos):
+            if nombre and not _gemini_modelo_retirado(nombre) and ("generateContent" in metodos or not metodos):
                 disponibles.append(nombre)
-        for candidato in candidatos_prioritarios:
-            if candidato and candidato in disponibles:
+        for candidato in preferidos:
+            if candidato in disponibles:
                 _GEMINI_MODEL_CACHE[cache_key] = candidato
                 return candidato
         if disponibles:
@@ -563,7 +609,7 @@ def _gemini_model_activo(api_key=None, modelo_preferido=None):
             return disponibles[0]
     except Exception:
         pass
-    return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
+    return preferidos[0]
 
 
 def _gemini_extraer_texto(raw):
@@ -630,6 +676,8 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
         raise RuntimeError("No hay API key configurada")
     global _GEMINI_ULTIMO_MODELO
     modelo_solicitado = (model or "").strip() or _gemini_model_activo(api_key=clave, modelo_preferido=IA_MODEL or None)
+    if _gemini_modelo_retirado(modelo_solicitado):
+        modelo_solicitado = _gemini_model_activo(api_key=clave, modelo_preferido=None) or _GEMINI_MODELO_POR_DEFECTO
     payload = {
         "contents": contents,
         "generationConfig": {
@@ -655,8 +703,39 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             datos = json.loads(resp.read().decode("utf-8", "ignore"))
             _GEMINI_ULTIMO_MODELO = modelo_en_uso
-            _GEMINI_MODEL_CACHE[clave or "default"] = modelo_en_uso
+            if not _gemini_modelo_retirado(modelo_en_uso):
+                _GEMINI_MODEL_CACHE[clave or "default"] = modelo_en_uso
             return datos
+
+    def _reintentar_modelos(modelo_inicial, detalle_inicial, solo_503=False):
+        cache_key = clave or "default"
+        _GEMINI_MODEL_CACHE.pop(cache_key, None)
+        candidatos = []
+        sugerido = _gemini_modelo_sugerido(detalle_inicial)
+        if sugerido:
+            candidatos.append(sugerido)
+        for m in _gemini_candidatos(None):
+            if m not in candidatos:
+                candidatos.append(m)
+        ultimo_detalle = detalle_inicial
+        ultimo_reason = ""
+        for alt in candidatos:
+            if not alt or alt == modelo_inicial or _gemini_modelo_retirado(alt):
+                continue
+            try:
+                return _enviar(alt)
+            except urllib.error.HTTPError as e_alt:
+                detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
+                ultimo_detalle = detalle_alt or ultimo_detalle
+                ultimo_reason = e_alt.reason or str(e_alt)
+                if solo_503 and e_alt.code == 503:
+                    continue
+                if _gemini_hay_que_cambiar_modelo(e_alt.code, detalle_alt):
+                    continue
+                raise RuntimeError(f"Error de Gemini: {ultimo_reason} {detalle_alt}".strip())
+        if solo_503:
+            raise RuntimeError(f"Gemini no disponible temporalmente (503). {ultimo_detalle}".strip())
+        raise RuntimeError(f"Error de Gemini: modelo no disponible ({modelo_inicial}). {ultimo_detalle}".strip())
 
     try:
         raw = _enviar(modelo_solicitado)
@@ -676,46 +755,10 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
             except Exception:
                 pass
             raise RuntimeError(f"Gemini sin cuota temporal (429). Reintenta en {retry_delay or 'unos segundos'}. {detalle}".strip())
-        if e.code == 404:
-            cache_key = clave or "default"
-            if cache_key in _GEMINI_MODEL_CACHE:
-                _GEMINI_MODEL_CACHE.pop(cache_key, None)
-            candidatos = []
-            modelo_descubierto = _gemini_model_activo(api_key=clave, modelo_preferido=None)
-            if modelo_descubierto:
-                candidatos.append(modelo_descubierto)
-            for m in _GEMINI_MODELOS_CANDIDATOS:
-                if m not in candidatos:
-                    candidatos.append(m)
-            for alt in candidatos:
-                if not alt or alt == modelo_solicitado:
-                    continue
-                try:
-                    return _enviar(alt)
-                except urllib.error.HTTPError as e_alt:
-                    if e_alt.code == 404:
-                        continue
-                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
-                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
-            raise RuntimeError(f"Error de Gemini: modelo no disponible ({modelo_solicitado}). {detalle}".strip())
         if e.code == 503:
-            # Un modelo puede estar saturado aunque la API key sea valida.
-            candidatos = [
-                "gemini-2.5-flash-lite",
-                "gemini-2.5-flash",
-                "gemini-flash-lite-latest",
-            ]
-            for alt in candidatos:
-                if not alt or alt == modelo_solicitado:
-                    continue
-                try:
-                    return _enviar(alt)
-                except urllib.error.HTTPError as e_alt:
-                    if e_alt.code == 503:
-                        continue
-                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
-                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
-            raise RuntimeError(f"Gemini no disponible temporalmente (503). {detalle}".strip())
+            return _reintentar_modelos(modelo_solicitado, detalle, solo_503=True)
+        if _gemini_hay_que_cambiar_modelo(e.code, detalle):
+            return _reintentar_modelos(modelo_solicitado, detalle)
         raise RuntimeError(f"Error de Gemini: {e.reason or str(e)} {detalle}".strip())
     return raw
 
