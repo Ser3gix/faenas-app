@@ -106,6 +106,8 @@ _QUITAR_BUSQUEDA = {
     "terminada", "terminadas", "archivada", "archivadas", "abierta", "abiertas",
     "curso", "pendiente", "pendientes", "taller",
     "nota", "notas", "anotacion", "anotaciones",
+    "informacion", "datos", "resumen", "ficha", "gastos", "tiempos", "fotos",
+    "telefono",
 }
 
 _CLAVES_MATERIALES = (
@@ -118,6 +120,8 @@ _CLAVES_FAENAS = (
     "direccion", "trabajo", "trabajos", "activa", "activas", "terminada",
     "terminadas", "archivada", "archivadas",
     "nota", "notas", "anotacion", "anotaciones",
+    "informacion", "datos", "resumen", "ficha", "gastos", "tiempos", "fotos",
+    "telefono",
 )
 
 
@@ -186,9 +190,13 @@ def _huele_faenas(pregunta, modo):
     return any(k in txt for k in _CLAVES_FAENAS)
 
 
-def _pide_notas(pregunta):
+def _pide_ficha(pregunta):
     pal = set(_norm_txt(pregunta).split())
-    return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
+    return bool(pal & {
+        "nota", "notas", "anotacion", "anotaciones",
+        "informacion", "datos", "resumen", "ficha",
+        "presupuesto", "direccion", "gastos", "tiempos", "fotos", "telefono",
+    })
 
 
 def _numeros_pregunta(pregunta):
@@ -217,8 +225,13 @@ def _variantes_numero(numero):
 def _sql_faena_campos():
     return (
         "SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, f.fase, "
-        "c.nombre AS cliente_nombre "
-        "FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id"
+        "f.fecha_inicio, f.carpeta, "
+        "c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, "
+        "c.direccion AS cliente_direccion, c.email AS cliente_email, c.notas AS cliente_notas, "
+        "i.nombre AS intermediario_nombre, i.telefono AS intermediario_telefono "
+        "FROM faenas f "
+        "LEFT JOIN clientes c ON f.cliente_id=c.id "
+        "LEFT JOIN intermediarios i ON f.intermediario_id=i.id"
     )
 
 
@@ -241,6 +254,140 @@ def _anotaciones_de_faena(conn, faena_id, limite=40):
         ).fetchall())
     except Exception:
         return []
+
+
+def _filas_faena_sql(conn, sql, params):
+    try:
+        return filas_a_lista(conn.execute(sql, params).fetchall())
+    except Exception:
+        return []
+
+
+def _resolver_faena(conn, pregunta, faena_id=None):
+    for num in _numeros_pregunta(pregunta):
+        faena = _buscar_faena_por_numero(conn, num)
+        if faena:
+            return faena
+    if faena_id:
+        fila = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (faena_id,)).fetchone()
+        if fila:
+            return fila_a_dict(fila)
+    return None
+
+
+def _cargar_faena_completa(conn, faena):
+    fid = faena.get("id")
+    gastos = _filas_faena_sql(
+        conn,
+        "SELECT tipo, descripcion, cantidad, precio_unitario, total, fecha FROM gastos_faena "
+        "WHERE faena_id=? ORDER BY id DESC LIMIT 40",
+        (fid,),
+    )
+    presupuesto = _filas_faena_sql(
+        conn,
+        "SELECT tipo, descripcion, cantidad, precio_unitario, total FROM presupuestos_faena "
+        "WHERE faena_id=? ORDER BY id LIMIT 40",
+        (fid,),
+    )
+    fotos = _filas_faena_sql(
+        conn,
+        "SELECT nombre, fecha FROM fotos_faena WHERE faena_id=? ORDER BY id DESC LIMIT 30",
+        (fid,),
+    )
+    extracciones = _filas_faena_sql(
+        conn,
+        "SELECT origen, proveedor, fecha_documento, resumen FROM extracciones_compra "
+        "WHERE faena_id=? ORDER BY id DESC LIMIT 10",
+        (fid,),
+    )
+    return {
+        "faena": faena,
+        "anotaciones": _anotaciones_de_faena(conn, fid),
+        "gastos": gastos,
+        "presupuesto": presupuesto,
+        "tiempos": _tiempos_de_faena(conn, fid),
+        "tiempos_resumen": _tiempos_resumen_faena(conn, fid),
+        "fotos": fotos,
+        "compras": extracciones,
+    }
+
+
+def _linea_importe(item):
+    desc = (item.get("descripcion") or "").strip() or "sin descripción"
+    cant = item.get("cantidad")
+    total = _fmt_precio(item.get("total") if item.get("total") not in (None, "") else None)
+    if total == "sin precio":
+        total = _fmt_precio(item.get("precio_unitario"))
+    extra = f" x {cant}" if cant not in (None, "", 1, 1.0) else ""
+    return f"- {desc}{extra}: {total}"
+
+
+def _texto_faena_completa(datos):
+    f = datos.get("faena") or {}
+    num = f.get("numero") or f.get("id") or ""
+    estado = "archivada" if int(float(f.get("archivada") or 0)) else (f.get("fase") or "en_proceso")
+    partes = [
+        f"Faena {num}",
+        f"- Cliente: {f.get('cliente_nombre') or 'sin cliente'}",
+        f"- Teléfono: {f.get('cliente_telefono') or 'sin teléfono'}",
+        f"- Dirección: {f.get('direccion') or f.get('cliente_direccion') or 'sin dirección'}",
+        f"- Intermediario: {f.get('intermediario_nombre') or 'cliente directo'}",
+        f"- Trabajo: {f.get('tipo_trabajo') or 'sin tipo'}",
+        f"- Importe: {_fmt_precio(f.get('importe'))}",
+        f"- Estado: {estado}",
+        f"- Inicio: {f.get('fecha_inicio') or 'sin fecha'}",
+    ]
+    notas_cli = (f.get("cliente_notas") or "").strip()
+    if notas_cli:
+        partes.append(f"- Notas del cliente: {notas_cli[:400]}")
+
+    anotaciones = datos.get("anotaciones") or []
+    partes.append("Anotaciones:")
+    texto_n = _texto_notas_faena(f, anotaciones)
+    if "no tiene anotaciones" in texto_n:
+        partes.append("- ninguna")
+    else:
+        partes.extend(texto_n.splitlines()[1:] or ["- ninguna"])
+
+    pres = datos.get("presupuesto") or []
+    partes.append("Presupuesto:")
+    if not pres:
+        partes.append("- sin líneas")
+    else:
+        partes.extend(_linea_importe(p) for p in pres[:20])
+        if len(pres) > 20:
+            partes.append(f"- Y {len(pres) - 20} más.")
+
+    gastos = datos.get("gastos") or []
+    partes.append("Gastos:")
+    if not gastos:
+        partes.append("- ninguno")
+    else:
+        partes.extend(_linea_importe(g) for g in gastos[:20])
+        if len(gastos) > 20:
+            partes.append(f"- Y {len(gastos) - 20} más.")
+
+    tres = datos.get("tiempos_resumen") or []
+    partes.append("Tiempos:")
+    if not tres:
+        partes.append("- sin tiempos cerrados")
+    else:
+        for t in tres:
+            mins = float(t.get("minutos") or 0)
+            partes.append(f"- {t.get('categoria') or 'otro'}: {mins:.0f} min ({mins/60:.1f} h)")
+
+    fotos = datos.get("fotos") or []
+    partes.append(f"Fotos: {len(fotos)}" + ("" if not fotos else ""))
+    for fo in fotos[:15]:
+        partes.append(f"- {fo.get('nombre') or 'foto'}")
+
+    compras = datos.get("compras") or []
+    if compras:
+        partes.append("Compras leídas:")
+        for c in compras:
+            partes.append(f"- {c.get('origen') or 'ticket'} {c.get('proveedor') or ''} {c.get('resumen') or ''}".strip())
+
+    return "\n".join(partes)
 
 
 def _texto_notas_faena(faena, anotaciones):
@@ -484,44 +631,40 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
             else:
                 mats = filas_a_lista(conn.execute(sql_mat + " LIMIT ?", (lim_mat,)).fetchall())
         extra = {}
-        if faena_id and incluir_faenas:
-            pres = filas_a_lista(conn.execute(
-                "SELECT descripcion, cantidad, precio_unitario, total FROM presupuestos_faena WHERE faena_id=? LIMIT 40",
-                (faena_id,),
-            ).fetchall())
-            gastos = filas_a_lista(conn.execute(
-                "SELECT descripcion, cantidad, precio_unitario, total, fecha FROM gastos_faena "
-                "WHERE faena_id=? AND LOWER(COALESCE(tipo,''))<>'presupuesto' LIMIT 40",
-                (faena_id,),
-            ).fetchall())
-            extra = {"presupuesto": pres, "gastos": gastos, "tiempos": _tiempos_de_faena(conn, faena_id)}
-        anotaciones_snap = []
+        faenas_completas = []
         if incluir_faenas:
-            ids_notas = []
+            ids_detalle = []
             if faena_id:
-                ids_notas.append(faena_id)
+                ids_detalle.append(faena_id)
             for num in _numeros_pregunta(pregunta or ""):
                 fnum = _buscar_faena_por_numero(conn, num)
-                if fnum and fnum.get("id") and fnum.get("id") not in ids_notas:
-                    ids_notas.append(fnum.get("id"))
-            for fid in ids_notas[:3]:
-                notas = _anotaciones_de_faena(conn, fid, 30)
+                if fnum and fnum.get("id") and fnum.get("id") not in ids_detalle:
+                    ids_detalle.append(fnum.get("id"))
+            for fid in ids_detalle[:3]:
                 fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (fid,)).fetchone()
-                faena_n = fila_a_dict(fila_id) if fila_id else {"id": fid}
-                anotaciones_snap.append({
-                    "faena_id": fid,
-                    "numero": faena_n.get("numero"),
-                    "cliente": faena_n.get("cliente_nombre"),
+                if not fila_id:
+                    continue
+                completo = _cargar_faena_completa(conn, fila_a_dict(fila_id))
+                faenas_completas.append({
+                    "faena": completo.get("faena"),
                     "anotaciones": [
                         {
                             "tipo": a.get("tipo"),
                             "fecha": a.get("fecha"),
                             "contenido": (a.get("contenido") or "")[:500],
                         }
-                        for a in notas
+                        for a in (completo.get("anotaciones") or [])
                         if not str(a.get("contenido") or "").startswith("data:")
                     ],
+                    "presupuesto": completo.get("presupuesto") or [],
+                    "gastos": completo.get("gastos") or [],
+                    "tiempos": completo.get("tiempos") or [],
+                    "tiempos_resumen": completo.get("tiempos_resumen") or [],
+                    "fotos": completo.get("fotos") or [],
+                    "compras": completo.get("compras") or [],
                 })
+            if faenas_completas:
+                extra = faenas_completas[0]
         return {
             "modo": modo,
             "faenas": faenas,
@@ -531,7 +674,7 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
             "referencias_faena": _referencias_snapshot(conn, 15) if incluir_faenas else [],
             "tiempos_resumen": _tiempos_resumen(conn, 40) if incluir_faenas else [],
             "faena_detalle": extra,
-            "anotaciones_faena": anotaciones_snap,
+            "faenas_completas": faenas_completas,
         }
     finally:
         conn.close()
@@ -883,17 +1026,10 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
                 )
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
-            if _pide_notas(pregunta):
-                faena_n = None
-                for num in _numeros_pregunta(pregunta):
-                    faena_n = _buscar_faena_por_numero(conn, num)
-                    if faena_n:
-                        break
-                if not faena_n and faena_id:
-                    fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (faena_id,)).fetchone()
-                    faena_n = fila_a_dict(fila_id) if fila_id else None
-                if faena_n:
-                    texto_f = _texto_notas_faena(faena_n, _anotaciones_de_faena(conn, faena_n.get("id")))
+            concreta = _resolver_faena(conn, pregunta, faena_id)
+            if _numeros_pregunta(pregunta) or _pide_ficha(pregunta):
+                if concreta:
+                    texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
                 elif _numeros_pregunta(pregunta):
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
             if not texto_f:
@@ -984,7 +1120,7 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
         "Si ofreces materiales o precios para aceptar, termina con UN bloque ```json con el formato de ticket: "
         "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url}]}. "
         "fuente es catalogo o web. url solo si es web. "
-        "Si preguntan por notas o anotaciones de una faena, usa datos_app.anotaciones_faena. "
+        "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
         "No borres faenas ni clientes."
     )
