@@ -1,0 +1,8 @@
+# Cursor IDE — no vídeos ni imágenes de la app
+
+No grabes la pantalla ni generes vídeos de la app (walkthrough, demo o pruebas).
+No hagas capturas ni generes imágenes de la interfaz.
+No uses RecordScreen ni computerUse para enseñar la UI.
+No adjuntes .mp4, .png, .jpg ni .webp en el chat ni en el pull request.
+
+Valida con curl, logs o salida de terminal.

@@ -24,6 +24,13 @@ Mantener los cambios pequeños, locales y alineados con lo que se pidió explíc
 - Si haces cambios de comportamiento, valida con una ejecución manual de `python server2.py` y una comprobación rápida de la ruta o flujo tocado.
 - Para cambios de datos, verifica que la app sigue creando y leyendo correctamente la base de datos en `datos/faenas.db`.
 
+## Cursor (IDE y Cloud)
+- No grabes la pantalla ni generes vídeos de la app.
+- No hagas capturas ni generes imágenes de la app.
+- No uses RecordScreen, computerUse para enseñar la UI, ni adjuntes `.mp4`, `.png`, `.jpg` o `.webp`.
+- Valida con `curl`, logs o salida de terminal.
+- La regla del IDE está en `.cursorrules`.
+
 ## Referencias útiles
 - Dependencias: [requirements.txt](requirements.txt)
 - Lanzador Windows: [Arrancar_Faenas.bat](Arrancar_Faenas.bat)
