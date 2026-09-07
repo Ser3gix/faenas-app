@@ -1139,7 +1139,7 @@ def _omitir_sync_faena(faena_id):
 def get_faenas():
     conn = get_connection()
     filas = conn.execute("""
-        SELECT f.*, c.nombre AS cliente_nombre, i.nombre AS intermediario_nombre
+        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, c.direccion AS cliente_direccion, i.nombre AS intermediario_nombre
         FROM faenas f
         LEFT JOIN clientes c ON f.cliente_id = c.id
         LEFT JOIN intermediarios i ON f.intermediario_id = i.id
@@ -1153,7 +1153,7 @@ def get_faenas():
 def get_faenas_archivadas():
     conn = get_connection()
     filas = conn.execute("""
-        SELECT f.*, c.nombre AS cliente_nombre, i.nombre AS intermediario_nombre
+        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, c.direccion AS cliente_direccion, i.nombre AS intermediario_nombre
         FROM faenas f
         LEFT JOIN clientes c ON f.cliente_id = c.id
         LEFT JOIN intermediarios i ON f.intermediario_id = i.id
@@ -1166,7 +1166,7 @@ def get_faenas_archivadas():
 @app.route("/api/faenas/<int:id>", methods=["GET"])
 def get_faena(id):
     _SQL = """
-        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, i.nombre AS intermediario_nombre
+        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, c.direccion AS cliente_direccion, i.nombre AS intermediario_nombre
         FROM faenas f
         LEFT JOIN clientes c ON f.cliente_id = c.id
         LEFT JOIN intermediarios i ON f.intermediario_id = i.id
@@ -4017,7 +4017,7 @@ def sync_estado():
 def sync_datos():
     conn = get_connection()
     faenas = conn.execute("""
-        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono
+        SELECT f.*, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono, c.direccion AS cliente_direccion
         FROM faenas f
         LEFT JOIN clientes c ON f.cliente_id = c.id
         WHERE f.archivada = 0

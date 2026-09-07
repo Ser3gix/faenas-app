@@ -1132,7 +1132,7 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="form-title">🔨 Nueva Faena</div>
     <div class="field">
       <label>Cliente *</label>
-      <select id="nf-cliente-sel" onchange="toggleNuevoCliente()">
+      <select id="nf-cliente-sel" onchange="toggleNuevoCliente()" oninput="toggleNuevoCliente()">
         <option value="">— Selecciona o crea nuevo —</option>
         <option value="__nuevo__">+ Crear cliente nuevo</option>
       </select>
@@ -1964,10 +1964,10 @@ async function pararTiempoFaena(faenaId) {
 function renderPanelDatos(f) {
   const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
   const esTemp = f._offline;
-  // Buscar teléfono del cliente
-  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
-  const telefono = f.cliente_telefono || cliente?.telefono || "";
-  const direccionCliente = cliente?.direccion || "";
+  const cliente = buscarClientePorId(f.cliente_id);
+  const telefono = f.cliente_telefono || f.telefono || cliente?.telefono || "";
+  const direccionCliente = f.cliente_direccion || cliente?.direccion || "";
+  const emailCliente = f.email || cliente?.email || "";
 
   document.getElementById("p-datos-content").innerHTML = `
     <div style="margin:14px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1992,6 +1992,11 @@ function renderPanelDatos(f) {
         <a class="call-btn" href="tel:${escHtml(telefono)}">📞 Llamar</a>
         <div style="margin-top:6px;font-size:1rem;color:var(--ink)">${escHtml(telefono)}</div>
       </div>
+    </div>` : ""}
+    ${emailCliente ? `
+    <div class="datos-campo">
+      <div class="datos-k">Email</div>
+      <div class="datos-v">${escHtml(emailCliente)}</div>
     </div>` : ""}
     <div style="height:10px"></div>
     <div class="datos-section-title">🔨 Trabajo</div>
@@ -3420,39 +3425,54 @@ async function eliminarFaenaLocal(id) {
   toast(enviadas ? "✓ Faena eliminada del registro" : "✓ Faena quitada del móvil — se borrará del registro al conectar");
 }
 
+function buscarClientePorId(id) {
+  if (id == null || id === "" || id === "__nuevo__") return null;
+  const cola = cargarCola();
+  const todos = [...(state.clientes || []), ...(cola.clientes || [])];
+  const clave = String(id);
+  return todos.find(c => String(c.id) === clave || String(c._tempId || "") === clave) || null;
+}
+
 function abrirNuevaFaena() {
+  ["nf-tel","nf-dir","nf-tipo","nf-importe","nc-nombre","nc-tel","nc-dir","nc-email"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  document.getElementById("nuevo-cliente-form").style.display = "none";
   poblarClientesSel();
   abrirModal("m-nueva-faena");
 }
 
 function poblarClientesSel() {
   const cola = cargarCola();
-  const todos = [
-    ...state.clientes,
-    ...cola.clientes.map(c => ({ ...c, nombre: c.nombre + " ⏳" }))
-  ];
+  const vistos = new Set();
+  const todos = [];
+  for (const c of [...(state.clientes || []), ...(cola.clientes || [])]) {
+    const clave = String(c.id || c._tempId || "");
+    if (!clave || vistos.has(clave)) continue;
+    vistos.add(clave);
+    todos.push(c);
+  }
+  todos.sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" }));
   document.getElementById("nf-cliente-sel").innerHTML =
     '<option value="">— Selecciona o crea nuevo —</option>' +
     '<option value="__nuevo__">+ Crear cliente nuevo</option>' +
-    todos.map(c => `<option value="${c.id || c._tempId}">${escHtml(c.nombre)}</option>`).join("");
+    todos.map(c => `<option value="${escHtml(String(c.id || c._tempId))}">${escHtml(c.nombre)}</option>`).join("");
 }
 
 function toggleNuevoCliente() {
   const v = document.getElementById("nf-cliente-sel").value;
   document.getElementById("nuevo-cliente-form").style.display = v === "__nuevo__" ? "block" : "none";
-  if (v !== "__nuevo__") actualizarDatosClienteSeleccionado();
+  if (v && v !== "__nuevo__") actualizarDatosClienteSeleccionado();
 }
 
 function actualizarDatosClienteSeleccionado() {
   const sel = document.getElementById("nf-cliente-sel").value;
-  if (!sel || sel === "__nuevo__") return;
-  const cola = cargarCola();
-  const cliente = [...state.clientes, ...cola.clientes].find(c => String(c.id || c._tempId) === String(sel));
+  const cliente = buscarClientePorId(sel);
   if (!cliente) return;
-  const tel = cliente.telefono || "";
   const telInput = document.getElementById("nf-tel");
   const dirInput = document.getElementById("nf-dir");
-  if (telInput) telInput.value = tel;
+  if (telInput) telInput.value = cliente.telefono || "";
   if (dirInput) dirInput.value = cliente.direccion || "";
 }
 
@@ -3460,34 +3480,54 @@ async function crearFaena() {
   const clienteSel = document.getElementById("nf-cliente-sel").value;
   const esNuevo = clienteSel === "__nuevo__";
   let clienteId = null, clienteNombre = "";
+  let clienteTel = "";
+  let clienteDir = "";
+  let clienteEmail = "";
+  let intermediarioId = 0;
+  let intermediarioNombre = "Cliente directo";
   const cola = cargarCola();
   if (esNuevo) {
     const nombre = document.getElementById("nc-nombre").value.trim();
     if (!nombre) { toast("El nombre del cliente es obligatorio", true); return; }
     const tempId = "TEMP-CLI-" + Date.now();
-    const telefono = document.getElementById("nc-tel").value;
-    const direccion = document.getElementById("nc-dir").value;
-    const email = document.getElementById("nc-email").value;
-    cola.clientes.push({ _tempId: tempId, nombre, telefono, direccion, email });
-    state.clientes.push({ id: tempId, nombre, telefono, direccion });
+    const telefono = document.getElementById("nc-tel").value.trim();
+    const direccion = document.getElementById("nc-dir").value.trim();
+    const email = document.getElementById("nc-email").value.trim();
+    cola.clientes.push({ _tempId: tempId, nombre, telefono, direccion, email, intermediario_id: 0 });
+    state.clientes.push({ id: tempId, _tempId: tempId, nombre, telefono, direccion, email, intermediario_id: 0 });
     localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
-    clienteId = tempId; clienteNombre = nombre;
+    clienteId = tempId;
+    clienteNombre = nombre;
+    clienteTel = telefono;
+    clienteDir = direccion;
+    clienteEmail = email;
   } else {
     if (!clienteSel) { toast("Selecciona un cliente", true); return; }
-    clienteId = clienteSel;
-    const c = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(clienteSel));
-    clienteNombre = c?.nombre || "—";
+    const c = buscarClientePorId(clienteSel);
+    if (!c) { toast("No encuentro los datos de ese cliente", true); return; }
+    clienteId = c.id || c._tempId || clienteSel;
+    clienteNombre = (c.nombre || "").replace(/\s+⏳$/, "") || "—";
+    clienteTel = (c.telefono || "").trim();
+    clienteDir = (c.direccion || "").trim();
+    clienteEmail = (c.email || "").trim();
+    intermediarioId = c.intermediario_id || 0;
+    intermediarioNombre = c.intermediario_nombre || (intermediarioId ? "" : "Cliente directo");
   }
   const tipo = document.getElementById("nf-tipo").value.trim();
   if (!tipo) { toast("El tipo de trabajo es obligatorio", true); return; }
+  const tel = document.getElementById("nf-tel").value.trim() || clienteTel;
+  const dir = document.getElementById("nf-dir").value.trim() || clienteDir;
   const ahora = new Date();
   const numTemp = `TMP${String(ahora.getDate()).padStart(2,"0")}${String(ahora.getHours()).padStart(2,"0")}${String(ahora.getMinutes()).padStart(2,"0")}`;
   const faena = {
     _tempId: numTemp, numero: numTemp, _clienteTempId: esNuevo ? clienteId : null,
-    cliente_id: clienteId, cliente_nombre: clienteNombre, intermediario_id: 0,
-    intermediario_nombre: "Cliente directo",
-    telefono: document.getElementById("nf-tel").value,
-    direccion: document.getElementById("nf-dir").value,
+    cliente_id: clienteId, cliente_nombre: clienteNombre,
+    cliente_telefono: tel, cliente_direccion: clienteDir || dir,
+    intermediario_id: intermediarioId,
+    intermediario_nombre: intermediarioNombre || "Cliente directo",
+    telefono: tel,
+    direccion: dir,
+    email: clienteEmail,
     tipo_trabajo: tipo,
     importe: parseFloat(document.getElementById("nf-importe").value) || 0,
     fecha_inicio: new Date().toISOString().slice(0, 10),
@@ -5109,7 +5149,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=32", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=33", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
