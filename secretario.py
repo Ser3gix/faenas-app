@@ -105,6 +105,7 @@ _QUITAR_BUSQUEDA = {
     "direccion", "trabajo", "trabajos", "activa", "activas", "activo", "activos",
     "terminada", "terminadas", "archivada", "archivadas", "abierta", "abiertas",
     "curso", "pendiente", "pendientes", "taller",
+    "nota", "notas", "anotacion", "anotaciones",
 }
 
 _CLAVES_MATERIALES = (
@@ -116,6 +117,7 @@ _CLAVES_FAENAS = (
     "faena", "faenas", "cliente", "clientes", "presupuesto", "importe",
     "direccion", "trabajo", "trabajos", "activa", "activas", "terminada",
     "terminadas", "archivada", "archivadas",
+    "nota", "notas", "anotacion", "anotaciones",
 )
 
 
@@ -182,6 +184,86 @@ def _huele_faenas(pregunta, modo):
         return True
     txt = _norm_txt(pregunta)
     return any(k in txt for k in _CLAVES_FAENAS)
+
+
+def _pide_notas(pregunta):
+    pal = set(_norm_txt(pregunta).split())
+    return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
+
+
+def _numeros_pregunta(pregunta):
+    numeros = []
+    for tok in _norm_txt(pregunta).split():
+        dig = "".join(ch for ch in tok if ch.isdigit())
+        if len(dig) >= 3 and dig not in numeros:
+            numeros.append(dig)
+    return numeros
+
+
+def _variantes_numero(numero):
+    n = "".join(ch for ch in str(numero or "") if ch.isdigit())
+    if not n:
+        return []
+    vars_ = [n, n.lstrip("0") or "0"]
+    if len(n) < 5:
+        vars_.append(n.zfill(5))
+    out = []
+    for v in vars_:
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def _sql_faena_campos():
+    return (
+        "SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, f.fase, "
+        "c.nombre AS cliente_nombre "
+        "FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id"
+    )
+
+
+def _buscar_faena_por_numero(conn, numero):
+    for v in _variantes_numero(numero):
+        fila = conn.execute(
+            _sql_faena_campos() + " WHERE f.numero=? OR REPLACE(f.numero,'-','')=?",
+            (v, v),
+        ).fetchone()
+        if fila:
+            return fila_a_dict(fila)
+    return None
+
+
+def _anotaciones_de_faena(conn, faena_id, limite=40):
+    try:
+        return filas_a_lista(conn.execute(
+            "SELECT tipo, contenido, fecha FROM anotaciones WHERE faena_id=? ORDER BY id DESC LIMIT ?",
+            (faena_id, limite),
+        ).fetchall())
+    except Exception:
+        return []
+
+
+def _texto_notas_faena(faena, anotaciones):
+    num = faena.get("numero") or faena.get("id") or ""
+    cliente = faena.get("cliente_nombre") or "sin cliente"
+    trabajo = faena.get("tipo_trabajo") or "sin tipo"
+    if not anotaciones:
+        return f"La faena {num} ({cliente}, {trabajo}) no tiene anotaciones."
+    lineas = []
+    for a in anotaciones:
+        tipo = str(a.get("tipo") or "texto").strip().lower()
+        contenido = str(a.get("contenido") or "").strip()
+        fecha = str(a.get("fecha") or "").strip()
+        pref = f"[{fecha}] " if fecha else ""
+        if tipo in {"foto", "imagen", "image", "photo"} or contenido.startswith("data:"):
+            lineas.append(f"- {pref}foto".strip())
+            continue
+        if not contenido:
+            continue
+        lineas.append(f"- {pref}{contenido[:800]}".strip())
+    if not lineas:
+        return f"La faena {num} ({cliente}, {trabajo}) no tiene anotaciones de texto."
+    return f"Anotaciones de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas)
 
 
 def _etiquetas_linea(linea):
@@ -413,6 +495,33 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
                 (faena_id,),
             ).fetchall())
             extra = {"presupuesto": pres, "gastos": gastos, "tiempos": _tiempos_de_faena(conn, faena_id)}
+        anotaciones_snap = []
+        if incluir_faenas:
+            ids_notas = []
+            if faena_id:
+                ids_notas.append(faena_id)
+            for num in _numeros_pregunta(pregunta or ""):
+                fnum = _buscar_faena_por_numero(conn, num)
+                if fnum and fnum.get("id") and fnum.get("id") not in ids_notas:
+                    ids_notas.append(fnum.get("id"))
+            for fid in ids_notas[:3]:
+                notas = _anotaciones_de_faena(conn, fid, 30)
+                fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (fid,)).fetchone()
+                faena_n = fila_a_dict(fila_id) if fila_id else {"id": fid}
+                anotaciones_snap.append({
+                    "faena_id": fid,
+                    "numero": faena_n.get("numero"),
+                    "cliente": faena_n.get("cliente_nombre"),
+                    "anotaciones": [
+                        {
+                            "tipo": a.get("tipo"),
+                            "fecha": a.get("fecha"),
+                            "contenido": (a.get("contenido") or "")[:500],
+                        }
+                        for a in notas
+                        if not str(a.get("contenido") or "").startswith("data:")
+                    ],
+                })
         return {
             "modo": modo,
             "faenas": faenas,
@@ -422,6 +531,7 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
             "referencias_faena": _referencias_snapshot(conn, 15) if incluir_faenas else [],
             "tiempos_resumen": _tiempos_resumen(conn, 40) if incluir_faenas else [],
             "faena_detalle": extra,
+            "anotaciones_faena": anotaciones_snap,
         }
     finally:
         conn.close()
@@ -741,7 +851,7 @@ def _texto_faenas(filas, tokens, etiqueta, limite=12):
     return cab + ":\n" + "\n".join(lineas) + extra
 
 
-def _respuesta_local_datos(pregunta, modo="todo"):
+def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
     modo = normalizar_modo(modo)
     tokens = _tokens_busqueda(pregunta)
     quiere_m = _huele_materiales(pregunta, modo)
@@ -773,24 +883,38 @@ def _respuesta_local_datos(pregunta, modo="todo"):
                 )
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
-            estado = _estado_faena_pregunta(pregunta)
-            activas = _faenas_activas(conn, 500)
-            terminadas = _faenas_terminadas(conn, 500)
-            if estado == "activas":
-                pool, etiqueta = activas, "activas"
-            elif estado == "terminadas":
-                pool, etiqueta = terminadas, "terminadas"
-            else:
-                pool, etiqueta = activas + terminadas, ""
-            if tokens:
-                pool = _filtra_por_tokens(
-                    pool,
-                    tokens,
-                    lambda f: " ".join(str(f.get(k) or "") for k in (
-                        "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
-                    )),
-                )
-            texto_f = _texto_faenas(pool, tokens, etiqueta or "en total")
+            if _pide_notas(pregunta):
+                faena_n = None
+                for num in _numeros_pregunta(pregunta):
+                    faena_n = _buscar_faena_por_numero(conn, num)
+                    if faena_n:
+                        break
+                if not faena_n and faena_id:
+                    fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (faena_id,)).fetchone()
+                    faena_n = fila_a_dict(fila_id) if fila_id else None
+                if faena_n:
+                    texto_f = _texto_notas_faena(faena_n, _anotaciones_de_faena(conn, faena_n.get("id")))
+                elif _numeros_pregunta(pregunta):
+                    texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
+            if not texto_f:
+                estado = _estado_faena_pregunta(pregunta)
+                activas = _faenas_activas(conn, 500)
+                terminadas = _faenas_terminadas(conn, 500)
+                if estado == "activas":
+                    pool, etiqueta = activas, "activas"
+                elif estado == "terminadas":
+                    pool, etiqueta = terminadas, "terminadas"
+                else:
+                    pool, etiqueta = activas + terminadas, ""
+                if tokens:
+                    pool = _filtra_por_tokens(
+                        pool,
+                        tokens,
+                        lambda f: " ".join(str(f.get(k) or "") for k in (
+                            "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
+                        )),
+                    )
+                texto_f = _texto_faenas(pool, tokens, etiqueta or "en total")
     finally:
         conn.close()
 
@@ -809,7 +933,7 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
     modo = normalizar_modo(modo)
     local = None
     try:
-        local = _respuesta_local_datos(pregunta, modo)
+        local = _respuesta_local_datos(pregunta, modo, faena_id=faena_id)
     except Exception:
         local = None
     if local and local.get("usar") and not _pide_web(pregunta):
@@ -860,6 +984,7 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
         "Si ofreces materiales o precios para aceptar, termina con UN bloque ```json con el formato de ticket: "
         "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url}]}. "
         "fuente es catalogo o web. url solo si es web. "
+        "Si preguntan por notas o anotaciones de una faena, usa datos_app.anotaciones_faena. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
         "No borres faenas ni clientes."
     )
