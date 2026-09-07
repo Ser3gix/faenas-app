@@ -67,6 +67,17 @@ IA_MODEL = (os.environ.get("IA_MODEL") or "").strip()
 TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or "gemini-flash-latest").strip()
 IA_MODO = (os.environ.get("IA_MODO") or "local").strip().lower()
 _GEMINI_MODEL_CACHE = {}
+_GEMINI_ULTIMO_MODELO = ""
+_GEMINI_MODELOS_CANDIDATOS = [
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-pro-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+]
 
 if pytesseract is not None:
     posibles_tesseract = [
@@ -524,12 +535,7 @@ def _gemini_model_activo(api_key=None, modelo_preferido=None):
         modelo_preferido,
         TICKET_IA_MODEL,
         IA_MODEL,
-        "gemini-flash-latest",
-        "gemini-flash-lite-latest",
-        "gemini-pro-latest",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-pro",
+        *_GEMINI_MODELOS_CANDIDATOS,
         "gemini-1.5-flash",
         "gemini-1.5-pro",
         "gemini-pro",
@@ -622,6 +628,7 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
     clave = (api_key or IA_API_KEY or "").strip()
     if not clave:
         raise RuntimeError("No hay API key configurada")
+    global _GEMINI_ULTIMO_MODELO
     modelo_solicitado = (model or "").strip() or _gemini_model_activo(api_key=clave, modelo_preferido=IA_MODEL or None)
     payload = {
         "contents": contents,
@@ -638,6 +645,7 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
         payload["tools"] = tools
 
     def _enviar(modelo_en_uso):
+        global _GEMINI_ULTIMO_MODELO
         req = urllib.request.Request(
             _gemini_endpoint(model=modelo_en_uso, api_key=clave),
             data=json.dumps(payload).encode("utf-8"),
@@ -645,7 +653,10 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8", "ignore"))
+            datos = json.loads(resp.read().decode("utf-8", "ignore"))
+            _GEMINI_ULTIMO_MODELO = modelo_en_uso
+            _GEMINI_MODEL_CACHE[clave or "default"] = modelo_en_uso
+            return datos
 
     try:
         raw = _enviar(modelo_solicitado)
@@ -673,7 +684,7 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
             modelo_descubierto = _gemini_model_activo(api_key=clave, modelo_preferido=None)
             if modelo_descubierto:
                 candidatos.append(modelo_descubierto)
-            for m in ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]:
+            for m in _GEMINI_MODELOS_CANDIDATOS:
                 if m not in candidatos:
                     candidatos.append(m)
             for alt in candidatos:

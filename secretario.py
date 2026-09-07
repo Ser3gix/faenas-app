@@ -86,6 +86,104 @@ def normalizar_modo(modo):
     return "todo"
 
 
+_STOP_CONSULTA = {
+    "cual", "cuales", "cuanto", "cuanta", "cuantos", "cuantas",
+    "de", "del", "la", "el", "los", "las", "le", "lo",
+    "es", "son", "tiene", "tienen", "hay", "para", "una", "un", "unos", "unas",
+    "y", "o", "me", "te", "se", "mi", "tu", "dime", "quiero", "ver", "dame",
+    "por", "favor", "puedo", "podrias", "podria", "ser", "al", "en", "con", "sin", "sobre",
+    "que", "quien", "como", "donde", "cuando", "esta", "este", "estos", "estas",
+    "lista", "listado", "todos", "todas", "algun", "alguno", "alguna",
+    "existe", "existen", "consulta", "consultar", "app", "datos",
+    "registro", "registros", "ficha", "fichas", "numero", "mas", "menos",
+}
+
+_QUITAR_BUSQUEDA = {
+    "material", "materiales", "precio", "precios", "coste", "costo",
+    "proveedor", "proveedores", "almacen", "catalogo",
+    "faena", "faenas", "cliente", "clientes", "presupuesto", "importe",
+    "direccion", "trabajo", "trabajos", "activa", "activas", "activo", "activos",
+    "terminada", "terminadas", "archivada", "archivadas", "abierta", "abiertas",
+    "curso", "pendiente", "pendientes", "taller",
+}
+
+_CLAVES_MATERIALES = (
+    "material", "materiales", "precio", "precios", "proveedor", "proveedores",
+    "almacen", "catalogo", "tablero", "tableros", "herraje", "herrajes",
+    "bisagra", "bisagras",
+)
+_CLAVES_FAENAS = (
+    "faena", "faenas", "cliente", "clientes", "presupuesto", "importe",
+    "direccion", "trabajo", "trabajos", "activa", "activas", "terminada",
+    "terminadas", "archivada", "archivadas",
+)
+
+
+def _norm_txt(texto):
+    t = (texto or "").lower()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n")):
+        t = t.replace(a, b)
+    limpio = []
+    for ch in t:
+        limpio.append(ch if ch.isalnum() or ch.isspace() else " ")
+    return " ".join("".join(limpio).split())
+
+
+def _tokens_consulta(pregunta):
+    return [t for t in _norm_txt(pregunta).split() if len(t) > 1 and t not in _STOP_CONSULTA]
+
+
+def _tokens_busqueda(pregunta):
+    return [t for t in _tokens_consulta(pregunta) if t not in _QUITAR_BUSQUEDA]
+
+
+def _score_texto(texto, tokens):
+    t = _norm_txt(texto)
+    n = 0
+    for tok in tokens:
+        variantes = [tok]
+        if len(tok) > 4 and tok.endswith("s"):
+            variantes.append(tok[:-1])
+        if any(v in t for v in variantes):
+            n += 1
+    return n
+
+
+def _filtra_por_tokens(items, tokens, campos_fn):
+    if not tokens:
+        return list(items)
+    estrictos = []
+    amplios = []
+    for item in items:
+        sc = _score_texto(campos_fn(item), tokens)
+        if sc >= len(tokens):
+            estrictos.append((sc, item))
+        elif sc > 0:
+            amplios.append((sc, item))
+    elegidos = estrictos or amplios
+    elegidos.sort(key=lambda x: -x[0])
+    return [i for _, i in elegidos]
+
+
+def _pide_web(pregunta):
+    txt = _norm_txt(pregunta)
+    return any(k in txt for k in ("internet", "google", "en la web", "online", "busca en web"))
+
+
+def _huele_materiales(pregunta, modo):
+    if modo == "materiales":
+        return True
+    txt = _norm_txt(pregunta)
+    return any(k in txt for k in _CLAVES_MATERIALES)
+
+
+def _huele_faenas(pregunta, modo):
+    if modo == "faenas":
+        return True
+    txt = _norm_txt(pregunta)
+    return any(k in txt for k in _CLAVES_FAENAS)
+
+
 def _etiquetas_linea(linea):
     tags = []
     rest = (linea or "").lstrip("- ").strip()
@@ -261,25 +359,48 @@ def _faenas_terminadas(conn, limite):
         ).fetchall())
 
 
-def snapshot_negocio(faena_id=None, modo="todo"):
+def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
     modo = normalizar_modo(modo)
     incluir_faenas = modo in ("todo", "faenas")
     incluir_mats = modo in ("todo", "materiales")
     lim_act = 25 if modo == "todo" else 40
     lim_ter = 20 if modo == "todo" else 40
     lim_mat = 40 if modo == "todo" else 60
+    tokens = _tokens_busqueda(pregunta or "")
     conn = get_connection()
     try:
-        faenas = _faenas_activas(conn, lim_act) if incluir_faenas else []
-        terminadas = _faenas_terminadas(conn, lim_ter) if incluir_faenas else []
+        scan_f = 400 if tokens else lim_act
+        scan_t = 400 if tokens else lim_ter
+        faenas = _faenas_activas(conn, scan_f) if incluir_faenas else []
+        terminadas = _faenas_terminadas(conn, scan_t) if incluir_faenas else []
+        if tokens and incluir_faenas:
+            def _txt_faena(f):
+                return " ".join(str(f.get(k) or "") for k in (
+                    "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
+                ))
+            faenas = _filtra_por_tokens(faenas, tokens, _txt_faena)[:lim_act]
+            terminadas = _filtra_por_tokens(terminadas, tokens, _txt_faena)[:lim_ter]
+        else:
+            faenas = faenas[:lim_act]
+            terminadas = terminadas[:lim_ter]
         mats = []
         if incluir_mats:
-            mats = filas_a_lista(conn.execute(
+            sql_mat = (
                 "SELECT m.id, m.nombre, m.unidad, m.categoria, m.definicion, p.proveedor, p.precio_unitario, p.fecha_actualizacion "
                 "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
-                "ORDER BY m.nombre LIMIT ?",
-                (lim_mat,),
-            ).fetchall())
+                "ORDER BY m.nombre"
+            )
+            if tokens:
+                mats = filas_a_lista(conn.execute(sql_mat).fetchall())
+                mats = _filtra_por_tokens(
+                    mats,
+                    tokens,
+                    lambda m: " ".join(str(m.get(k) or "") for k in (
+                        "nombre", "categoria", "definicion", "proveedor",
+                    )),
+                )[:lim_mat]
+            else:
+                mats = filas_a_lista(conn.execute(sql_mat + " LIMIT ?", (lim_mat,)).fetchall())
         extra = {}
         if faena_id and incluir_faenas:
             pres = filas_a_lista(conn.execute(
@@ -552,17 +673,175 @@ def _resumen_heuristico_faena(datos):
     return ". ".join(partes)[:800]
 
 
+def _estado_faena_pregunta(pregunta):
+    txt = _norm_txt(pregunta)
+    if any(k in txt for k in ("terminad", "archivad")):
+        return "terminadas"
+    if any(k in txt for k in ("activ", "abierta", "en curso", "pendient")):
+        return "activas"
+    return "todas"
+
+
+def _fmt_precio(valor):
+    try:
+        n = float(valor or 0)
+    except Exception:
+        n = 0.0
+    if n <= 0:
+        return "sin precio"
+    return f"{n:.2f} EUR"
+
+
+def _texto_materiales(filas, tokens, limite=15):
+    agrupados = {}
+    orden = []
+    for f in filas:
+        nombre = (f.get("nombre") or "Sin nombre").strip() or "Sin nombre"
+        if nombre not in agrupados:
+            agrupados[nombre] = {
+                "categoria": f.get("categoria") or "",
+                "precios": [],
+            }
+            orden.append(nombre)
+        if f.get("precio_unitario") is not None:
+            agrupados[nombre]["precios"].append(
+                f"{(f.get('proveedor') or 'sin proveedor')}: {_fmt_precio(f.get('precio_unitario'))}"
+            )
+    n = len(orden)
+    q = " ".join(tokens) if tokens else "el catálogo"
+    if n == 0:
+        return f"No hay materiales que coincidan con «{q}»."
+    lineas = []
+    for nombre in orden[:limite]:
+        info = agrupados[nombre]
+        detalle = ", ".join(info["precios"]) or "sin precio registrado"
+        cat = info["categoria"] or "Sin categoría"
+        lineas.append(f"- {nombre} | {cat} | {detalle}")
+    extra = "" if n <= limite else f"\nY {n - limite} más."
+    return f"Hay {n} material(es) que coinciden con «{q}»:\n" + "\n".join(lineas) + extra
+
+
+def _texto_faenas(filas, tokens, etiqueta, limite=12):
+    n = len(filas)
+    q = " ".join(tokens) if tokens else etiqueta
+    if n == 0:
+        return f"No hay faenas {etiqueta} que coincidan con «{q}»." if tokens else f"No hay faenas {etiqueta}."
+    lineas = []
+    for f in filas[:limite]:
+        lineas.append(
+            f"- {f.get('numero') or f.get('id') or ''} | "
+            f"{f.get('cliente_nombre') or 'Sin cliente'} | "
+            f"{f.get('tipo_trabajo') or 'Sin trabajo'} | "
+            f"{_fmt_precio(f.get('importe'))}"
+        )
+    extra = "" if n <= limite else f"\nY {n - limite} más."
+    cab = f"Hay {n} faena(s) {etiqueta}"
+    if tokens:
+        cab += f" que coinciden con «{' '.join(tokens)}»"
+    return cab + ":\n" + "\n".join(lineas) + extra
+
+
+def _respuesta_local_datos(pregunta, modo="todo"):
+    modo = normalizar_modo(modo)
+    tokens = _tokens_busqueda(pregunta)
+    quiere_m = _huele_materiales(pregunta, modo)
+    quiere_f = _huele_faenas(pregunta, modo)
+    if modo == "materiales":
+        quiere_f = False
+    if modo == "faenas":
+        quiere_m = False
+    if not quiere_m and not quiere_f:
+        return None
+
+    conn = get_connection()
+    try:
+        texto_m = ""
+        texto_f = ""
+        if quiere_m:
+            mats = filas_a_lista(conn.execute(
+                "SELECT m.id, m.nombre, m.unidad, m.categoria, m.definicion, p.proveedor, p.precio_unitario "
+                "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
+                "ORDER BY m.nombre"
+            ).fetchall())
+            if tokens:
+                mats = _filtra_por_tokens(
+                    mats,
+                    tokens,
+                    lambda m: " ".join(str(m.get(k) or "") for k in (
+                        "nombre", "categoria", "definicion", "proveedor",
+                    )),
+                )
+            texto_m = _texto_materiales(mats, tokens)
+        if quiere_f:
+            estado = _estado_faena_pregunta(pregunta)
+            activas = _faenas_activas(conn, 500)
+            terminadas = _faenas_terminadas(conn, 500)
+            if estado == "activas":
+                pool, etiqueta = activas, "activas"
+            elif estado == "terminadas":
+                pool, etiqueta = terminadas, "terminadas"
+            else:
+                pool, etiqueta = activas + terminadas, ""
+            if tokens:
+                pool = _filtra_por_tokens(
+                    pool,
+                    tokens,
+                    lambda f: " ".join(str(f.get(k) or "") for k in (
+                        "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
+                    )),
+                )
+            texto_f = _texto_faenas(pool, tokens, etiqueta or "en total")
+    finally:
+        conn.close()
+
+    partes = [p for p in (texto_m, texto_f) if p]
+    if not partes:
+        return None
+    return {"usar": True, "texto": "\n\n".join(partes)}
+
+
 def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
     from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
     pregunta = (pregunta or "").strip()
     if not pregunta:
         return {"ok": False, "error": "Escribe una pregunta"}
-    if not IA_API_KEY:
-        return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
 
     modo = normalizar_modo(modo)
+    local = None
+    try:
+        local = _respuesta_local_datos(pregunta, modo)
+    except Exception:
+        local = None
+    if local and local.get("usar") and not _pide_web(pregunta):
+        return {
+            "ok": True,
+            "data": {
+                "respuesta": local.get("texto") or "",
+                "propuestas": [],
+                "ticket": None,
+                "motor": "datos",
+                "modelo": "",
+                "modo": modo,
+            },
+        }
+
+    if not IA_API_KEY:
+        if local and local.get("texto"):
+            return {
+                "ok": True,
+                "data": {
+                    "respuesta": local.get("texto"),
+                    "propuestas": [],
+                    "ticket": None,
+                    "motor": "datos",
+                    "modelo": "",
+                    "modo": modo,
+                },
+            }
+        return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
+
     memoria = memoria_para_modo(modo)
-    datos = snapshot_negocio(faena_id, modo)
+    datos = snapshot_negocio(faena_id, modo, pregunta=pregunta)
     hist = []
     for m in (historial or [])[-8:]:
         if isinstance(m, dict) and m.get("texto"):
@@ -592,27 +871,53 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
         "datos_app": datos,
         "historial": hist,
     }
-    import json
     contents = [{"role": "user", "parts": [{"text": json.dumps(user, ensure_ascii=False)}]}]
+    usa_web = _pide_web(pregunta)
     try:
-        raw = _peticion_gemini(
-            contents=contents,
-            system_instruction=system,
-            max_tokens=1200,
-            temperature=0.25,
-            timeout=90,
-            tools=[{"googleSearch": {}}],
-        )
-    except Exception:
-        raw = _peticion_gemini(
+        kwargs = dict(
             contents=contents,
             system_instruction=system,
             max_tokens=1200,
             temperature=0.25,
             timeout=90,
         )
+        if usa_web:
+            try:
+                raw = _peticion_gemini(tools=[{"googleSearch": {}}], **kwargs)
+            except Exception:
+                raw = _peticion_gemini(**kwargs)
+        else:
+            raw = _peticion_gemini(**kwargs)
+    except Exception as e:
+        if local and local.get("texto"):
+            return {
+                "ok": True,
+                "data": {
+                    "respuesta": local.get("texto"),
+                    "propuestas": [],
+                    "ticket": None,
+                    "motor": "datos",
+                    "modelo": "",
+                    "modo": modo,
+                },
+            }
+        return {"ok": False, "error": f"Jimmi: {str(e)}"}
+    from server2 import _GEMINI_ULTIMO_MODELO
+    modelo = _GEMINI_ULTIMO_MODELO or ""
     texto = (_gemini_extraer_texto(raw) or "").strip()
     if not texto:
+        if local and local.get("texto"):
+            return {
+                "ok": True,
+                "data": {
+                    "respuesta": local.get("texto"),
+                    "propuestas": [],
+                    "ticket": None,
+                    "motor": "datos",
+                    "modelo": modelo,
+                    "modo": modo,
+                },
+            }
         return {"ok": False, "error": "Jimmi no ha podido responder"}
     ticket = extraer_ticket_de_texto(texto)
     propuestas = []
@@ -639,6 +944,7 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
             "propuestas": propuestas,
             "ticket": ticket if ticket and ticket.get("articulos") else None,
             "motor": "jimmi",
+            "modelo": modelo,
             "modo": modo,
         },
     }
