@@ -4,7 +4,10 @@ MAX_MEMORIA_MODO = 2500
 
 import json
 
-from database import get_connection, get_sqlite_local, fila_a_dict, filas_a_lista, listar_anotaciones_faena
+from database import (
+    get_connection, get_sqlite_local, fila_a_dict, filas_a_lista,
+    listar_anotaciones_faena, anotaciones_junto_a_faena,
+)
 
 
 def leer_contexto():
@@ -371,6 +374,9 @@ def _resolver_faena(conn, pregunta, faena_id=None):
 
 
 def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
+    locales = anotaciones_junto_a_faena(conn, faena_id, numero)
+    if locales:
+        return locales[:limite]
     return listar_anotaciones_faena(faena_id, numero)[:limite]
 
 
