@@ -551,8 +551,17 @@ def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
     return None
 
 
+def _numero_consulta(pregunta, historial=None, faena=None):
+    nums = _numeros_pregunta(pregunta) or _numeros_hilo(pregunta, historial)
+    if nums:
+        return nums[0]
+    if faena and faena.get("numero"):
+        return faena.get("numero")
+    return ""
+
+
 def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
-    return listar_anotaciones_faena(faena_id, numero)[:limite]
+    return listar_anotaciones_faena(faena_id, numero or None)[:limite]
 
 
 def _mezclar_fotos(acc, filas):
@@ -1472,6 +1481,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
             detalle_todas = _pide_detalle_todas(pregunta) and not guardar_nota
             listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
+            if _pide_notas(pregunta) and not guardar_nota:
+                listado = False
             if guardar_nota:
                 contenido = _texto_a_guardar(pregunta, historial)
                 if not concreta:
@@ -1518,14 +1529,19 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 else:
                     extra = f"\n\nY {len(pool) - limite} faenas más." if len(pool) > limite else ""
                     texto_f = "\n\n".join(bloques) + extra
-            elif concreta and not listado:
-                if _pide_notas(pregunta):
-                    notas = _anotaciones_de_faena(
-                        conn, concreta.get("id"), numero=concreta.get("numero") or "",
-                    )
-                    texto_f = _texto_notas_faena(concreta, notas)
+            elif _pide_notas(pregunta) and not detalle_todas:
+                numero = _numero_consulta(pregunta, historial, concreta)
+                fid = concreta.get("id") if concreta else None
+                if numero or fid:
+                    notas = listar_anotaciones_faena(fid, numero or None)
+                    if not concreta and not notas and numero:
+                        texto_f = f"No encuentro la faena {numero}."
+                    else:
+                        texto_f = _texto_notas_faena(concreta or {"numero": numero or fid}, notas)
                 else:
-                    texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
+                    texto_f = "Dime el número de la faena y te leo las anotaciones."
+            elif concreta and not listado:
+                texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
             elif not concreta and (_pide_ficha(pregunta) or _numeros_pregunta(pregunta) or _pide_ultima(pregunta)) and not listado:
                 if _numeros_pregunta(pregunta):
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
