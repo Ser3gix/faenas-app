@@ -3596,6 +3596,10 @@ async function enviarConsulta() {
       if (data.data.conversacion_cerrada) {
         chatHistorial = [];
       }
+      const ag = data.data.anotacion_guardada;
+      if (ag && ag.faena_id && state.detalleId && String(state.detalleId) === String(ag.faena_id)) {
+        verDetalle(state.detalleId);
+      }
       if (data.data.ticket && (data.data.ticket.articulos || []).length) {
         const fid = faenaId ? parseInt(faenaId) : null;
         añadirMensaje("Hay materiales para revisar en Tickets.", "asistente");

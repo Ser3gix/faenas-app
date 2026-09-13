@@ -4450,6 +4450,31 @@ function modoJimmiActual() {
   return "todo";
 }
 
+function aplicarAnotacionGuardadaJimmi(ag) {
+  if (!ag || !ag.contenido) return;
+  const fid = ag.faena_id;
+  const num = String(ag.numero || "");
+  const dest = [...(state.faenas || []), ...(state.terminadas || [])];
+  dest.forEach(f => {
+    if (!f) return;
+    const sameId = fid != null && String(f.id) === String(fid);
+    const sameNum = num && String(f.numero || "") === num;
+    if (!sameId && !sameNum) return;
+    if (!Array.isArray(f.anotaciones)) f.anotaciones = [];
+    const dup = f.anotaciones.some(a =>
+      (ag.id && String(a.id) === String(ag.id)) ||
+      String(a.contenido || "") === String(ag.contenido)
+    );
+    if (!dup) f.anotaciones.unshift(ag);
+  });
+  try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
+  const actual = dest.find(f => String(f.id || f._tempId) === String(state.faenaActualId));
+  if (actual) {
+    renderPanelDocumentos(actual);
+    if (typeof renderFaenas === "function") renderFaenas();
+  }
+}
+
 async function enviarConsultaIA() {
   const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
   if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
@@ -4488,6 +4513,9 @@ async function enviarConsultaIA() {
       box.scrollTop = box.scrollHeight;
     }
     if (!data.ok) toast(data.error || "Jimmi no ha podido responder", true);
+    if (data.ok && data.data && data.data.anotacion_guardada) {
+      aplicarAnotacionGuardadaJimmi(data.data.anotacion_guardada);
+    }
     if (data.ok && data.data && data.data.ticket && (data.data.ticket.articulos || []).length) {
       ticketAnalisisActual = data.data.ticket;
       navTo(1);

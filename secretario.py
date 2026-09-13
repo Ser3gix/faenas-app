@@ -8,6 +8,7 @@ import re
 from database import (
     get_connection, get_sqlite_local, fila_a_dict, filas_a_lista,
     listar_anotaciones_faena, anotaciones_junto_a_faena, fotos_junto_a_faena,
+    insertar_anotacion_faena,
 )
 
 
@@ -209,6 +210,69 @@ def _pide_ficha(pregunta):
 def _pide_notas(pregunta):
     pal = set(_norm_txt(pregunta).split())
     return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
+
+
+_RE_VERBO_GUARDAR = re.compile(
+    r"(?i)\b(guarda(?:me)?|guardar|apunta(?:me)?|apuntar|anota(?:me)?|anotar|"
+    r"registra(?:me)?|registrar|apuntalo|anotalo|guardalo)\b"
+)
+
+
+def _pide_guardar_nota(pregunta):
+    txt = _norm_txt(pregunta)
+    if any(x in txt for x in ("no guardes", "no anotes", "no apuntes", "no registres")):
+        return False
+    if not _RE_VERBO_GUARDAR.search(pregunta or ""):
+        return False
+    pal = set(txt.split())
+    if pal & {"material", "materiales", "precio", "precios", "catalogo"}:
+        return False
+    if pal & {"nota", "notas", "anotacion", "anotaciones"}:
+        return True
+    return bool(re.search(r"(?i)(:|\bque\b|\besto\b|\besta nota\b|\besta anotacion\b)", pregunta or ""))
+
+
+def _texto_a_guardar(pregunta, historial=None):
+    t = (pregunta or "").strip()
+    t2 = re.sub(
+        r"(?is)^\s*(?:por\s+favor\s+|jimmi[,:\s]+)?"
+        r"(?:guarda(?:me)?|guardar|apunta(?:me)?|apuntar|anota(?:me)?|anotar|"
+        r"registra(?:me)?|registrar|apuntalo|anotalo|guardalo)"
+        r"(?:\s+una|\s+la|\s+esta|\s+este)?"
+        r"(?:\s+anotaci[oó]n|\s+nota)?"
+        r"(?:\s+(?:en|de|para)\s+(?:la\s+)?faena(?:\s+\d+)?)?"
+        r"(?:\s+de\s+\w+)?"
+        r"\s*(?::|que|diciendo|con\s+el\s+texto)?\s*",
+        "",
+        t,
+        count=1,
+    )
+    texto = t2.strip(" :.-\"'«»")
+    texto = re.sub(r"(?i)^(?:una|la|esta|este)\s+(?:anotaci[oó]n|nota)\s*", "", texto).strip()
+    texto = re.sub(r"(?i)^(?:en|de|para)\s+(?:la\s+)?faena\s+\d+\s*(?::|que)?\s*", "", texto).strip()
+    texto = texto.strip(" :.-\"'«»")
+    n = _norm_txt(texto)
+    if n in {"", "esto", "eso", "esta", "una", "la", "una nota", "una anotacion", "la nota", "la anotacion"}:
+        prev = _ultima_pregunta_usuario(historial, pregunta)
+        if prev and not _pide_guardar_nota(prev):
+            texto = prev.strip()
+        else:
+            texto = ""
+    return texto[:4000]
+
+
+def _resolver_faena_para_guardar(conn, pregunta, faena_id=None, historial=None):
+    nums = _numeros_pregunta(pregunta)
+    hilo = " ".join(_mensajes_hilo(historial, pregunta))
+    clave = (("faena " + " ".join(nums) + " ") if nums else "") + hilo
+    clave = clave.strip()
+    if clave:
+        encontrada = _resolver_faena(conn, clave, faena_id, historial=historial)
+        if encontrada:
+            return encontrada
+    if faena_id:
+        return _faena_por_id(conn, faena_id)
+    return None
 
 
 def _pide_ultima(pregunta):
@@ -1372,18 +1436,21 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
     tokens = _tokens_busqueda(pregunta)
     quiere_m = _huele_materiales(pregunta, modo)
     quiere_f = _huele_faenas(pregunta, modo)
-    if _numeros_pregunta(pregunta) or _pide_ficha(pregunta) or _pide_ultima(pregunta):
+    guardar_nota = _pide_guardar_nota(pregunta)
+    if _numeros_pregunta(pregunta) or _pide_ficha(pregunta) or _pide_ultima(pregunta) or guardar_nota:
         quiere_f = True
     if modo == "faenas":
         quiere_m = False
     if not quiere_m and not quiere_f:
         return None
 
+    tarea_guardar = None
+    anotacion_guardada = None
     conn = get_connection()
     try:
         texto_m = ""
         texto_f = ""
-        if quiere_m:
+        if quiere_m and not guardar_nota:
             mats = filas_a_lista(conn.execute(
                 "SELECT m.id, m.nombre, m.unidad, m.categoria, m.definicion, p.proveedor, p.precio_unitario "
                 "FROM materiales m LEFT JOIN precios p ON p.material_id=m.id "
@@ -1399,10 +1466,29 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 )
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
-            concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
-            detalle_todas = _pide_detalle_todas(pregunta)
-            listado = _pide_listado_faenas(pregunta) and not detalle_todas
-            if detalle_todas:
+            if guardar_nota:
+                concreta = _resolver_faena_para_guardar(conn, pregunta, faena_id, historial=historial)
+            else:
+                concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
+            detalle_todas = _pide_detalle_todas(pregunta) and not guardar_nota
+            listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
+            if guardar_nota:
+                contenido = _texto_a_guardar(pregunta, historial)
+                if not concreta:
+                    texto_f = "¿En qué faena o de qué cliente guardo la anotación?"
+                elif not contenido:
+                    texto_f = (
+                        f"Dime el texto de la anotación para guardarla en la faena "
+                        f"{concreta.get('numero') or concreta.get('id')}."
+                    )
+                else:
+                    tarea_guardar = {
+                        "id": concreta.get("id"),
+                        "numero": concreta.get("numero") or "",
+                        "cliente": concreta.get("cliente_nombre") or "",
+                        "contenido": contenido,
+                    }
+            elif detalle_todas:
                 estado = _estado_faena_pregunta(pregunta)
                 activas = _faenas_activas(conn, 500)
                 terminadas = _faenas_terminadas(conn, 500)
@@ -1445,7 +1531,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."
                 else:
                     texto_f = "Dime el número de la faena o el nombre del cliente y te paso todos los datos."
-            if not texto_f:
+            if not texto_f and not tarea_guardar:
                 estado = _estado_faena_pregunta(pregunta)
                 activas = _faenas_activas(conn, 500)
                 terminadas = _faenas_terminadas(conn, 500)
@@ -1467,10 +1553,38 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
     finally:
         conn.close()
 
+    if tarea_guardar:
+        nid = insertar_anotacion_faena(
+            tarea_guardar["id"],
+            tipo="texto",
+            contenido=tarea_guardar["contenido"],
+            numero=tarea_guardar["numero"] or None,
+        )
+        if nid:
+            quien = tarea_guardar["cliente"]
+            extra = f" ({quien})" if quien else ""
+            num = tarea_guardar["numero"] or tarea_guardar["id"]
+            texto_f = (
+                f"He guardado la anotación en la faena {num}{extra}: "
+                f"{tarea_guardar['contenido']}"
+            )
+            anotacion_guardada = {
+                "id": nid,
+                "faena_id": tarea_guardar["id"],
+                "numero": tarea_guardar["numero"],
+                "tipo": "texto",
+                "contenido": tarea_guardar["contenido"],
+            }
+        else:
+            texto_f = "No he podido guardar la anotación. Prueba desde Anotaciones en la ficha de la faena."
+
     partes = [p for p in (texto_m, texto_f) if p]
     if not partes:
         return None
-    return {"usar": True, "texto": "\n\n".join(partes)}
+    out = {"usar": True, "texto": "\n\n".join(partes)}
+    if anotacion_guardada:
+        out["anotacion_guardada"] = anotacion_guardada
+    return out
 
 
 def _contents_conversacion(historial, pregunta, payload):
@@ -1496,6 +1610,20 @@ def _contents_conversacion(historial, pregunta, payload):
     return contents
 
 
+def _pack_datos(texto, modo, anotacion_guardada=None, modelo=""):
+    data = {
+        "respuesta": texto,
+        "propuestas": [],
+        "ticket": None,
+        "motor": "datos",
+        "modelo": modelo or "",
+        "modo": modo,
+    }
+    if anotacion_guardada:
+        data["anotacion_guardada"] = anotacion_guardada
+    return {"ok": True, "data": data}
+
+
 def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
     from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
     pregunta = (pregunta or "").strip()
@@ -1512,22 +1640,19 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         print("jimmi local:", e)
         local = None
     texto_local = (local or {}).get("texto") or ""
+    if _pide_guardar_nota(pregunta) and not _pide_web(pregunta):
+        if local and local.get("usar") and texto_local:
+            return _pack_datos(texto_local, modo, local.get("anotacion_guardada"))
+        return _pack_datos(
+            "No he podido guardar la anotación. Dime el número de la faena y el texto.",
+            modo,
+        )
     forzar_datos = _pide_notas(pregunta) or _pide_ficha(pregunta) or _es_seguimiento(pregunta)
     if (
         local and local.get("usar") and not _pide_web(pregunta)
         and (forzar_datos or "Dime el número de la faena" not in texto_local)
     ):
-        return {
-            "ok": True,
-            "data": {
-                "respuesta": texto_local,
-                "propuestas": [],
-                "ticket": None,
-                "motor": "datos",
-                "modelo": "",
-                "modo": modo,
-            },
-        }
+        return _pack_datos(texto_local, modo, local.get("anotacion_guardada"))
 
     if not IA_API_KEY:
         if local and local.get("texto"):
@@ -1563,7 +1688,8 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "fuente es catalogo o web. url solo si es web. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
-        "No borres faenas ni clientes."
+        "No borres faenas ni clientes. "
+        "Tú no puedes guardar anotaciones ni datos. No digas que has guardado, apuntado o registrado una nota si el servidor no lo ha hecho."
     )
     user = {
         "pregunta": pregunta,
