@@ -1512,9 +1512,10 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         print("jimmi local:", e)
         local = None
     texto_local = (local or {}).get("texto") or ""
+    forzar_datos = _pide_notas(pregunta) or _pide_ficha(pregunta) or _es_seguimiento(pregunta)
     if (
         local and local.get("usar") and not _pide_web(pregunta)
-        and "Dime el número de la faena" not in texto_local
+        and (forzar_datos or "Dime el número de la faena" not in texto_local)
     ):
         return {
             "ok": True,

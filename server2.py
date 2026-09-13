@@ -27,7 +27,7 @@ from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_D
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
-    fila_a_dict, filas_a_lista, listar_anotaciones_faena,
+    fila_a_dict, filas_a_lista, listar_anotaciones_faena, insertar_anotacion_faena,
     CATEGORIAS_MATERIAL_DEFECTO,
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
@@ -1624,16 +1624,22 @@ def get_anotaciones(id):
 
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["POST"])
 def crear_anotacion(id):
-    datos = request.json
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO anotaciones (faena_id, tipo, contenido) VALUES (?, ?, ?)",
-        (id, datos.get("tipo", "texto"), datos.get("contenido", ""))
-    )
-    conn.commit()
-    nuevo_id = cursor.lastrowid
+    datos = request.json or {}
+    numero = None
+    conn = _conn_para_faena(id)
+    fila = conn.execute("SELECT numero FROM faenas WHERE id=?", (id,)).fetchone()
+    if fila:
+        numero = fila["numero"] if isinstance(fila, dict) else fila[0]
     conn.close()
+    nuevo_id = insertar_anotacion_faena(
+        id,
+        tipo=datos.get("tipo", "texto"),
+        contenido=datos.get("contenido", ""),
+        fecha=datos.get("fecha"),
+        numero=numero,
+    )
+    if not nuevo_id:
+        return jsonify({"ok": False, "error": "No se pudo guardar la anotación"}), 500
     return jsonify({"ok": True, "data": {"id": nuevo_id}})
 
 @app.route("/api/anotaciones/<int:id>", methods=["DELETE"])
@@ -4154,21 +4160,19 @@ def sync_datos():
 
 @app.route("/api/sync/anotaciones", methods=["POST"])
 def sync_anotaciones():
-    datos = request.json
+    datos = request.json or {}
     anotaciones = datos.get("anotaciones", [])
-    conn = get_connection()
     insertadas = 0
     for a in anotaciones:
-        try:
-            conn.execute(
-                "INSERT INTO anotaciones (faena_id, tipo, contenido, fecha) VALUES (?, ?, ?, ?)",
-                (a["faena_id"], a.get("tipo", "texto"), a.get("contenido", ""), a.get("fecha", ""))
-            )
+        nuevo = insertar_anotacion_faena(
+            a.get("faena_id"),
+            tipo=a.get("tipo", "texto"),
+            contenido=a.get("contenido", ""),
+            fecha=a.get("fecha"),
+            numero=a.get("numero"),
+        )
+        if nuevo:
             insertadas += 1
-        except Exception:
-            pass
-    conn.commit()
-    conn.close()
     return jsonify({"ok": True, "data": {"insertadas": insertadas}})
 
 @app.route("/api/sync/anotaciones-editar", methods=["POST"])

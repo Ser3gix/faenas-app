@@ -4841,7 +4841,10 @@ async function sincronizar() {
     // Anotaciones
     if (cola.anotaciones.length) {
       try {
-        const anots = cola.anotaciones.map(a => ({...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id}));
+        const anots = cola.anotaciones.map(a => {
+          const f = state.faenas.find(x => String(x.id || x._tempId) === String(a.faena_id));
+          return {...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id, numero: a.numero || f?.numero || ""};
+        });
         await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:AbortSignal.timeout(10000)});
         estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
       } catch(e) {}

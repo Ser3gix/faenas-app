@@ -16,6 +16,7 @@ from config import (
     MYSQL_CREATE_DATABASE,
     MYSQL_SSL,
     MYSQL_USER,
+    raices_datos,
 )
 
 MYSQL_CONNECT_TIMEOUT = int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10") or 10)
@@ -216,6 +217,38 @@ def get_sqlite_local():
     return _sqlite_conectar_local()
 
 
+def _fecha_anotacion(fecha):
+    s = str(fecha or "").strip()
+    if not s:
+        return None
+    s = s.replace("T", " ").replace("Z", "")
+    if "." in s:
+        s = s.split(".")[0]
+    s = s[:19].strip()
+    return s if len(s) >= 10 else None
+
+
+def _rutas_sqlite_faenas():
+    rutas = []
+    for raiz in list(raices_datos() or []) + [os.path.dirname(DB_PATH or "")]:
+        if not raiz:
+            continue
+        p = os.path.abspath(os.path.join(raiz, "faenas.db"))
+        if os.path.isfile(p) and p not in rutas:
+            rutas.append(p)
+    dbp = os.path.abspath(DB_PATH) if DB_PATH else ""
+    if dbp and os.path.isfile(dbp) and dbp not in rutas:
+        rutas.append(dbp)
+    return rutas
+
+
+def _sqlite_conectar_ruta(path):
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return _ConnectionCompat(conn, "sqlite")
+
+
 def _variantes_numero_faena(numero):
     n = "".join(ch for ch in str(numero or "") if ch.isdigit())
     if not n:
@@ -373,7 +406,7 @@ def fotos_junto_a_faena(conn, faena_id=None, numero=None):
 
 
 def listar_anotaciones_faena(faena_id=None, numero=None):
-    """Anotaciones junto a la faena: misma base (TiDB o SQLite). El SQLite local solo por número."""
+    """Anotaciones de la faena en TiDB y en todos los SQLite de datos/, por id y por número."""
     conns = []
     try:
         principal = get_connection()
@@ -396,14 +429,81 @@ def listar_anotaciones_faena(faena_id=None, numero=None):
 
         ids_p = _ids_faena_en_conexion(principal, faena_id, numero)
         _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero))
+        extra_sqlite = []
         if getattr(principal, "_backend", "") == "mysql":
-            sqlite = get_sqlite_local()
+            extra_sqlite.append(get_sqlite_local())
+        ya = {os.path.abspath(DB_PATH)} if DB_PATH else set()
+        for ruta in _rutas_sqlite_faenas():
+            if ruta in ya:
+                continue
+            ya.add(ruta)
+            extra_sqlite.append(_sqlite_conectar_ruta(ruta))
+        ids_extra = []
+        for sqlite in extra_sqlite:
             conns.append(sqlite)
             ids_s = _ids_faena_en_conexion(sqlite, None, numero)
+            ids_extra.extend(ids_s)
             _mezclar(anotaciones_junto_a_faena(sqlite, None, numero, extra_ids=ids_p))
-            if ids_s:
-                _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero, extra_ids=ids_s))
+        if ids_extra:
+            _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero, extra_ids=ids_extra))
         return acc
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def insertar_anotacion_faena(faena_id, tipo="texto", contenido="", fecha=None, numero=None):
+    """Escribe la nota en la base de la faena y, si hay TiDB, también en el SQLite local."""
+    conns = []
+    nuevo_id = None
+    fecha_n = _fecha_anotacion(fecha)
+    try:
+        principal = get_connection()
+        conns.append(principal)
+        fila = principal.execute("SELECT id, numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        if not fila and getattr(principal, "_backend", "") == "mysql":
+            sqlite = get_sqlite_local()
+            conns.append(sqlite)
+            fila = sqlite.execute("SELECT id, numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        datos_f = fila_a_dict(fila) if fila else {}
+        numero = numero or (datos_f.get("numero") if datos_f else None)
+        destinos = [principal]
+        if getattr(principal, "_backend", "") == "mysql":
+            if not any(getattr(c, "_backend", "") == "sqlite" for c in conns):
+                conns.append(get_sqlite_local())
+            destinos = list(conns)
+        for conn in destinos:
+            ids = _ids_faena_en_conexion(conn, faena_id if conn is principal else None, numero)
+            if not ids:
+                try:
+                    fid0 = int(faena_id) if faena_id not in (None, "") else None
+                except Exception:
+                    fid0 = None
+                if fid0 is not None and conn.execute("SELECT id FROM faenas WHERE id=?", (fid0,)).fetchone():
+                    ids = [fid0]
+                else:
+                    continue
+            fid = ids[0]
+            try:
+                if fecha_n:
+                    cur = conn.execute(
+                        "INSERT INTO anotaciones (faena_id, tipo, contenido, fecha) VALUES (?, ?, ?, ?)",
+                        (fid, tipo or "texto", contenido or "", fecha_n),
+                    )
+                else:
+                    cur = conn.execute(
+                        "INSERT INTO anotaciones (faena_id, tipo, contenido) VALUES (?, ?, ?)",
+                        (fid, tipo or "texto", contenido or ""),
+                    )
+                conn.commit()
+                if nuevo_id is None:
+                    nuevo_id = cur.lastrowid
+            except Exception as e:
+                print("insert anotacion:", e)
+        return nuevo_id
     finally:
         for conn in conns:
             try:
