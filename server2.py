@@ -34,6 +34,7 @@ from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_ob
 from secretario import (
     chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle,
     escribir_contexto, borrar_linea_contexto, guardar_extraccion_compra, extraer_referencia_faena,
+    cerrar_conversacion,
 )
 
 try:
@@ -3339,6 +3340,18 @@ def secretario_chat():
         if not res.get("ok"):
             return jsonify(res), 400
         return jsonify(res)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
+
+
+@app.route("/api/secretario/chat/cerrar", methods=["POST"])
+def secretario_chat_cerrar():
+    datos = request.json or {}
+    historial = datos.get("historial") if isinstance(datos.get("historial"), list) else []
+    modo = datos.get("modo") or datos.get("contexto") or "todo"
+    try:
+        cierre = cerrar_conversacion(historial, modo=modo)
+        return jsonify({"ok": True, "data": cierre})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
 

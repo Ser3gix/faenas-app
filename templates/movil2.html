@@ -1043,7 +1043,7 @@ textarea { resize: vertical; min-height: 80px; }
     <textarea id="ia-pregunta" rows="3" placeholder="Pregunta a Jimmi: presupuestos, precios, faenas..." style="font-size:0.95rem;margin-bottom:8px"></textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="enviarConsultaIA()">Enviar</button>
-      <button class="btn btn-s" onclick="resetearConsultaIA()">Limpiar</button>
+      <button class="btn btn-s" onclick="cerrarConversacionJimmi()">Cerrar</button>
       <button class="btn btn-g" onclick="abrirCorregirJimmi()">Corregir a Jimmi</button>
     </div>
   </div>
@@ -1536,14 +1536,29 @@ function actualizarSelectorFaenasIA() {
 }
 
 function resetearConsultaIA() {
+  cerrarConversacionJimmi();
+}
+
+async function cerrarConversacionJimmi() {
+  const hist = (window._jimmiHistorial || []).slice();
   const pregunta = document.getElementById("ia-pregunta");
-  const faena = document.getElementById("ia-faena-id");
   const box = document.getElementById("jimmi-mensajes");
   if (pregunta) pregunta.value = "";
-  if (faena) faena.value = "";
-  if (box) box.innerHTML = '<div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div>';
   window._jimmiHistorial = [];
+  if (box) box.innerHTML = '<div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div>';
   actualizarSelectorFaenasIA();
+  if (hist.length < 2) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/secretario/chat/cerrar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ historial: hist.slice(-16), modo: modoJimmiActual() })
+    });
+    const data = await r.json();
+    if (data.ok && data.data && data.data.util && data.data.resumen) {
+      toast("Jimmi ha apuntado: " + data.data.resumen);
+    }
+  } catch (e) {}
 }
 
 function actualizarPanelConsultaIA() {
@@ -4459,10 +4474,17 @@ async function enviarConsultaIA() {
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
     window._jimmiHistorial.push({ rol: "jimmi", texto });
+    if (data.ok && data.data && data.data.conversacion_cerrada) {
+      window._jimmiHistorial = [];
+    }
     if (box) {
-      box.innerHTML = window._jimmiHistorial.map(m =>
-        `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
-      ).join("");
+      if (data.ok && data.data && data.data.conversacion_cerrada) {
+        box.innerHTML = `<div class="jimmi-hint">${escHtml(texto)}</div><div class="jimmi-hint">Conversación cerrada. Puedes empezar otra.</div>`;
+      } else {
+        box.innerHTML = (window._jimmiHistorial.length ? window._jimmiHistorial : [{ rol: "jimmi", texto }]).map(m =>
+          `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
+        ).join("");
+      }
       box.scrollTop = box.scrollHeight;
     }
     if (!data.ok) toast(data.error || "Jimmi no ha podido responder", true);

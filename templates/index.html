@@ -982,8 +982,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <button class="btn btn-p" onclick="enviarConsulta()" id="btn-consulta" style="height:32px;padding:0 14px">
         Enviar
       </button>
-      <button class="btn btn-s" onclick="limpiarChat()" style="height:32px;padding:0 14px;font-size:0.7rem">
-        Limpiar
+      <button class="btn btn-s" onclick="cerrarConversacionJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem" title="Cierra el chat y Jimmi guarda lo útil">
+        Cerrar
       </button>
       <button class="btn btn-g" onclick="abrirCorregirJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem">
         Corregir a Jimmi
@@ -3593,6 +3593,9 @@ async function enviarConsulta() {
     if (data.ok) {
       añadirMensaje(data.data.respuesta, "asistente");
       cargarContextoJimmi();
+      if (data.data.conversacion_cerrada) {
+        chatHistorial = [];
+      }
       if (data.data.ticket && (data.data.ticket.articulos || []).length) {
         const fid = faenaId ? parseInt(faenaId) : null;
         añadirMensaje("Hay materiales para revisar en Tickets.", "asistente");
@@ -3603,7 +3606,23 @@ async function enviarConsulta() {
   btn.disabled = false; btn.textContent = "Enviar";
 }
 function usarSugerencia(texto) { document.getElementById("chat-input").value = texto; document.getElementById("chat-input").focus(); }
-function limpiarChat() { const contenedor = document.getElementById("chat-mensajes"); contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:20px 0">🪵 Pregunta a Jimmi sobre tus faenas</div>`; chatHistorial = []; }
+async function cerrarConversacionJimmi() {
+  const hist = (chatHistorial || []).slice();
+  const modo = modoJimmiActual();
+  const contenedor = document.getElementById("chat-mensajes");
+  contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:20px 0">🪵 Pregunta a Jimmi sobre tus faenas</div>`;
+  chatHistorial = [];
+  if (hist.length < 2) return;
+  try {
+    const r = await fetch(API + "/secretario/chat/cerrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ historial: hist.slice(-16), modo }) });
+    const data = await r.json();
+    if (data.ok && data.data && data.data.util && data.data.resumen) {
+      toast("Jimmi ha apuntado: " + data.data.resumen);
+      cargarContextoJimmi();
+    }
+  } catch (e) {}
+}
+function limpiarChat() { cerrarConversacionJimmi(); }
 
 async function cargarContextoJimmi() {
   const tbody = document.getElementById("jimmi-ctx-filas");

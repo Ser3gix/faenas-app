@@ -702,6 +702,120 @@ def anotar_contexto(nota, modo=None):
     escribir_contexto(mezclado)
 
 
+def _pide_cerrar(pregunta):
+    txt = _norm_txt(pregunta)
+    if txt in {"cerrar", "cierra", "adios"}:
+        return True
+    return any(k in txt for k in (
+        "adios", "hasta luego", "hasta manana",
+        "cierra la conversacion", "cerrar conversacion", "cierra el chat", "cerrar el chat",
+        "terminamos", "nueva conversacion",
+    ))
+
+
+def _es_pregunta_chat(texto):
+    t = (texto or "").strip()
+    if t.endswith("?"):
+        return True
+    txt = _norm_txt(t)
+    return txt.startswith((
+        "que ", "cual ", "cuales ", "cuanto ", "cuanta ", "cuantos ", "cuantas ",
+        "donde ", "quien ", "como ", "dime ", "ensena ", "muestra ", "lista ",
+        "hay ", "tiene ", "tienen ",
+    ))
+
+
+def _hechos_usuario(historial):
+    hechos = []
+    for m in historial or []:
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("rol") or "").lower() not in ("usuario", "user"):
+            continue
+        t = str(m.get("texto") or "").strip()
+        if len(t) < 20:
+            continue
+        if _es_charla(t) or _es_pregunta_chat(t) or _es_seguimiento(t) or _pide_cerrar(t):
+            continue
+        if t not in hechos:
+            hechos.append(t[:240])
+    return hechos[:4]
+
+
+def _resumen_ia_conversacion(historial, modo):
+    from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
+    if not IA_API_KEY:
+        return None
+    hilo = []
+    for m in (historial or [])[-16:]:
+        if not isinstance(m, dict) or not m.get("texto"):
+            continue
+        hilo.append(f"{m.get('rol') or 'usuario'}: {m.get('texto')}")
+    if len(hilo) < 2:
+        return None
+    raw = _peticion_gemini(
+        contents=[{"role": "user", "parts": [{"text": "\n".join(hilo)[:6000]}]}],
+        system_instruction=(
+            "Eres Jimmi. Del chat extrae SOLO hechos nuevos para recordar "
+            "(precios, preferencias, correcciones, datos del cliente o faena que el usuario enseñe). "
+            "No copies consultas ni listados de la app. "
+            'JSON: {"util": true o false, "hechos": ["..."], "modo": "faenas" o "materiales" o "todo"}. '
+            "Si no hay nada que aprender, util false y hechos vacío."
+        ),
+        response_mime_type="application/json",
+        max_tokens=400,
+        temperature=0.1,
+        timeout=40,
+    )
+    texto = (_gemini_extraer_texto(raw) or "").strip()
+    parsed = extraer_ticket_de_texto(texto) if texto else None
+    if not isinstance(parsed, dict):
+        try:
+            parsed = json.loads(texto)
+        except Exception:
+            parsed = None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def cerrar_conversacion(historial, modo="todo"):
+    """Al cerrar el chat: resume solo si hay algo útil y lo guarda en la memoria de Jimmi."""
+    modo = normalizar_modo(modo)
+    msgs = [
+        m for m in (historial or [])
+        if isinstance(m, dict) and str(m.get("texto") or "").strip()
+    ]
+    if len(msgs) < 2:
+        return {"util": False, "resumen": "", "guardado": False}
+    hechos = []
+    modo_nota = modo
+    try:
+        parsed = _resumen_ia_conversacion(historial, modo)
+        if isinstance(parsed, dict):
+            if parsed.get("util") is False:
+                return {"util": False, "resumen": "", "guardado": False}
+            raw_hechos = parsed.get("hechos") or []
+            if isinstance(raw_hechos, str):
+                raw_hechos = [raw_hechos]
+            for h in raw_hechos:
+                t = str(h or "").strip()
+                if t and t.lower() not in {"nada", "ninguno", "ninguna"}:
+                    hechos.append(t[:240])
+            if parsed.get("modo") in ("faenas", "materiales", "todo"):
+                modo_nota = parsed.get("modo")
+    except Exception as e:
+        print("jimmi cierre ia:", e)
+    if not hechos:
+        hechos = _hechos_usuario(historial)
+    if not hechos:
+        return {"util": False, "resumen": "", "guardado": False}
+    for h in hechos:
+        anotar_contexto(h, modo=modo_nota)
+    resumen = "; ".join(hechos)
+    return {"util": True, "resumen": resumen[:500], "guardado": True}
+
+
 def _compactar_resumen(texto):
     try:
         from server2 import _peticion_gemini, IA_API_KEY
@@ -1362,7 +1476,7 @@ def _contents_conversacion(historial, pregunta, payload):
     return contents
 
 
-def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
+def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
     from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
     pregunta = (pregunta or "").strip()
     if not pregunta:
@@ -1514,3 +1628,39 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
             "modo": modo,
         },
     }
+
+
+def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
+    historial = [m for m in (historial or []) if isinstance(m, dict)][-16:]
+    modo = normalizar_modo(modo)
+    res = _chat_jimmi_turno(pregunta, historial=historial, faena_id=faena_id, modo=modo)
+    if not _pide_cerrar(pregunta):
+        return res
+    data = dict((res or {}).get("data") or {})
+    if not res.get("ok"):
+        data = {
+            "respuesta": "Hasta luego.",
+            "propuestas": [],
+            "ticket": None,
+            "motor": "datos",
+            "modelo": "",
+            "modo": modo,
+        }
+    hilo = list(historial)
+    actual = _norm_txt(pregunta)
+    if not any(
+        str(m.get("rol") or "").lower() in ("usuario", "user") and _norm_txt(m.get("texto")) == actual
+        for m in hilo
+    ):
+        hilo.append({"rol": "usuario", "texto": pregunta})
+    hilo.append({"rol": "jimmi", "texto": data.get("respuesta") or ""})
+    cierre = cerrar_conversacion(hilo, modo)
+    data["conversacion_cerrada"] = True
+    data["aprendizaje_util"] = bool(cierre.get("util"))
+    data["aprendido"] = cierre.get("resumen") or ""
+    if cierre.get("util") and cierre.get("resumen"):
+        extra = "He cerrado el chat y he apuntado: " + cierre["resumen"]
+    else:
+        extra = "He cerrado el chat."
+    data["respuesta"] = ((data.get("respuesta") or "").rstrip() + "\n\n" + extra).strip()
+    return {"ok": True, "data": data}
