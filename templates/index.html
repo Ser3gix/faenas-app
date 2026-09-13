@@ -497,6 +497,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   border: 1px solid var(--sawdust);
   border-bottom-left-radius: 2px;
 }
+.jimmi-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.jimmi-foto { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; display: block; background: var(--sawdust); cursor: pointer; }
 .chat-hora {
   font-size: 0.65rem;
   color: #aaa;
@@ -1568,6 +1570,23 @@ async function procesarPdfViaCola(file, extra) {
 
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function urlJimmi(u) {
+  u = String(u || "");
+  if (!u) return "";
+  if (/^(https?:|data:)/i.test(u)) return u;
+  const base = API.replace(/\/$/, "");
+  if (u.startsWith("/api/")) return base + u.slice(4);
+  if (u.startsWith("/")) return base + u;
+  return base + "/" + u;
+}
+function htmlFotosJimmi(imagenes) {
+  if (!imagenes || !imagenes.length) return "";
+  return `<div class="jimmi-fotos">${imagenes.map(im => {
+    const src = esc(im.data || urlJimmi(im.url));
+    const nom = esc(im.nombre || "foto");
+    return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy" onclick="verFotoGrande(this.src)">`;
+  }).join("")}</div>`;
 }
 
 // ===== ESTADO =====
@@ -3591,7 +3610,7 @@ async function enviarConsulta() {
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
     if (data.ok) {
-      añadirMensaje(data.data.respuesta, "asistente");
+      añadirMensaje(esc(data.data.respuesta) + htmlFotosJimmi(data.data.imagenes), "asistente");
       cargarContextoJimmi();
       if (data.data.conversacion_cerrada) {
         chatHistorial = [];

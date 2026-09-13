@@ -3334,6 +3334,91 @@ def secretario_contexto_borrar_linea(idx):
     return jsonify({"ok": True, "data": leer_contexto_detalle()})
 
 
+def _miniatura_jpeg(raw, max_lado=420, calidad=52):
+    if not raw or Image is None:
+        return ""
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        lado = max(w, h) or 1
+        if lado > max_lado:
+            escala = max_lado / float(lado)
+            img = img.resize((max(1, int(w * escala)), max(1, int(h * escala))), getattr(Image, "LANCZOS", 1))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=calidad, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        if len(b64) > 140000:
+            return ""
+        return "data:image/jpeg;base64," + b64
+    except Exception:
+        return ""
+
+
+def _bytes_para_imagen_jimmi(im):
+    if not isinstance(im, dict):
+        return None
+    origen = str(im.get("origen") or "").strip()
+    if origen == "book":
+        try:
+            bid = int(im.get("id"))
+        except Exception:
+            return None
+        conn = get_connection()
+        try:
+            fila = conn.execute("SELECT ruta_foto, faena_id FROM book_fotos WHERE id=?", (bid,)).fetchone()
+        finally:
+            conn.close()
+        if not fila:
+            return None
+        fila = fila_a_dict(fila)
+        return _bytes_desde_ruta_foto(fila.get("ruta_foto"), fila.get("faena_id"))
+    nombre = im.get("nombre") or ""
+    try:
+        fid = int(im.get("faena_id")) if im.get("faena_id") not in (None, "") else None
+    except Exception:
+        fid = None
+    if not fid or not nombre:
+        return None
+    raw = _bytes_fotos_de_faena(fid, nombre)
+    if raw:
+        return raw
+    conn = _conn_para_faena(fid)
+    try:
+        fila = conn.execute(
+            "SELECT ruta_foto, data_base64 FROM fotos_faena WHERE faena_id=? AND nombre=?",
+            (fid, nombre),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not fila:
+        return None
+    fila = fila_a_dict(fila)
+    b64 = (fila.get("data_base64") or "").strip()
+    if b64:
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        try:
+            return base64.b64decode(b64)
+        except Exception:
+            pass
+    return _bytes_desde_ruta_foto(fila.get("ruta_foto"), fid)
+
+
+def _enriquecer_imagenes_jimmi(imagenes):
+    out = []
+    for im in (imagenes or [])[:12]:
+        if not isinstance(im, dict):
+            continue
+        item = dict(im)
+        if not item.get("data"):
+            raw = _bytes_para_imagen_jimmi(item)
+            data = _miniatura_jpeg(raw) if raw else ""
+            if data:
+                item["data"] = data
+        out.append(item)
+    return out
+
+
 @app.route("/api/secretario/chat", methods=["POST"])
 def secretario_chat():
     datos = request.json or {}
@@ -3345,6 +3430,10 @@ def secretario_chat():
         res = chat_jimmi(pregunta, historial=historial, faena_id=faena_id, modo=modo)
         if not res.get("ok"):
             return jsonify(res), 400
+        data = res.get("data") or {}
+        if data.get("imagenes"):
+            data["imagenes"] = _enriquecer_imagenes_jimmi(data["imagenes"])
+            res["data"] = data
         return jsonify(res)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
@@ -4388,6 +4477,38 @@ def listar_fotos(id):
 
     conn.close()
     return jsonify({"ok": True, "data": fotos})
+
+
+@app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["GET"])
+def servir_foto_faena(id, nombre):
+    conn = _conn_para_faena(id)
+    try:
+        fila = conn.execute(
+            "SELECT nombre, ruta_foto, data_base64 FROM fotos_faena WHERE faena_id=? AND nombre=?",
+            (id, nombre),
+        ).fetchone()
+    finally:
+        conn.close()
+    raw = None
+    if fila:
+        fila = fila_a_dict(fila)
+        b64 = (fila.get("data_base64") or "").strip()
+        if b64:
+            if "," in b64:
+                b64 = b64.split(",", 1)[1]
+            try:
+                raw = base64.b64decode(b64)
+            except Exception:
+                raw = None
+        if not raw:
+            raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"), id)
+    if not raw:
+        raw = _bytes_fotos_de_faena(id, nombre)
+    if not raw:
+        return Response("No encontrada", status=404)
+    resp = send_file(io.BytesIO(raw), mimetype=_mime_por_extension(nombre), download_name=nombre)
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 @app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["DELETE"])
 def eliminar_foto(id, nombre):
