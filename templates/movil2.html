@@ -1622,6 +1622,10 @@ function getServerUrl() {
   return "/api";
 }
 
+function escHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 function urlJimmi(u) {
   u = String(u || "");
   if (!u) return "";
@@ -1635,8 +1639,10 @@ function urlJimmi(u) {
 function htmlFotosJimmi(imagenes) {
   if (!imagenes || !imagenes.length) return "";
   return `<div class="jimmi-fotos">${imagenes.map(im => {
-    const src = escHtml(im.data || urlJimmi(im.url));
+    const raw = (im && (im.data || urlJimmi(im.url))) || "";
+    const src = raw.indexOf("data:") === 0 ? raw.replace(/"/g, "") : escHtml(raw);
     const nom = escHtml(im.nombre || "foto");
+    if (!src) return "";
     return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy" onclick="verFotoGrande(this.src)">`;
   }).join("")}</div>`;
 }
