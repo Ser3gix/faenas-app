@@ -304,6 +304,61 @@ def anotaciones_junto_a_faena(conn, faena_id=None, numero=None):
     return acc
 
 
+def _es_foto_adjunto(fila):
+    mime = str(fila.get("mime_type") or "").lower()
+    if mime.startswith("image/"):
+        return True
+    nombre = str(fila.get("nombre") or "").lower()
+    return nombre.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp"))
+
+
+def fotos_junto_a_faena(conn, faena_id=None, numero=None):
+    """Fotos unidas a la faena en esta conexión: fotos_faena y archivos de imagen."""
+    acc = []
+    vistos = set()
+    ids = _ids_faena_en_conexion(conn, faena_id, numero)
+    consultas = []
+    for fid in ids:
+        consultas.append((
+            "SELECT id, nombre, fecha FROM fotos_faena WHERE faena_id=? ORDER BY id DESC",
+            (fid,),
+        ))
+        consultas.append((
+            "SELECT id, nombre, fecha, mime_type FROM archivos_faena WHERE faena_id=? ORDER BY id DESC",
+            (fid,),
+        ))
+    if numero:
+        for v in _variantes_numero_faena(numero):
+            consultas.append((
+                "SELECT a.id, a.nombre, a.fecha FROM fotos_faena a "
+                "INNER JOIN faenas f ON f.id=a.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
+                (v, v),
+            ))
+            consultas.append((
+                "SELECT a.id, a.nombre, a.fecha, a.mime_type FROM archivos_faena a "
+                "INNER JOIN faenas f ON f.id=a.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
+                (v, v),
+            ))
+    for sql, params in consultas:
+        try:
+            filas = filas_a_lista(conn.execute(sql, params).fetchall())
+        except Exception:
+            continue
+        es_archivo = "archivos_faena" in sql
+        for fo in filas:
+            if es_archivo and not _es_foto_adjunto(fo):
+                continue
+            nombre = (fo.get("nombre") or "").strip() or "foto"
+            clave = (str(fo.get("id") or ""), nombre.lower())
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            acc.append({"nombre": nombre, "fecha": str(fo.get("fecha") or "")})
+    return acc
+
+
 def listar_anotaciones_faena(faena_id=None, numero=None):
     """Anotaciones junto a la faena: misma base (TiDB o SQLite). El SQLite local solo por número."""
     conns = []

@@ -6,7 +6,7 @@ import json
 
 from database import (
     get_connection, get_sqlite_local, fila_a_dict, filas_a_lista,
-    listar_anotaciones_faena, anotaciones_junto_a_faena,
+    listar_anotaciones_faena, anotaciones_junto_a_faena, fotos_junto_a_faena,
 )
 
 
@@ -99,6 +99,7 @@ _STOP_CONSULTA = {
     "lista", "listado", "todos", "todas", "algun", "alguno", "alguna",
     "existe", "existen", "consulta", "consultar", "app", "datos",
     "registro", "registros", "ficha", "fichas", "numero", "mas", "menos",
+    "ensena", "ensename", "ensenar", "muestra", "muestrame", "mostrar",
 }
 
 _QUITAR_BUSQUEDA = {
@@ -330,6 +331,16 @@ def _pide_listado_faenas(pregunta):
     ))
 
 
+def _pide_detalle_todas(pregunta):
+    txt = _norm_txt(pregunta)
+    pal = set(txt.split())
+    if not (pal & {"datos", "informacion", "ficha", "fichas", "completo", "completa", "completos", "completas"}):
+        return False
+    return any(k in txt for k in (
+        "todas", "todos", "las faenas", "cada faena", "cada una",
+    ))
+
+
 def _resolver_faena(conn, pregunta, faena_id=None):
     tokens = _tokens_busqueda(pregunta)
     for num in _numeros_pregunta(pregunta):
@@ -380,6 +391,34 @@ def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
     return listar_anotaciones_faena(faena_id, numero)[:limite]
 
 
+def _mezclar_fotos(acc, filas):
+    vistos = {(str(f.get("nombre") or "").lower(), str(f.get("fecha") or "")) for f in acc}
+    for fo in filas:
+        clave = (str(fo.get("nombre") or "").lower(), str(fo.get("fecha") or ""))
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        acc.append(fo)
+    return acc
+
+
+def _fotos_de_faena(conn, faena, limite=40):
+    fid = faena.get("id")
+    numero = faena.get("numero") or ""
+    acc = list(fotos_junto_a_faena(conn, fid, numero))
+    if getattr(conn, "_backend", "") == "mysql":
+        sqlite = None
+        try:
+            sqlite = get_sqlite_local()
+            acc = _mezclar_fotos(acc, fotos_junto_a_faena(sqlite, None, numero))
+        except Exception as e:
+            print("jimmi sqlite fotos:", e)
+        finally:
+            if sqlite:
+                sqlite.close()
+    return acc[:limite]
+
+
 def _filas_faena_sql(conn, sql, params):
     try:
         return filas_a_lista(conn.execute(sql, params).fetchall())
@@ -401,11 +440,7 @@ def _cargar_faena_completa(conn, faena):
         "WHERE faena_id=? ORDER BY id LIMIT 40",
         (fid,),
     )
-    fotos = _filas_faena_sql(
-        conn,
-        "SELECT nombre, fecha FROM fotos_faena WHERE faena_id=? ORDER BY id DESC LIMIT 30",
-        (fid,),
-    )
+    fotos = _fotos_de_faena(conn, faena)
     extracciones = _filas_faena_sql(
         conn,
         "SELECT origen, proveedor, fecha_documento, resumen FROM extracciones_compra "
@@ -489,9 +524,14 @@ def _texto_faena_completa(datos):
             partes.append(f"- {t.get('categoria') or 'otro'}: {mins:.0f} min ({mins/60:.1f} h)")
 
     fotos = datos.get("fotos") or []
-    partes.append(f"Fotos: {len(fotos)}" + ("" if not fotos else ""))
-    for fo in fotos[:15]:
-        partes.append(f"- {fo.get('nombre') or 'foto'}")
+    partes.append("Fotos:")
+    if not fotos:
+        partes.append("- ninguna")
+    else:
+        for fo in fotos[:15]:
+            partes.append(f"- {fo.get('nombre') or 'foto'}")
+        if len(fotos) > 15:
+            partes.append(f"- Y {len(fotos) - 15} más.")
 
     compras = datos.get("compras") or []
     if compras:
@@ -1146,8 +1186,39 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
             concreta = _resolver_faena(conn, pregunta, faena_id)
-            listado = _pide_listado_faenas(pregunta)
-            if concreta and not listado:
+            detalle_todas = _pide_detalle_todas(pregunta)
+            listado = _pide_listado_faenas(pregunta) and not detalle_todas
+            if detalle_todas:
+                estado = _estado_faena_pregunta(pregunta)
+                activas = _faenas_activas(conn, 500)
+                terminadas = _faenas_terminadas(conn, 500)
+                if estado == "activas":
+                    pool = activas
+                elif estado == "terminadas":
+                    pool = terminadas
+                else:
+                    pool = _todas_faenas(conn) or (activas + terminadas)
+                if tokens:
+                    filtrado = _filtra_por_tokens(
+                        pool,
+                        tokens,
+                        lambda f: " ".join(str(f.get(k) or "") for k in (
+                            "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
+                        )),
+                    )
+                    if filtrado:
+                        pool = filtrado
+                limite = 8
+                bloques = []
+                for f in pool[:limite]:
+                    fila = _faena_por_id(conn, f.get("id")) or f
+                    bloques.append(_texto_faena_completa(_cargar_faena_completa(conn, fila)))
+                if not bloques:
+                    texto_f = "No encuentro faenas para listar con todos los datos."
+                else:
+                    extra = f"\n\nY {len(pool) - limite} faenas más." if len(pool) > limite else ""
+                    texto_f = "\n\n".join(bloques) + extra
+            elif concreta and not listado:
                 if _pide_notas(pregunta):
                     notas = _anotaciones_de_faena(
                         conn, concreta.get("id"), numero=concreta.get("numero") or "",
