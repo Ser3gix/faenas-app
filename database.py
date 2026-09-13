@@ -366,23 +366,23 @@ def fotos_junto_a_faena(conn, faena_id=None, numero=None):
     consultas = []
     for fid in ids:
         consultas.append((
-            "SELECT id, nombre, fecha FROM fotos_faena WHERE faena_id=? ORDER BY id DESC",
+            "SELECT a.id, a.faena_id, a.nombre, a.fecha FROM fotos_faena a WHERE a.faena_id=? ORDER BY a.id DESC",
             (fid,),
         ))
         consultas.append((
-            "SELECT id, nombre, fecha, mime_type FROM archivos_faena WHERE faena_id=? ORDER BY id DESC",
+            "SELECT a.id, a.faena_id, a.nombre, a.fecha, a.mime_type FROM archivos_faena a WHERE a.faena_id=? ORDER BY a.id DESC",
             (fid,),
         ))
     if numero:
         for v in _variantes_numero_faena(numero):
             consultas.append((
-                "SELECT a.id, a.nombre, a.fecha FROM fotos_faena a "
+                "SELECT a.id, a.faena_id, a.nombre, a.fecha FROM fotos_faena a "
                 "INNER JOIN faenas f ON f.id=a.faena_id "
                 "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
                 (v, v),
             ))
             consultas.append((
-                "SELECT a.id, a.nombre, a.fecha, a.mime_type FROM archivos_faena a "
+                "SELECT a.id, a.faena_id, a.nombre, a.fecha, a.mime_type FROM archivos_faena a "
                 "INNER JOIN faenas f ON f.id=a.faena_id "
                 "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
                 (v, v),
@@ -397,11 +397,63 @@ def fotos_junto_a_faena(conn, faena_id=None, numero=None):
             if es_archivo and not _es_foto_adjunto(fo):
                 continue
             nombre = (fo.get("nombre") or "").strip() or "foto"
-            clave = (str(fo.get("id") or ""), nombre.lower())
+            clave = ("faena", str(fo.get("id") or ""), nombre.lower())
             if clave in vistos:
                 continue
             vistos.add(clave)
-            acc.append({"nombre": nombre, "fecha": str(fo.get("fecha") or "")})
+            fid_foto = fo.get("faena_id") or faena_id
+            acc.append({
+                "origen": "faena",
+                "id": fo.get("id"),
+                "faena_id": fid_foto,
+                "nombre": nombre,
+                "fecha": str(fo.get("fecha") or ""),
+                "url": f"/faenas/{fid_foto}/fotos/{nombre}" if fid_foto and nombre else "",
+            })
+    return acc
+
+
+def book_fotos_junto_a_faena(conn, faena_id=None, numero=None):
+    """Fotos del book ligadas a la faena, por id o por número."""
+    acc = []
+    vistos = set()
+    ids = _ids_faena_en_conexion(conn, faena_id, numero)
+    consultas = []
+    for fid in ids:
+        consultas.append((
+            "SELECT id, faena_id, ruta_foto, titulo, descripcion, fecha FROM book_fotos "
+            "WHERE faena_id=? ORDER BY orden ASC, id DESC",
+            (fid,),
+        ))
+    if numero:
+        for v in _variantes_numero_faena(numero):
+            consultas.append((
+                "SELECT b.id, b.faena_id, b.ruta_foto, b.titulo, b.descripcion, b.fecha "
+                "FROM book_fotos b INNER JOIN faenas f ON f.id=b.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY b.orden ASC, b.id DESC",
+                (v, v),
+            ))
+    for sql, params in consultas:
+        try:
+            filas = filas_a_lista(conn.execute(sql, params).fetchall())
+        except Exception:
+            continue
+        for fo in filas:
+            bid = fo.get("id")
+            if bid in vistos:
+                continue
+            vistos.add(bid)
+            titulo = (fo.get("titulo") or "").strip()
+            nombre = titulo or os.path.basename(str(fo.get("ruta_foto") or "").replace("\\", "/")) or f"book_{bid}"
+            acc.append({
+                "origen": "book",
+                "id": bid,
+                "faena_id": fo.get("faena_id"),
+                "nombre": nombre,
+                "titulo": titulo,
+                "fecha": str(fo.get("fecha") or ""),
+                "url": f"/book/{bid}/imagen" if bid else "",
+            })
     return acc
 
 

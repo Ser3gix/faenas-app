@@ -8,7 +8,7 @@ import re
 from database import (
     get_connection, get_sqlite_local, fila_a_dict, filas_a_lista,
     listar_anotaciones_faena, anotaciones_junto_a_faena, fotos_junto_a_faena,
-    insertar_anotacion_faena,
+    book_fotos_junto_a_faena, insertar_anotacion_faena,
 )
 
 
@@ -210,6 +210,22 @@ def _pide_ficha(pregunta):
 def _pide_notas(pregunta):
     pal = set(_norm_txt(pregunta).split())
     return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
+
+
+def _pide_fotos(pregunta):
+    pal = set(_norm_txt(pregunta).split())
+    return bool(pal & {"foto", "fotos", "imagen", "imagenes"})
+
+
+def _pide_solo_fotos(pregunta):
+    if not _pide_fotos(pregunta):
+        return False
+    pal = set(_norm_txt(pregunta).split())
+    if pal & {"solo", "solamente", "unicamente"}:
+        return True
+    if pal & {"datos", "informacion", "ficha", "resumen", "todo", "todos", "todas"}:
+        return False
+    return True
 
 
 _RE_VERBO_GUARDAR = re.compile(
@@ -565,9 +581,12 @@ def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
 
 
 def _mezclar_fotos(acc, filas):
-    vistos = {(str(f.get("nombre") or "").lower(), str(f.get("fecha") or "")) for f in acc}
+    vistos = {
+        (str(f.get("origen") or ""), str(f.get("id") or ""), str(f.get("nombre") or "").lower(), str(f.get("fecha") or ""))
+        for f in acc
+    }
     for fo in filas:
-        clave = (str(fo.get("nombre") or "").lower(), str(fo.get("fecha") or ""))
+        clave = (str(fo.get("origen") or ""), str(fo.get("id") or ""), str(fo.get("nombre") or "").lower(), str(fo.get("fecha") or ""))
         if clave in vistos:
             continue
         vistos.add(clave)
@@ -579,17 +598,39 @@ def _fotos_de_faena(conn, faena, limite=40):
     fid = faena.get("id")
     numero = faena.get("numero") or ""
     acc = list(fotos_junto_a_faena(conn, fid, numero))
+    acc = _mezclar_fotos(acc, book_fotos_junto_a_faena(conn, fid, numero))
     if getattr(conn, "_backend", "") == "mysql":
         sqlite = None
         try:
             sqlite = get_sqlite_local()
             acc = _mezclar_fotos(acc, fotos_junto_a_faena(sqlite, None, numero))
+            acc = _mezclar_fotos(acc, book_fotos_junto_a_faena(sqlite, None, numero))
         except Exception as e:
             print("jimmi sqlite fotos:", e)
         finally:
             if sqlite:
                 sqlite.close()
     return acc[:limite]
+
+
+def _imagenes_chat(fotos, limite=24):
+    out = []
+    vistos = set()
+    for fo in fotos or []:
+        url = str(fo.get("url") or "").strip()
+        if not url or url in vistos:
+            continue
+        vistos.add(url)
+        out.append({
+            "url": url,
+            "nombre": fo.get("nombre") or fo.get("titulo") or "foto",
+            "origen": fo.get("origen") or "faena",
+            "id": fo.get("id"),
+            "faena_id": fo.get("faena_id"),
+        })
+        if len(out) >= limite:
+            break
+    return out
 
 
 def _filas_faena_sql(conn, sql, params):
@@ -740,6 +781,23 @@ def _texto_notas_faena(faena, anotaciones):
     if not lineas:
         return f"La faena {num} ({cliente}, {trabajo}) no tiene anotaciones de texto."
     return f"Anotaciones de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas)
+
+
+def _texto_fotos_faena(faena, fotos):
+    num = faena.get("numero") or faena.get("id") or ""
+    cliente = faena.get("cliente_nombre") or "sin cliente"
+    trabajo = faena.get("tipo_trabajo") or "sin tipo"
+    if not fotos:
+        return f"La faena {num} ({cliente}, {trabajo}) no tiene fotos."
+    lineas = []
+    for fo in fotos[:40]:
+        nombre = (fo.get("nombre") or fo.get("titulo") or "foto").strip()
+        fecha = str(fo.get("fecha") or "").strip()
+        pref = f"[{fecha}] " if fecha else ""
+        origen = "book" if (fo.get("origen") == "book") else "faena"
+        lineas.append(f"- {pref}[{origen}] {nombre}".strip())
+    extra = f"\n- Y {len(fotos) - 40} más." if len(fotos) > 40 else ""
+    return f"Fotos de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas) + extra
 
 
 def _etiquetas_linea(linea):
@@ -1455,6 +1513,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
 
     tarea_guardar = None
     anotacion_guardada = None
+    imagenes_out = None
     conn = get_connection()
     try:
         texto_m = ""
@@ -1481,7 +1540,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
             detalle_todas = _pide_detalle_todas(pregunta) and not guardar_nota
             listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
-            if _pide_notas(pregunta) and not guardar_nota:
+            if (_pide_notas(pregunta) or _pide_solo_fotos(pregunta)) and not guardar_nota:
                 listado = False
             if guardar_nota:
                 contenido = _texto_a_guardar(pregunta, historial)
@@ -1529,6 +1588,19 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 else:
                     extra = f"\n\nY {len(pool) - limite} faenas más." if len(pool) > limite else ""
                     texto_f = "\n\n".join(bloques) + extra
+            elif _pide_solo_fotos(pregunta) and not _pide_notas(pregunta) and not detalle_todas:
+                numero = _numero_consulta(pregunta, historial, concreta)
+                fid = concreta.get("id") if concreta else None
+                if numero or fid:
+                    faena_txt = concreta or {"numero": numero or fid}
+                    fotos = _fotos_de_faena(conn, faena_txt)
+                    if not concreta and not fotos and numero:
+                        texto_f = f"No encuentro la faena {numero}."
+                    else:
+                        texto_f = _texto_fotos_faena(faena_txt, fotos)
+                        imagenes_out = _imagenes_chat(fotos)
+                else:
+                    texto_f = "Dime el número de la faena y te digo las fotos."
             elif _pide_notas(pregunta) and not detalle_todas:
                 numero = _numero_consulta(pregunta, historial, concreta)
                 fid = concreta.get("id") if concreta else None
@@ -1600,6 +1672,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
     out = {"usar": True, "texto": "\n\n".join(partes)}
     if anotacion_guardada:
         out["anotacion_guardada"] = anotacion_guardada
+    if imagenes_out:
+        out["imagenes"] = imagenes_out
     return out
 
 
@@ -1626,7 +1700,7 @@ def _contents_conversacion(historial, pregunta, payload):
     return contents
 
 
-def _pack_datos(texto, modo, anotacion_guardada=None, modelo=""):
+def _pack_datos(texto, modo, anotacion_guardada=None, modelo="", imagenes=None):
     data = {
         "respuesta": texto,
         "propuestas": [],
@@ -1637,6 +1711,8 @@ def _pack_datos(texto, modo, anotacion_guardada=None, modelo=""):
     }
     if anotacion_guardada:
         data["anotacion_guardada"] = anotacion_guardada
+    if imagenes:
+        data["imagenes"] = imagenes
     return {"ok": True, "data": data}
 
 
@@ -1658,31 +1734,24 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
     texto_local = (local or {}).get("texto") or ""
     if _pide_guardar_nota(pregunta) and not _pide_web(pregunta):
         if local and local.get("usar") and texto_local:
-            return _pack_datos(texto_local, modo, local.get("anotacion_guardada"))
+            return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
         return _pack_datos(
             "No he podido guardar la anotación. Dime el número de la faena y el texto.",
             modo,
         )
-    forzar_datos = _pide_notas(pregunta) or _pide_ficha(pregunta) or _es_seguimiento(pregunta)
+    forzar_datos = (
+        _pide_notas(pregunta) or _pide_ficha(pregunta) or _pide_fotos(pregunta)
+        or _es_seguimiento(pregunta)
+    )
     if (
         local and local.get("usar") and not _pide_web(pregunta)
         and (forzar_datos or "Dime el número de la faena" not in texto_local)
     ):
-        return _pack_datos(texto_local, modo, local.get("anotacion_guardada"))
+        return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
 
     if not IA_API_KEY:
         if local and local.get("texto"):
-            return {
-                "ok": True,
-                "data": {
-                    "respuesta": local.get("texto"),
-                    "propuestas": [],
-                    "ticket": None,
-                    "motor": "datos",
-                    "modelo": "",
-                    "modo": modo,
-                },
-            }
+            return _pack_datos(local.get("texto"), modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
         return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
 
     memoria = memoria_para_modo(modo)
@@ -1703,6 +1772,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url}]}. "
         "fuente es catalogo o web. url solo si es web. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
+        "Si preguntan solo las fotos, responde únicamente con las fotos. No repitas el resto de la ficha. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
         "No borres faenas ni clientes. "
         "Tú no puedes guardar anotaciones ni datos. No digas que has guardado, apuntado o registrado una nota si el servidor no lo ha hecho."
@@ -1733,34 +1803,17 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
             raw = _peticion_gemini(**kwargs)
     except Exception as e:
         if local and local.get("texto"):
-            return {
-                "ok": True,
-                "data": {
-                    "respuesta": local.get("texto"),
-                    "propuestas": [],
-                    "ticket": None,
-                    "motor": "datos",
-                    "modelo": "",
-                    "modo": modo,
-                },
-            }
+            return _pack_datos(local.get("texto"), modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
         return {"ok": False, "error": f"Jimmi: {str(e)}"}
     from server2 import _GEMINI_ULTIMO_MODELO
     modelo = _GEMINI_ULTIMO_MODELO or ""
     texto = (_gemini_extraer_texto(raw) or "").strip()
     if not texto:
         if local and local.get("texto"):
-            return {
-                "ok": True,
-                "data": {
-                    "respuesta": local.get("texto"),
-                    "propuestas": [],
-                    "ticket": None,
-                    "motor": "datos",
-                    "modelo": modelo,
-                    "modo": modo,
-                },
-            }
+            return _pack_datos(
+                local.get("texto"), modo, local.get("anotacion_guardada"),
+                modelo=modelo, imagenes=local.get("imagenes"),
+            )
         return {"ok": False, "error": "Jimmi no ha podido responder"}
     ticket = extraer_ticket_de_texto(texto)
     propuestas = []

@@ -896,6 +896,8 @@ textarea { resize: vertical; min-height: 80px; }
 .msg-user { background: var(--accent); color: #fff; margin-left: auto; border-bottom-right-radius: 6px; }
 .msg-jimmi { background: var(--paper-dark); color: var(--ink); border-bottom-left-radius: 6px; }
 .msg-who { display: block; font-size: 0.72rem; font-weight: 700; opacity: 0.75; margin-bottom: 4px; }
+.jimmi-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.jimmi-foto { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; display: block; background: #d6cfc3; }
 </style>
 </head>
 <body>
@@ -1620,8 +1622,30 @@ function getServerUrl() {
   return "/api";
 }
 
-function escHtml(s) {
-  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function urlJimmi(u) {
+  u = String(u || "");
+  if (!u) return "";
+  if (/^(https?:|data:)/i.test(u)) return u;
+  const base = getServerUrl().replace(/\/$/, "");
+  if (u.startsWith("/api/")) return base + u.slice(4);
+  if (u.startsWith("/")) return base + u;
+  return base + "/" + u;
+}
+
+function htmlFotosJimmi(imagenes) {
+  if (!imagenes || !imagenes.length) return "";
+  return `<div class="jimmi-fotos">${imagenes.map(im => {
+    const src = escHtml(im.data || urlJimmi(im.url));
+    const nom = escHtml(im.nombre || "foto");
+    return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy" onclick="verFotoGrande(this.src)">`;
+  }).join("")}</div>`;
+}
+
+function htmlMsgJimmi(m) {
+  const quien = m.rol === "usuario" ? "Tú" : "Jimmi";
+  const cls = m.rol === "usuario" ? "msg-user" : "msg-jimmi";
+  const fotos = m.rol === "usuario" ? "" : htmlFotosJimmi(m.imagenes);
+  return `<div class="msg ${cls}"><span class="msg-who">${quien}</span>${escHtml(m.texto)}${fotos}</div>`;
 }
 
 function codigoFaenaSeguro(faena) {
@@ -4484,9 +4508,7 @@ async function enviarConsultaIA() {
   const faenaId = document.getElementById("ia-faena-id")?.value || "";
   const modo = modoJimmiActual();
   if (box) {
-    box.innerHTML = window._jimmiHistorial.map(m =>
-      `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
-    ).join("") + `<div class="jimmi-hint">Jimmi está pensando…</div>`;
+    box.innerHTML = window._jimmiHistorial.map(htmlMsgJimmi).join("") + `<div class="jimmi-hint">Jimmi está pensando…</div>`;
     box.scrollTop = box.scrollHeight;
   }
   document.getElementById("ia-pregunta").value = "";
@@ -4498,17 +4520,16 @@ async function enviarConsultaIA() {
     });
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
-    window._jimmiHistorial.push({ rol: "jimmi", texto });
+    const imagenes = (data.ok && data.data && data.data.imagenes) ? data.data.imagenes : [];
+    window._jimmiHistorial.push({ rol: "jimmi", texto, imagenes });
     if (data.ok && data.data && data.data.conversacion_cerrada) {
       window._jimmiHistorial = [];
     }
     if (box) {
       if (data.ok && data.data && data.data.conversacion_cerrada) {
-        box.innerHTML = `<div class="jimmi-hint">${escHtml(texto)}</div><div class="jimmi-hint">Conversación cerrada. Puedes empezar otra.</div>`;
+        box.innerHTML = `<div class="jimmi-hint">${escHtml(texto)}</div>${htmlFotosJimmi(imagenes)}<div class="jimmi-hint">Conversación cerrada. Puedes empezar otra.</div>`;
       } else {
-        box.innerHTML = (window._jimmiHistorial.length ? window._jimmiHistorial : [{ rol: "jimmi", texto }]).map(m =>
-          `<div class="msg ${m.rol === "usuario" ? "msg-user" : "msg-jimmi"}"><span class="msg-who">${m.rol === "usuario" ? "Tú" : "Jimmi"}</span>${escHtml(m.texto)}</div>`
-        ).join("");
+        box.innerHTML = (window._jimmiHistorial.length ? window._jimmiHistorial : [{ rol: "jimmi", texto, imagenes }]).map(htmlMsgJimmi).join("");
       }
       box.scrollTop = box.scrollHeight;
     }
