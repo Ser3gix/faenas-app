@@ -1624,6 +1624,25 @@ function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function urlFotoApi(u) {
+  u = String(u || "");
+  if (!u) return "";
+  if (/^(https?:|data:)/i.test(u)) return u;
+  const base = getServerUrl().replace(/\/$/, "");
+  if (u.startsWith("/api/")) return base + u.slice(4);
+  if (u.startsWith("/")) return base + u;
+  return base + "/" + u;
+}
+
+function srcFoto(p) {
+  if (!p) return "";
+  if (typeof p === "string") return urlFotoApi(p);
+  const raw = String(p.data || p.url || "");
+  if (!raw) return "";
+  if (raw.indexOf("data:") === 0) return raw;
+  return urlFotoApi(raw);
+}
+
 function codigoFaenaSeguro(faena) {
   return String(faena?.numero || faena?.id || "faena")
     .trim()
@@ -2390,20 +2409,20 @@ function renderPanelFotos(f) {
 
   const gridLocal = localFotos.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <img src="${escHtml(srcFoto(p))}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande(this.src)">
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoLocalMovil('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const gridPend = pending.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data}" alt="Foto" loading="lazy" onclick="verFotoGrande('${p.data}')">
+      <img src="${escHtml(srcFoto(p))}" alt="Foto" loading="lazy" onclick="verFotoGrande(this.src)">
       <span class="foto-pending">⏳</span>
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoPendiente('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const gridSync = syncFotos.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <img src="${escHtml(srcFoto(p))}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande(this.src)">
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoSincronizada('${faenaId}',${i})">×</button>
     </div>`).join("");
 
@@ -5212,7 +5231,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=34", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=35", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

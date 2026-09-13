@@ -11,6 +11,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file, make_response
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
@@ -284,24 +285,49 @@ def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
     return ruta, "", "", "local"
 
 
+def _url_api_foto(faena_id, nombre):
+    if not faena_id or not nombre:
+        return ""
+    return f"/api/faenas/{int(faena_id)}/fotos/{quote(str(nombre), safe='')}"
+
+
+def _es_clave_objeto(ruta):
+    ruta = (ruta or "").strip()
+    if not ruta or ruta.startswith("http://") or ruta.startswith("https://"):
+        return False
+    if os.path.isabs(ruta) or "\\" in ruta or (len(ruta) >= 2 and ruta[1] == ":"):
+        return False
+    return True
+
+
 def _payload_foto(fila):
     ruta = (fila.get("ruta_foto") or "").strip()
     contenido = (fila.get("data_base64") or "").strip()
+    nombre = fila.get("nombre") or os.path.basename(ruta.replace("\\", "/"))
+    url_api = _url_api_foto(fila.get("faena_id"), nombre)
     if contenido:
-        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
+        if contenido.startswith("data:"):
+            data = contenido
+        else:
+            data = f"data:{_mime_por_extension(nombre)};base64,{contenido}"
+    elif ruta and os.path.exists(ruta):
+        try:
+            with open(ruta, "rb") as f:
+                data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
+        except Exception:
+            data = url_api
     else:
-        data = _url_desde_ruta(ruta)
-        if not data and ruta and os.path.exists(ruta):
-            try:
-                with open(ruta, "rb") as f:
-                    data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
-            except Exception:
-                data = ""
+        publica = _url_desde_ruta(ruta)
+        data = publica if publica.startswith("http://") or publica.startswith("https://") else url_api
+    if not data:
+        data = url_api
     return {
         "id": fila.get("id"),
-        "nombre": fila.get("nombre"),
+        "faena_id": fila.get("faena_id"),
+        "nombre": nombre,
         "ruta": ruta,
         "data": data,
+        "url": url_api or data,
     }
 
 
@@ -313,7 +339,7 @@ def _url_desde_ruta(ruta):
         return ruta
     if os.path.exists(ruta):
         return ""
-    if r2_activo():
+    if r2_activo() and _es_clave_objeto(ruta):
         return url_publica(ruta)
     return ""
 
@@ -441,6 +467,18 @@ def _bytes_fotos_de_faena(faena_id, nombre_pista=""):
             pass
     finally:
         conn.close()
+    if not filas:
+        try:
+            sqlite = get_sqlite_local()
+            try:
+                filas = filas_a_lista(sqlite.execute(
+                    "SELECT nombre, ruta_foto FROM fotos_faena WHERE faena_id=? ORDER BY id",
+                    (faena_id,),
+                ).fetchall())
+            finally:
+                sqlite.close()
+        except Exception:
+            pass
     pista = (nombre_pista or "").lower()
     candidatos = []
     for fila in filas:
@@ -4367,6 +4405,29 @@ def listar_fotos(id):
         "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
     ).fetchall()
     fotos = [_payload_foto(fila) for fila in filas_a_lista(filas)]
+    nombres = {f.get("nombre") for f in fotos}
+    numero = faena.get("numero") or ""
+    try:
+        sqlite = get_sqlite_local()
+        try:
+            extra = filas_a_lista(sqlite.execute(
+                "SELECT * FROM fotos_faena WHERE faena_id=? ORDER BY id ASC", (id,)
+            ).fetchall())
+            if numero and not extra:
+                extra = filas_a_lista(sqlite.execute(
+                    "SELECT a.* FROM fotos_faena a INNER JOIN faenas f ON f.id=a.faena_id "
+                    "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id ASC",
+                    (numero, "".join(ch for ch in str(numero) if ch.isdigit()) or numero),
+                ).fetchall())
+            for fila in extra:
+                if fila.get("nombre") in nombres:
+                    continue
+                fotos.append(_payload_foto(fila))
+                nombres.add(fila.get("nombre"))
+        finally:
+            sqlite.close()
+    except Exception:
+        pass
 
     # Compatibilidad: fotos que ya existan en el disco pero no en la BD (subidas antiguas).
     carpeta_local = _resolver_carpeta_local(faena)
@@ -4388,6 +4449,51 @@ def listar_fotos(id):
 
     conn.close()
     return jsonify({"ok": True, "data": fotos})
+
+
+@app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["GET"])
+def servir_foto_faena(id, nombre):
+    conn = _conn_para_faena(id)
+    try:
+        fila = conn.execute(
+            "SELECT nombre, ruta_foto, data_base64 FROM fotos_faena WHERE faena_id=? AND nombre=?",
+            (id, nombre),
+        ).fetchone()
+    finally:
+        conn.close()
+    raw = None
+    if not fila:
+        try:
+            sqlite = get_sqlite_local()
+            try:
+                fila = sqlite.execute(
+                    "SELECT nombre, ruta_foto, data_base64 FROM fotos_faena WHERE faena_id=? AND nombre=?",
+                    (id, nombre),
+                ).fetchone()
+            finally:
+                sqlite.close()
+        except Exception:
+            fila = None
+    if fila:
+        fila = fila_a_dict(fila)
+        b64 = (fila.get("data_base64") or "").strip()
+        if b64:
+            if "," in b64:
+                b64 = b64.split(",", 1)[1]
+            try:
+                raw = base64.b64decode(b64)
+            except Exception:
+                raw = None
+        if not raw:
+            raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"), id)
+    if not raw:
+        raw = _bytes_fotos_de_faena(id, nombre)
+    if not raw:
+        return Response("No encontrada", status=404)
+    resp = send_file(io.BytesIO(raw), mimetype=_mime_por_extension(nombre), download_name=nombre)
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
+
 
 @app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["DELETE"])
 def eliminar_foto(id, nombre):
