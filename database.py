@@ -16,6 +16,7 @@ from config import (
     MYSQL_CREATE_DATABASE,
     MYSQL_SSL,
     MYSQL_USER,
+    raices_datos,
 )
 
 MYSQL_CONNECT_TIMEOUT = int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10") or 10)
@@ -214,6 +215,301 @@ def _sqlite_conectar_local():
 def get_sqlite_local():
     """Siempre SQLite local — para leer/escribir faenas archivadas."""
     return _sqlite_conectar_local()
+
+
+def _fecha_anotacion(fecha):
+    s = str(fecha or "").strip()
+    if not s:
+        return None
+    s = s.replace("T", " ").replace("Z", "")
+    if "." in s:
+        s = s.split(".")[0]
+    s = s[:19].strip()
+    return s if len(s) >= 10 else None
+
+
+def _rutas_sqlite_faenas():
+    rutas = []
+    for raiz in list(raices_datos() or []) + [os.path.dirname(DB_PATH or "")]:
+        if not raiz:
+            continue
+        p = os.path.abspath(os.path.join(raiz, "faenas.db"))
+        if os.path.isfile(p) and p not in rutas:
+            rutas.append(p)
+    dbp = os.path.abspath(DB_PATH) if DB_PATH else ""
+    if dbp and os.path.isfile(dbp) and dbp not in rutas:
+        rutas.append(dbp)
+    return rutas
+
+
+def _sqlite_conectar_ruta(path):
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return _ConnectionCompat(conn, "sqlite")
+
+
+def _variantes_numero_faena(numero):
+    n = "".join(ch for ch in str(numero or "") if ch.isdigit())
+    if not n:
+        return []
+    out = []
+    for v in (n, n.lstrip("0") or "0"):
+        if v not in out:
+            out.append(v)
+    if len(n) < 5:
+        z = n.zfill(5)
+        if z not in out:
+            out.append(z)
+    return out
+
+
+def _ids_faena_en_conexion(conn, faena_id=None, numero=None):
+    """Solo ids de faenas que existen en esta conexión. No reutiliza el id de otra base."""
+    ids = []
+    if faena_id not in (None, ""):
+        try:
+            fid = int(faena_id)
+        except Exception:
+            fid = None
+        if fid is not None:
+            try:
+                fila = conn.execute("SELECT id FROM faenas WHERE id=?", (fid,)).fetchone()
+            except Exception:
+                fila = None
+            if fila:
+                ids.append(fid)
+    if numero:
+        for v in _variantes_numero_faena(numero):
+            try:
+                filas = filas_a_lista(conn.execute(
+                    "SELECT id FROM faenas WHERE numero=? OR REPLACE(numero,'-','')=? "
+                    "OR REPLACE(REPLACE(numero,'-',''),'.','')=?",
+                    (v, v, v),
+                ).fetchall())
+            except Exception:
+                filas = []
+            for fila in filas:
+                try:
+                    i = int(fila.get("id"))
+                except Exception:
+                    continue
+                if i not in ids:
+                    ids.append(i)
+    return ids
+
+
+def anotaciones_junto_a_faena(conn, faena_id=None, numero=None, extra_ids=None):
+    """Notas de esta conexión: unidas por faena_id o por número, aunque el id no coincida entre bases."""
+    acc = []
+    vistos = set()
+    ids = list(_ids_faena_en_conexion(conn, faena_id, numero))
+    huérfanos = []
+    for x in list(extra_ids or []) + ([faena_id] if faena_id not in (None, "") else []):
+        try:
+            i = int(x)
+        except Exception:
+            continue
+        if i not in ids and i not in huérfanos:
+            huérfanos.append(i)
+    consultas = []
+    for fid in ids:
+        consultas.append((
+            "SELECT a.* FROM anotaciones a INNER JOIN faenas f ON f.id=a.faena_id "
+            "WHERE f.id=? ORDER BY a.id DESC",
+            (fid,),
+        ))
+        consultas.append(("SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC", (fid,)))
+    for hid in huérfanos:
+        consultas.append(("SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC", (hid,)))
+    if numero:
+        for v in _variantes_numero_faena(numero):
+            consultas.append((
+                "SELECT a.* FROM anotaciones a INNER JOIN faenas f ON f.id=a.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? "
+                "ORDER BY a.id DESC",
+                (v, v),
+            ))
+    for sql, params in consultas:
+        try:
+            filas = filas_a_lista(conn.execute(sql, params).fetchall())
+        except Exception as e:
+            print("anotaciones:", e)
+            continue
+        for a in filas:
+            clave = (
+                str(a.get("id") or ""),
+                str(a.get("faena_id") or ""),
+                str(a.get("contenido") or a.get("texto") or "")[:240],
+                str(a.get("fecha") or ""),
+            )
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            acc.append(a)
+    return acc
+
+
+def _es_foto_adjunto(fila):
+    mime = str(fila.get("mime_type") or "").lower()
+    if mime.startswith("image/"):
+        return True
+    nombre = str(fila.get("nombre") or "").lower()
+    return nombre.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp"))
+
+
+def fotos_junto_a_faena(conn, faena_id=None, numero=None):
+    """Fotos unidas a la faena en esta conexión: fotos_faena y archivos de imagen."""
+    acc = []
+    vistos = set()
+    ids = _ids_faena_en_conexion(conn, faena_id, numero)
+    consultas = []
+    for fid in ids:
+        consultas.append((
+            "SELECT id, nombre, fecha FROM fotos_faena WHERE faena_id=? ORDER BY id DESC",
+            (fid,),
+        ))
+        consultas.append((
+            "SELECT id, nombre, fecha, mime_type FROM archivos_faena WHERE faena_id=? ORDER BY id DESC",
+            (fid,),
+        ))
+    if numero:
+        for v in _variantes_numero_faena(numero):
+            consultas.append((
+                "SELECT a.id, a.nombre, a.fecha FROM fotos_faena a "
+                "INNER JOIN faenas f ON f.id=a.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
+                (v, v),
+            ))
+            consultas.append((
+                "SELECT a.id, a.nombre, a.fecha, a.mime_type FROM archivos_faena a "
+                "INNER JOIN faenas f ON f.id=a.faena_id "
+                "WHERE f.numero=? OR REPLACE(f.numero,'-','')=? ORDER BY a.id DESC",
+                (v, v),
+            ))
+    for sql, params in consultas:
+        try:
+            filas = filas_a_lista(conn.execute(sql, params).fetchall())
+        except Exception:
+            continue
+        es_archivo = "archivos_faena" in sql
+        for fo in filas:
+            if es_archivo and not _es_foto_adjunto(fo):
+                continue
+            nombre = (fo.get("nombre") or "").strip() or "foto"
+            clave = (str(fo.get("id") or ""), nombre.lower())
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            acc.append({"nombre": nombre, "fecha": str(fo.get("fecha") or "")})
+    return acc
+
+
+def listar_anotaciones_faena(faena_id=None, numero=None):
+    """Anotaciones de la faena en TiDB y en todos los SQLite de datos/, por id y por número."""
+    conns = []
+    try:
+        principal = get_connection()
+        conns.append(principal)
+        acc = []
+        vistos = set()
+
+        def _mezclar(filas):
+            for a in filas:
+                clave = (
+                    str(a.get("id") or ""),
+                    str(a.get("faena_id") or ""),
+                    str(a.get("contenido") or a.get("texto") or "")[:240],
+                    str(a.get("fecha") or ""),
+                )
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                acc.append(a)
+
+        ids_p = _ids_faena_en_conexion(principal, faena_id, numero)
+        _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero))
+        extra_sqlite = []
+        if getattr(principal, "_backend", "") == "mysql":
+            extra_sqlite.append(get_sqlite_local())
+        ya = {os.path.abspath(DB_PATH)} if DB_PATH else set()
+        for ruta in _rutas_sqlite_faenas():
+            if ruta in ya:
+                continue
+            ya.add(ruta)
+            extra_sqlite.append(_sqlite_conectar_ruta(ruta))
+        ids_extra = []
+        for sqlite in extra_sqlite:
+            conns.append(sqlite)
+            ids_s = _ids_faena_en_conexion(sqlite, None, numero)
+            ids_extra.extend(ids_s)
+            _mezclar(anotaciones_junto_a_faena(sqlite, None, numero, extra_ids=ids_p))
+        if ids_extra:
+            _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero, extra_ids=ids_extra))
+        return acc
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def insertar_anotacion_faena(faena_id, tipo="texto", contenido="", fecha=None, numero=None):
+    """Escribe la nota en la base de la faena y, si hay TiDB, también en el SQLite local."""
+    conns = []
+    nuevo_id = None
+    fecha_n = _fecha_anotacion(fecha)
+    try:
+        principal = get_connection()
+        conns.append(principal)
+        fila = principal.execute("SELECT id, numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        if not fila and getattr(principal, "_backend", "") == "mysql":
+            sqlite = get_sqlite_local()
+            conns.append(sqlite)
+            fila = sqlite.execute("SELECT id, numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        datos_f = fila_a_dict(fila) if fila else {}
+        numero = numero or (datos_f.get("numero") if datos_f else None)
+        destinos = [principal]
+        if getattr(principal, "_backend", "") == "mysql":
+            if not any(getattr(c, "_backend", "") == "sqlite" for c in conns):
+                conns.append(get_sqlite_local())
+            destinos = list(conns)
+        for conn in destinos:
+            ids = _ids_faena_en_conexion(conn, faena_id if conn is principal else None, numero)
+            if not ids:
+                try:
+                    fid0 = int(faena_id) if faena_id not in (None, "") else None
+                except Exception:
+                    fid0 = None
+                if fid0 is not None and conn.execute("SELECT id FROM faenas WHERE id=?", (fid0,)).fetchone():
+                    ids = [fid0]
+                else:
+                    continue
+            fid = ids[0]
+            try:
+                if fecha_n:
+                    cur = conn.execute(
+                        "INSERT INTO anotaciones (faena_id, tipo, contenido, fecha) VALUES (?, ?, ?, ?)",
+                        (fid, tipo or "texto", contenido or "", fecha_n),
+                    )
+                else:
+                    cur = conn.execute(
+                        "INSERT INTO anotaciones (faena_id, tipo, contenido) VALUES (?, ?, ?)",
+                        (fid, tipo or "texto", contenido or ""),
+                    )
+                conn.commit()
+                if nuevo_id is None:
+                    nuevo_id = cur.lastrowid
+            except Exception as e:
+                print("insert anotacion:", e)
+        return nuevo_id
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def inicializar_sqlite_local():
@@ -578,7 +874,7 @@ def _crear_esquema_mysql(cursor):
             id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             faena_id INT NOT NULL,
             tipo VARCHAR(50) NOT NULL DEFAULT 'texto',
-            contenido VARCHAR(5000) NOT NULL DEFAULT '',
+            contenido TEXT NOT NULL,
             fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_anotaciones_faenas
                 FOREIGN KEY (faena_id) REFERENCES faenas(id)
@@ -798,7 +1094,18 @@ def _crear_esquema_mysql(cursor):
         pass
 
     _asegurar_columna_fase(cursor, mysql=True)
+    _asegurar_anotaciones_contenido(cursor, mysql=True)
     _asegurar_categorias_material(cursor, mysql=True)
+
+
+def _asegurar_anotaciones_contenido(cursor, mysql=False):
+    """En TiDB el contenido era VARCHAR(5000); las notas van en TEXT, como en SQLite."""
+    if not mysql:
+        return
+    try:
+        cursor.execute("ALTER TABLE anotaciones MODIFY contenido TEXT NOT NULL")
+    except Exception:
+        pass
 
 
 def _asegurar_columna_fase(cursor, mysql=False):

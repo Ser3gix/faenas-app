@@ -27,13 +27,14 @@ from config import HOST, PORT, PUBLIC_BASE_URL, CURSOR_PATH, CARPETA_RAIZ, APP_D
 from database import (
     inicializar_db, get_connection, get_sqlite_local, get_db_status,
     generar_numero_faena, crear_carpeta_faena,
-    fila_a_dict, filas_a_lista,
+    fila_a_dict, filas_a_lista, listar_anotaciones_faena, insertar_anotacion_faena,
     CATEGORIAS_MATERIAL_DEFECTO,
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
 from secretario import (
     chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle,
     escribir_contexto, borrar_linea_contexto, guardar_extraccion_compra, extraer_referencia_faena,
+    cerrar_conversacion,
 )
 
 try:
@@ -64,9 +65,19 @@ TICKET_IA_API_KEY = (os.environ.get("TICKET_CLAVE_API") or "").strip()
 IA_PROVIDER = (os.environ.get("IA_PROVIDER") or "gemini").strip().lower()
 IA_API_URL = os.environ.get("IA_API_URL", "").strip()
 IA_MODEL = (os.environ.get("IA_MODEL") or "").strip()
-TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or "gemini-flash-latest").strip()
+_GEMINI_MODELO_POR_DEFECTO = "gemini-3.5-flash-lite"
+TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or _GEMINI_MODELO_POR_DEFECTO).strip()
 IA_MODO = (os.environ.get("IA_MODO") or "local").strip().lower()
 _GEMINI_MODEL_CACHE = {}
+_GEMINI_ULTIMO_MODELO = ""
+_GEMINI_MODELOS_CANDIDATOS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-lite-latest",
+    "gemini-flash-latest",
+    "gemini-pro-latest",
+]
 
 if pytesseract is not None:
     posibles_tesseract = [
@@ -507,8 +518,60 @@ Devuelve SOLO JSON con proveedor, fecha, total_ticket y articulos (nombre, canti
 Ignora IVA, portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
+def _gemini_nombre_modelo(nombre):
+    return (nombre or "").split("/")[-1].strip()
+
+
+def _gemini_modelo_retirado(nombre):
+    n = _gemini_nombre_modelo(nombre).lower()
+    if not n:
+        return True
+    if n.startswith("gemini-1.5-") or n.startswith("gemini-2.0-") or n.startswith("gemini-2.5-"):
+        return True
+    if n == "gemini-pro":
+        return True
+    return False
+
+
+def _gemini_modelo_sugerido(detalle):
+    hallado = re.search(r"use models/([a-zA-Z0-9._-]+)", detalle or "", re.I)
+    if not hallado:
+        return ""
+    sugerido = _gemini_nombre_modelo(hallado.group(1))
+    if _gemini_modelo_retirado(sugerido):
+        return ""
+    return sugerido
+
+
+def _gemini_hay_que_cambiar_modelo(code, detalle):
+    txt = (detalle or "").lower()
+    if int(code or 0) == 404:
+        return True
+    if "no longer available" in txt:
+        return True
+    if "not_found" in txt and "model" in txt:
+        return True
+    return False
+
+
+def _gemini_candidatos(modelo_preferido=None):
+    vistos = []
+    for nombre in (
+        modelo_preferido,
+        TICKET_IA_MODEL,
+        IA_MODEL,
+        _GEMINI_MODELO_POR_DEFECTO,
+        *_GEMINI_MODELOS_CANDIDATOS,
+    ):
+        n = _gemini_nombre_modelo(nombre)
+        if not n or n in vistos or _gemini_modelo_retirado(n):
+            continue
+        vistos.append(n)
+    return vistos or [_GEMINI_MODELO_POR_DEFECTO]
+
+
 def _gemini_endpoint(model=None, api_key=None):
-    modelo = (model or _gemini_model_activo(api_key=api_key, modelo_preferido=IA_MODEL or None) or IA_MODEL or "gemini-flash-latest").strip()
+    modelo = (model or _gemini_model_activo(api_key=api_key, modelo_preferido=IA_MODEL or None) or _GEMINI_MODELO_POR_DEFECTO).strip()
     clave = (api_key or IA_API_KEY).strip()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={clave}"
 
@@ -516,24 +579,14 @@ def _gemini_endpoint(model=None, api_key=None):
 def _gemini_model_activo(api_key=None, modelo_preferido=None):
     clave = (api_key or IA_API_KEY or "").strip()
     cache_key = clave or "default"
-    if cache_key in _GEMINI_MODEL_CACHE:
-        return _GEMINI_MODEL_CACHE[cache_key]
+    cacheado = _GEMINI_MODEL_CACHE.get(cache_key) or ""
+    if cacheado and not _gemini_modelo_retirado(cacheado):
+        return cacheado
+    if cacheado:
+        _GEMINI_MODEL_CACHE.pop(cache_key, None)
+    preferidos = _gemini_candidatos(modelo_preferido)
     if not clave:
-        return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
-    candidatos_prioritarios = [
-        modelo_preferido,
-        TICKET_IA_MODEL,
-        IA_MODEL,
-        "gemini-flash-latest",
-        "gemini-flash-lite-latest",
-        "gemini-pro-latest",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro",
-    ]
+        return preferidos[0]
     try:
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models?key={clave}",
@@ -544,12 +597,12 @@ def _gemini_model_activo(api_key=None, modelo_preferido=None):
         modelos = raw.get("models") if isinstance(raw, dict) else []
         disponibles = []
         for modelo in modelos or []:
-            nombre = (modelo.get("name") or "").split("/")[-1]
+            nombre = _gemini_nombre_modelo(modelo.get("name") or "")
             metodos = modelo.get("supportedGenerationMethods") or []
-            if nombre and ("generateContent" in metodos or not metodos):
+            if nombre and not _gemini_modelo_retirado(nombre) and ("generateContent" in metodos or not metodos):
                 disponibles.append(nombre)
-        for candidato in candidatos_prioritarios:
-            if candidato and candidato in disponibles:
+        for candidato in preferidos:
+            if candidato in disponibles:
                 _GEMINI_MODEL_CACHE[cache_key] = candidato
                 return candidato
         if disponibles:
@@ -557,7 +610,7 @@ def _gemini_model_activo(api_key=None, modelo_preferido=None):
             return disponibles[0]
     except Exception:
         pass
-    return modelo_preferido or TICKET_IA_MODEL or IA_MODEL or "gemini-flash-latest"
+    return preferidos[0]
 
 
 def _gemini_extraer_texto(raw):
@@ -622,7 +675,10 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
     clave = (api_key or IA_API_KEY or "").strip()
     if not clave:
         raise RuntimeError("No hay API key configurada")
+    global _GEMINI_ULTIMO_MODELO
     modelo_solicitado = (model or "").strip() or _gemini_model_activo(api_key=clave, modelo_preferido=IA_MODEL or None)
+    if _gemini_modelo_retirado(modelo_solicitado):
+        modelo_solicitado = _gemini_model_activo(api_key=clave, modelo_preferido=None) or _GEMINI_MODELO_POR_DEFECTO
     payload = {
         "contents": contents,
         "generationConfig": {
@@ -638,6 +694,7 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
         payload["tools"] = tools
 
     def _enviar(modelo_en_uso):
+        global _GEMINI_ULTIMO_MODELO
         req = urllib.request.Request(
             _gemini_endpoint(model=modelo_en_uso, api_key=clave),
             data=json.dumps(payload).encode("utf-8"),
@@ -645,7 +702,41 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8", "ignore"))
+            datos = json.loads(resp.read().decode("utf-8", "ignore"))
+            _GEMINI_ULTIMO_MODELO = modelo_en_uso
+            if not _gemini_modelo_retirado(modelo_en_uso):
+                _GEMINI_MODEL_CACHE[clave or "default"] = modelo_en_uso
+            return datos
+
+    def _reintentar_modelos(modelo_inicial, detalle_inicial, solo_503=False):
+        cache_key = clave or "default"
+        _GEMINI_MODEL_CACHE.pop(cache_key, None)
+        candidatos = []
+        sugerido = _gemini_modelo_sugerido(detalle_inicial)
+        if sugerido:
+            candidatos.append(sugerido)
+        for m in _gemini_candidatos(None):
+            if m not in candidatos:
+                candidatos.append(m)
+        ultimo_detalle = detalle_inicial
+        ultimo_reason = ""
+        for alt in candidatos:
+            if not alt or alt == modelo_inicial or _gemini_modelo_retirado(alt):
+                continue
+            try:
+                return _enviar(alt)
+            except urllib.error.HTTPError as e_alt:
+                detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
+                ultimo_detalle = detalle_alt or ultimo_detalle
+                ultimo_reason = e_alt.reason or str(e_alt)
+                if solo_503 and e_alt.code == 503:
+                    continue
+                if _gemini_hay_que_cambiar_modelo(e_alt.code, detalle_alt):
+                    continue
+                raise RuntimeError(f"Error de Gemini: {ultimo_reason} {detalle_alt}".strip())
+        if solo_503:
+            raise RuntimeError(f"Gemini no disponible temporalmente (503). {ultimo_detalle}".strip())
+        raise RuntimeError(f"Error de Gemini: modelo no disponible ({modelo_inicial}). {ultimo_detalle}".strip())
 
     try:
         raw = _enviar(modelo_solicitado)
@@ -665,46 +756,10 @@ def _peticion_gemini(contents, system_instruction=None, response_mime_type=None,
             except Exception:
                 pass
             raise RuntimeError(f"Gemini sin cuota temporal (429). Reintenta en {retry_delay or 'unos segundos'}. {detalle}".strip())
-        if e.code == 404:
-            cache_key = clave or "default"
-            if cache_key in _GEMINI_MODEL_CACHE:
-                _GEMINI_MODEL_CACHE.pop(cache_key, None)
-            candidatos = []
-            modelo_descubierto = _gemini_model_activo(api_key=clave, modelo_preferido=None)
-            if modelo_descubierto:
-                candidatos.append(modelo_descubierto)
-            for m in ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]:
-                if m not in candidatos:
-                    candidatos.append(m)
-            for alt in candidatos:
-                if not alt or alt == modelo_solicitado:
-                    continue
-                try:
-                    return _enviar(alt)
-                except urllib.error.HTTPError as e_alt:
-                    if e_alt.code == 404:
-                        continue
-                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
-                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
-            raise RuntimeError(f"Error de Gemini: modelo no disponible ({modelo_solicitado}). {detalle}".strip())
         if e.code == 503:
-            # Un modelo puede estar saturado aunque la API key sea valida.
-            candidatos = [
-                "gemini-2.5-flash-lite",
-                "gemini-2.5-flash",
-                "gemini-flash-lite-latest",
-            ]
-            for alt in candidatos:
-                if not alt or alt == modelo_solicitado:
-                    continue
-                try:
-                    return _enviar(alt)
-                except urllib.error.HTTPError as e_alt:
-                    if e_alt.code == 503:
-                        continue
-                    detalle_alt = e_alt.read().decode("utf-8", "ignore") if hasattr(e_alt, "read") else ""
-                    raise RuntimeError(f"Error de Gemini: {e_alt.reason or str(e_alt)} {detalle_alt}".strip())
-            raise RuntimeError(f"Gemini no disponible temporalmente (503). {detalle}".strip())
+            return _reintentar_modelos(modelo_solicitado, detalle, solo_503=True)
+        if _gemini_hay_que_cambiar_modelo(e.code, detalle):
+            return _reintentar_modelos(modelo_solicitado, detalle)
         raise RuntimeError(f"Error de Gemini: {e.reason or str(e)} {detalle}".strip())
     return raw
 
@@ -1559,25 +1614,32 @@ def descargar_zip_faena(id):
 # -------------------- ANOTACIONES --------------------
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["GET"])
 def get_anotaciones(id):
+    numero = None
     conn = _conn_para_faena(id)
-    filas = conn.execute(
-        "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY fecha DESC", (id,)
-    ).fetchall()
+    fila = conn.execute("SELECT numero FROM faenas WHERE id=?", (id,)).fetchone()
+    if fila:
+        numero = fila["numero"] if isinstance(fila, dict) else fila[0]
     conn.close()
-    return jsonify({"ok": True, "data": filas_a_lista(filas)})
+    return jsonify({"ok": True, "data": listar_anotaciones_faena(id, numero)})
 
 @app.route("/api/faenas/<int:id>/anotaciones", methods=["POST"])
 def crear_anotacion(id):
-    datos = request.json
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO anotaciones (faena_id, tipo, contenido) VALUES (?, ?, ?)",
-        (id, datos.get("tipo", "texto"), datos.get("contenido", ""))
-    )
-    conn.commit()
-    nuevo_id = cursor.lastrowid
+    datos = request.json or {}
+    numero = None
+    conn = _conn_para_faena(id)
+    fila = conn.execute("SELECT numero FROM faenas WHERE id=?", (id,)).fetchone()
+    if fila:
+        numero = fila["numero"] if isinstance(fila, dict) else fila[0]
     conn.close()
+    nuevo_id = insertar_anotacion_faena(
+        id,
+        tipo=datos.get("tipo", "texto"),
+        contenido=datos.get("contenido", ""),
+        fecha=datos.get("fecha"),
+        numero=numero,
+    )
+    if not nuevo_id:
+        return jsonify({"ok": False, "error": "No se pudo guardar la anotación"}), 500
     return jsonify({"ok": True, "data": {"id": nuevo_id}})
 
 @app.route("/api/anotaciones/<int:id>", methods=["DELETE"])
@@ -3288,6 +3350,18 @@ def secretario_chat():
         return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
 
 
+@app.route("/api/secretario/chat/cerrar", methods=["POST"])
+def secretario_chat_cerrar():
+    datos = request.json or {}
+    historial = datos.get("historial") if isinstance(datos.get("historial"), list) else []
+    modo = datos.get("modo") or datos.get("contexto") or "todo"
+    try:
+        cierre = cerrar_conversacion(historial, modo=modo)
+        return jsonify({"ok": True, "data": cierre})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
+
+
 @app.route("/api/secretario/cruzar", methods=["POST"])
 def secretario_cruzar():
     datos = request.json or {}
@@ -4086,21 +4160,19 @@ def sync_datos():
 
 @app.route("/api/sync/anotaciones", methods=["POST"])
 def sync_anotaciones():
-    datos = request.json
+    datos = request.json or {}
     anotaciones = datos.get("anotaciones", [])
-    conn = get_connection()
     insertadas = 0
     for a in anotaciones:
-        try:
-            conn.execute(
-                "INSERT INTO anotaciones (faena_id, tipo, contenido, fecha) VALUES (?, ?, ?, ?)",
-                (a["faena_id"], a.get("tipo", "texto"), a.get("contenido", ""), a.get("fecha", ""))
-            )
+        nuevo = insertar_anotacion_faena(
+            a.get("faena_id"),
+            tipo=a.get("tipo", "texto"),
+            contenido=a.get("contenido", ""),
+            fecha=a.get("fecha"),
+            numero=a.get("numero"),
+        )
+        if nuevo:
             insertadas += 1
-        except Exception:
-            pass
-    conn.commit()
-    conn.close()
     return jsonify({"ok": True, "data": {"insertadas": insertadas}})
 
 @app.route("/api/sync/anotaciones-editar", methods=["POST"])
