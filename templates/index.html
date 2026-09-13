@@ -497,8 +497,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   border: 1px solid var(--sawdust);
   border-bottom-left-radius: 2px;
 }
-.jimmi-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-.jimmi-foto { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; display: block; background: var(--sawdust); cursor: pointer; }
 .chat-hora {
   font-size: 0.65rem;
   color: #aaa;
@@ -1570,25 +1568,6 @@ async function procesarPdfViaCola(file, extra) {
 
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-function urlJimmi(u) {
-  u = String(u || "");
-  if (!u) return "";
-  if (/^(https?:|data:)/i.test(u)) return u;
-  const base = API.replace(/\/$/, "");
-  if (u.startsWith("/api/")) return base + u.slice(4);
-  if (u.startsWith("/")) return base + u;
-  return base + "/" + u;
-}
-function htmlFotosJimmi(imagenes) {
-  if (!imagenes || !imagenes.length) return "";
-  return `<div class="jimmi-fotos">${imagenes.map(im => {
-    const raw = (im && (im.data || urlJimmi(im.url))) || "";
-    const src = raw.indexOf("data:") === 0 ? raw.replace(/"/g, "") : esc(raw);
-    const nom = esc(im.nombre || "foto");
-    if (!src) return "";
-    return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy">`;
-  }).join("")}</div>`;
 }
 
 // ===== ESTADO =====
@@ -3595,25 +3574,7 @@ function poblarSelectAsistente() {
   if (contextoSel) contextoSel.innerHTML = '<option value="">— Todas —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
 }
 function añadirMensaje(texto, tipo) {
-  const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; const burbuja = document.createElement("div"); burbuja.className = "chat-burbuja"; burbuja.innerHTML = texto; div.appendChild(burbuja); const horaEl = document.createElement("div"); horaEl.className = "chat-hora"; horaEl.textContent = hora; div.appendChild(horaEl); const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
-}
-function pintarFotosJimmi(div, imagenes) {
-  if (!div || !imagenes || !imagenes.length) return;
-  const burbuja = div.querySelector(".chat-burbuja") || div;
-  const wrap = document.createElement("div");
-  wrap.className = "jimmi-fotos";
-  imagenes.forEach(im => {
-    const src = (im && (im.data || urlJimmi(im.url))) || "";
-    if (!src) return;
-    const img = document.createElement("img");
-    img.className = "jimmi-foto";
-    img.alt = (im && im.nombre) || "foto";
-    img.loading = "lazy";
-    img.src = src;
-    img.onclick = () => verFotoGrande(img.src);
-    wrap.appendChild(img);
-  });
-  if (wrap.childNodes.length) burbuja.appendChild(wrap);
+  const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; div.innerHTML = `<div class="chat-burbuja">${texto}</div><div class="chat-hora">${hora}</div>`; const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
 }
 function mostrarTyping() { const contenedor = document.getElementById("chat-mensajes"); const div = document.createElement("div"); div.className = "chat-msg asistente"; div.id = "typing-indicator"; div.innerHTML = `<div class="chat-typing"><span></span><span></span><span></span></div>`; contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; }
 function quitarTyping() { const el = document.getElementById("typing-indicator"); if (el) el.remove(); }
@@ -3630,8 +3591,7 @@ async function enviarConsulta() {
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
     if (data.ok) {
-      const msg = añadirMensaje(esc(data.data.respuesta), "asistente");
-      pintarFotosJimmi(msg, data.data.imagenes);
+      añadirMensaje(data.data.respuesta, "asistente");
       cargarContextoJimmi();
       if (data.data.conversacion_cerrada) {
         chatHistorial = [];
