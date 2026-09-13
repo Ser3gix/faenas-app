@@ -3,6 +3,7 @@ MAX_RESUMEN = 8000
 MAX_MEMORIA_MODO = 2500
 
 import json
+import re
 
 from database import (
     get_connection, get_sqlite_local, fila_a_dict, filas_a_lista,
@@ -215,11 +216,26 @@ def _pide_ultima(pregunta):
     return bool(pal & {"ultima", "ultimo", "ultimas", "ultimos", "reciente", "recientes", "actual"})
 
 
+_RE_FAENA_NUM = re.compile(r"(?i)(?:faena|numero)\s*(\d{3,6})")
+
+
+def _parece_numero_faena(dig):
+    if not dig or len(dig) < 4 or len(dig) > 6:
+        return False
+    if len(dig) == 4 and dig.startswith("20"):
+        return False
+    return True
+
+
 def _numeros_pregunta(pregunta):
     numeros = []
-    for tok in _norm_txt(pregunta).split():
+    texto = pregunta or ""
+    for m in _RE_FAENA_NUM.findall(_norm_txt(texto)):
+        if m not in numeros:
+            numeros.append(m)
+    for tok in _norm_txt(texto).split():
         dig = "".join(ch for ch in tok if ch.isdigit())
-        if len(dig) >= 3 and dig not in numeros:
+        if _parece_numero_faena(dig) and dig not in numeros:
             numeros.append(dig)
     return numeros
 
@@ -276,12 +292,11 @@ def _faena_por_id(conn, faena_id):
 
 def _buscar_faena_por_numero(conn, numero):
     for v in _variantes_numero(numero):
-        like = f"%{v}%"
         for sql in (_sql_faena_campos(), _sql_faena_campos_min()):
             f = _fila_faena(
                 conn,
-                sql + " WHERE f.numero=? OR REPLACE(f.numero,'-','')=? OR REPLACE(REPLACE(f.numero,'-',''),'.','')=? OR f.numero LIKE ?",
-                (v, v, v, like),
+                sql + " WHERE f.numero=? OR REPLACE(f.numero,'-','')=? OR REPLACE(REPLACE(f.numero,'-',''),'.','')=?",
+                (v, v, v),
             )
             if f:
                 return f
@@ -423,7 +438,7 @@ def _numeros_hilo(pregunta, historial):
 def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
     busqueda = _pregunta_para_buscar(pregunta, historial)
     tokens = _tokens_busqueda(busqueda)
-    for num in _numeros_hilo(pregunta, historial) or _numeros_pregunta(busqueda):
+    for num in _numeros_pregunta(pregunta):
         faena = _buscar_faena_por_numero(conn, num)
         if faena:
             return faena
@@ -431,6 +446,10 @@ def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
         ultima = _ultima_por_cliente(conn, tokens)
         if ultima:
             return ultima
+    for num in _numeros_hilo(pregunta, historial):
+        faena = _buscar_faena_por_numero(conn, num)
+        if faena:
+            return faena
     if faena_id:
         f = _faena_por_id(conn, faena_id)
         if f:
@@ -442,7 +461,7 @@ def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
         sqlite = None
         try:
             sqlite = get_sqlite_local()
-            for num in _numeros_hilo(pregunta, historial) or _numeros_pregunta(busqueda):
+            for num in _numeros_pregunta(pregunta):
                 faena = _buscar_faena_por_numero(sqlite, num)
                 if faena:
                     return faena
@@ -450,6 +469,10 @@ def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
                 ultima = _ultima_por_cliente(sqlite, tokens)
                 if ultima:
                     return ultima
+            for num in _numeros_hilo(pregunta, historial):
+                faena = _buscar_faena_por_numero(sqlite, num)
+                if faena:
+                    return faena
             if faena_id:
                 f = _faena_por_id(sqlite, faena_id)
                 if f:
@@ -465,9 +488,6 @@ def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
 
 
 def _anotaciones_de_faena(conn, faena_id, limite=80, numero=""):
-    locales = anotaciones_junto_a_faena(conn, faena_id, numero)
-    if locales:
-        return locales[:limite]
     return listar_anotaciones_faena(faena_id, numero)[:limite]
 
 
@@ -570,11 +590,11 @@ def _texto_faena_completa(datos):
 
     anotaciones = datos.get("anotaciones") or []
     partes.append("Anotaciones:")
-    texto_n = _texto_notas_faena(f, anotaciones)
-    if "no tiene anotaciones" in texto_n:
+    if not anotaciones:
         partes.append("- ninguna")
     else:
-        partes.extend(texto_n.splitlines()[1:] or ["- ninguna"])
+        lineas_n = _texto_notas_faena(f, anotaciones).splitlines()[1:]
+        partes.extend(lineas_n or ["- ninguna"])
 
     pres = datos.get("presupuesto") or []
     partes.append("Presupuesto:")

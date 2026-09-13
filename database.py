@@ -266,16 +266,29 @@ def _ids_faena_en_conexion(conn, faena_id=None, numero=None):
     return ids
 
 
-def anotaciones_junto_a_faena(conn, faena_id=None, numero=None):
-    """Tabla anotaciones unida a faenas en la misma conexión (anotaciones.faena_id = faenas.id)."""
+def anotaciones_junto_a_faena(conn, faena_id=None, numero=None, extra_ids=None):
+    """Notas de esta conexión: unidas por faena_id o por número, aunque el id no coincida entre bases."""
     acc = []
     vistos = set()
-    ids = _ids_faena_en_conexion(conn, faena_id, numero)
-    consultas = [
-        ("SELECT a.* FROM anotaciones a INNER JOIN faenas f ON f.id=a.faena_id "
-         "WHERE f.id=? ORDER BY a.id DESC", (fid,))
-        for fid in ids
-    ]
+    ids = list(_ids_faena_en_conexion(conn, faena_id, numero))
+    huérfanos = []
+    for x in list(extra_ids or []) + ([faena_id] if faena_id not in (None, "") else []):
+        try:
+            i = int(x)
+        except Exception:
+            continue
+        if i not in ids and i not in huérfanos:
+            huérfanos.append(i)
+    consultas = []
+    for fid in ids:
+        consultas.append((
+            "SELECT a.* FROM anotaciones a INNER JOIN faenas f ON f.id=a.faena_id "
+            "WHERE f.id=? ORDER BY a.id DESC",
+            (fid,),
+        ))
+        consultas.append(("SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC", (fid,)))
+    for hid in huérfanos:
+        consultas.append(("SELECT * FROM anotaciones WHERE faena_id=? ORDER BY id DESC", (hid,)))
     if numero:
         for v in _variantes_numero_faena(numero):
             consultas.append((
@@ -381,11 +394,15 @@ def listar_anotaciones_faena(faena_id=None, numero=None):
                 vistos.add(clave)
                 acc.append(a)
 
+        ids_p = _ids_faena_en_conexion(principal, faena_id, numero)
         _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero))
         if getattr(principal, "_backend", "") == "mysql":
             sqlite = get_sqlite_local()
             conns.append(sqlite)
-            _mezclar(anotaciones_junto_a_faena(sqlite, None, numero))
+            ids_s = _ids_faena_en_conexion(sqlite, None, numero)
+            _mezclar(anotaciones_junto_a_faena(sqlite, None, numero, extra_ids=ids_p))
+            if ids_s:
+                _mezclar(anotaciones_junto_a_faena(principal, faena_id, numero, extra_ids=ids_s))
         return acc
     finally:
         for conn in conns:
