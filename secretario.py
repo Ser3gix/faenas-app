@@ -223,7 +223,7 @@ def _pide_solo_fotos(pregunta):
     pal = set(_norm_txt(pregunta).split())
     if pal & {"solo", "solamente", "unicamente"}:
         return True
-    if pal & {"datos", "informacion", "ficha", "resumen", "todo", "todos", "todas"}:
+    if pal & {"datos", "informacion", "ficha", "resumen", "todo", "todos"}:
         return False
     return True
 
@@ -1614,6 +1614,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                     texto_f = "Dime el número de la faena y te leo las anotaciones."
             elif concreta and not listado:
                 texto_f = _texto_faena_completa(_cargar_faena_completa(conn, concreta))
+                if _pide_fotos(pregunta) and not imagenes_out:
+                    imagenes_out = _imagenes_chat(_fotos_de_faena(conn, concreta))
             elif not concreta and (_pide_ficha(pregunta) or _numeros_pregunta(pregunta) or _pide_ultima(pregunta)) and not listado:
                 if _numeros_pregunta(pregunta):
                     texto_f = f"No encuentro la faena {_numeros_pregunta(pregunta)[0]}."

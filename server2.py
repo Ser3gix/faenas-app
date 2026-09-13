@@ -11,6 +11,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file, make_response
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
@@ -284,24 +285,49 @@ def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
     return ruta, "", "", "local"
 
 
+def _url_api_foto(faena_id, nombre):
+    if not faena_id or not nombre:
+        return ""
+    return f"/api/faenas/{int(faena_id)}/fotos/{quote(str(nombre), safe='')}"
+
+
+def _es_clave_objeto(ruta):
+    ruta = (ruta or "").strip()
+    if not ruta or ruta.startswith("http://") or ruta.startswith("https://"):
+        return False
+    if os.path.isabs(ruta) or "\\" in ruta or (len(ruta) >= 2 and ruta[1] == ":"):
+        return False
+    return True
+
+
 def _payload_foto(fila):
     ruta = (fila.get("ruta_foto") or "").strip()
     contenido = (fila.get("data_base64") or "").strip()
+    nombre = fila.get("nombre") or os.path.basename(ruta.replace("\\", "/"))
+    url_api = _url_api_foto(fila.get("faena_id"), nombre)
     if contenido:
-        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
+        if contenido.startswith("data:"):
+            data = contenido
+        else:
+            data = f"data:{_mime_por_extension(nombre)};base64,{contenido}"
+    elif ruta and os.path.exists(ruta):
+        try:
+            with open(ruta, "rb") as f:
+                data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
+        except Exception:
+            data = url_api
     else:
-        data = _url_desde_ruta(ruta)
-        if not data and ruta and os.path.exists(ruta):
-            try:
-                with open(ruta, "rb") as f:
-                    data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
-            except Exception:
-                data = ""
+        publica = _url_desde_ruta(ruta)
+        data = publica if publica.startswith("http://") or publica.startswith("https://") else url_api
+    if not data:
+        data = url_api
     return {
         "id": fila.get("id"),
-        "nombre": fila.get("nombre"),
+        "faena_id": fila.get("faena_id"),
+        "nombre": nombre,
         "ruta": ruta,
         "data": data,
+        "url": url_api or data,
     }
 
 
@@ -313,7 +339,7 @@ def _url_desde_ruta(ruta):
         return ruta
     if os.path.exists(ruta):
         return ""
-    if r2_activo():
+    if r2_activo() and _es_clave_objeto(ruta):
         return url_publica(ruta)
     return ""
 

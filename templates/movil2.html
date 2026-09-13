@@ -1636,10 +1636,19 @@ function urlJimmi(u) {
   return base + "/" + u;
 }
 
+function srcFoto(p) {
+  if (!p) return "";
+  if (typeof p === "string") return urlJimmi(p);
+  const raw = String(p.data || p.url || "");
+  if (!raw) return "";
+  if (raw.indexOf("data:") === 0) return raw;
+  return urlJimmi(raw);
+}
+
 function htmlFotosJimmi(imagenes) {
   if (!imagenes || !imagenes.length) return "";
   return `<div class="jimmi-fotos">${imagenes.map(im => {
-    const raw = (im && (im.data || urlJimmi(im.url))) || "";
+    const raw = srcFoto(im);
     const src = raw.indexOf("data:") === 0 ? raw.replace(/"/g, "") : escHtml(raw);
     const nom = escHtml(im.nombre || "foto");
     if (!src) return "";
@@ -2420,20 +2429,20 @@ function renderPanelFotos(f) {
 
   const gridLocal = localFotos.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <img src="${escHtml(srcFoto(p))}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande(this.src)">
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoLocalMovil('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const gridPend = pending.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data}" alt="Foto" loading="lazy" onclick="verFotoGrande('${p.data}')">
+      <img src="${escHtml(srcFoto(p))}" alt="Foto" loading="lazy" onclick="verFotoGrande(this.src)">
       <span class="foto-pending">⏳</span>
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoPendiente('${faenaId}',${i})">×</button>
     </div>`).join("");
 
   const gridSync = syncFotos.map((p, i) => `
     <div class="foto-thumb">
-      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <img src="${escHtml(srcFoto(p))}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande(this.src)">
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoSincronizada('${faenaId}',${i})">×</button>
     </div>`).join("");
 
@@ -5239,7 +5248,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=34", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=37", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

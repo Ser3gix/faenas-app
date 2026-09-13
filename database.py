@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from urllib.parse import quote
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -408,7 +409,7 @@ def fotos_junto_a_faena(conn, faena_id=None, numero=None):
                 "faena_id": fid_foto,
                 "nombre": nombre,
                 "fecha": str(fo.get("fecha") or ""),
-                "url": f"/faenas/{fid_foto}/fotos/{nombre}" if fid_foto and nombre else "",
+                "url": f"/api/faenas/{fid_foto}/fotos/{quote(nombre, safe='')}" if fid_foto and nombre else "",
             })
     return acc
 
