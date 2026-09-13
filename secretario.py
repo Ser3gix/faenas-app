@@ -212,6 +212,22 @@ def _pide_notas(pregunta):
     return bool(pal & {"nota", "notas", "anotacion", "anotaciones"})
 
 
+def _pide_fotos(pregunta):
+    pal = set(_norm_txt(pregunta).split())
+    return bool(pal & {"foto", "fotos", "imagen", "imagenes"})
+
+
+def _pide_solo_fotos(pregunta):
+    if not _pide_fotos(pregunta):
+        return False
+    pal = set(_norm_txt(pregunta).split())
+    if pal & {"solo", "solamente", "unicamente"}:
+        return True
+    if pal & {"datos", "informacion", "ficha", "resumen", "todo", "todos", "todas"}:
+        return False
+    return True
+
+
 _RE_VERBO_GUARDAR = re.compile(
     r"(?i)\b(guarda(?:me)?|guardar|apunta(?:me)?|apuntar|anota(?:me)?|anotar|"
     r"registra(?:me)?|registrar|apuntalo|anotalo|guardalo)\b"
@@ -740,6 +756,22 @@ def _texto_notas_faena(faena, anotaciones):
     if not lineas:
         return f"La faena {num} ({cliente}, {trabajo}) no tiene anotaciones de texto."
     return f"Anotaciones de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas)
+
+
+def _texto_fotos_faena(faena, fotos):
+    num = faena.get("numero") or faena.get("id") or ""
+    cliente = faena.get("cliente_nombre") or "sin cliente"
+    trabajo = faena.get("tipo_trabajo") or "sin tipo"
+    if not fotos:
+        return f"La faena {num} ({cliente}, {trabajo}) no tiene fotos."
+    lineas = []
+    for fo in fotos[:40]:
+        nombre = (fo.get("nombre") or "foto").strip()
+        fecha = str(fo.get("fecha") or "").strip()
+        pref = f"[{fecha}] " if fecha else ""
+        lineas.append(f"- {pref}{nombre}".strip())
+    extra = f"\n- Y {len(fotos) - 40} más." if len(fotos) > 40 else ""
+    return f"Fotos de la faena {num} ({cliente}, {trabajo}):\n" + "\n".join(lineas) + extra
 
 
 def _etiquetas_linea(linea):
@@ -1481,7 +1513,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
             detalle_todas = _pide_detalle_todas(pregunta) and not guardar_nota
             listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
-            if _pide_notas(pregunta) and not guardar_nota:
+            if (_pide_notas(pregunta) or _pide_solo_fotos(pregunta)) and not guardar_nota:
                 listado = False
             if guardar_nota:
                 contenido = _texto_a_guardar(pregunta, historial)
@@ -1529,6 +1561,18 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 else:
                     extra = f"\n\nY {len(pool) - limite} faenas más." if len(pool) > limite else ""
                     texto_f = "\n\n".join(bloques) + extra
+            elif _pide_solo_fotos(pregunta) and not _pide_notas(pregunta) and not detalle_todas:
+                numero = _numero_consulta(pregunta, historial, concreta)
+                fid = concreta.get("id") if concreta else None
+                if numero or fid:
+                    faena_txt = concreta or {"numero": numero or fid}
+                    fotos = _fotos_de_faena(conn, faena_txt)
+                    if not concreta and not fotos and numero:
+                        texto_f = f"No encuentro la faena {numero}."
+                    else:
+                        texto_f = _texto_fotos_faena(faena_txt, fotos)
+                else:
+                    texto_f = "Dime el número de la faena y te digo las fotos."
             elif _pide_notas(pregunta) and not detalle_todas:
                 numero = _numero_consulta(pregunta, historial, concreta)
                 fid = concreta.get("id") if concreta else None
@@ -1663,7 +1707,10 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
             "No he podido guardar la anotación. Dime el número de la faena y el texto.",
             modo,
         )
-    forzar_datos = _pide_notas(pregunta) or _pide_ficha(pregunta) or _es_seguimiento(pregunta)
+    forzar_datos = (
+        _pide_notas(pregunta) or _pide_ficha(pregunta) or _pide_fotos(pregunta)
+        or _es_seguimiento(pregunta)
+    )
     if (
         local and local.get("usar") and not _pide_web(pregunta)
         and (forzar_datos or "Dime el número de la faena" not in texto_local)
@@ -1703,6 +1750,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url}]}. "
         "fuente es catalogo o web. url solo si es web. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
+        "Si preguntan solo las fotos, responde únicamente con las fotos. No repitas el resto de la ficha. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
         "No borres faenas ni clientes. "
         "Tú no puedes guardar anotaciones ni datos. No digas que has guardado, apuntado o registrado una nota si el servidor no lo ha hecho."
