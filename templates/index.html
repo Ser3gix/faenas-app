@@ -1583,9 +1583,11 @@ function urlJimmi(u) {
 function htmlFotosJimmi(imagenes) {
   if (!imagenes || !imagenes.length) return "";
   return `<div class="jimmi-fotos">${imagenes.map(im => {
-    const src = esc(im.data || urlJimmi(im.url));
+    const raw = (im && (im.data || urlJimmi(im.url))) || "";
+    const src = raw.indexOf("data:") === 0 ? raw.replace(/"/g, "") : esc(raw);
     const nom = esc(im.nombre || "foto");
-    return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy" onclick="verFotoGrande(this.src)">`;
+    if (!src) return "";
+    return `<img class="jimmi-foto" src="${src}" alt="${nom}" loading="lazy">`;
   }).join("")}</div>`;
 }
 
@@ -3593,7 +3595,25 @@ function poblarSelectAsistente() {
   if (contextoSel) contextoSel.innerHTML = '<option value="">— Todas —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
 }
 function añadirMensaje(texto, tipo) {
-  const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; div.innerHTML = `<div class="chat-burbuja">${texto}</div><div class="chat-hora">${hora}</div>`; const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
+  const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; const burbuja = document.createElement("div"); burbuja.className = "chat-burbuja"; burbuja.innerHTML = texto; div.appendChild(burbuja); const horaEl = document.createElement("div"); horaEl.className = "chat-hora"; horaEl.textContent = hora; div.appendChild(horaEl); const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
+}
+function pintarFotosJimmi(div, imagenes) {
+  if (!div || !imagenes || !imagenes.length) return;
+  const burbuja = div.querySelector(".chat-burbuja") || div;
+  const wrap = document.createElement("div");
+  wrap.className = "jimmi-fotos";
+  imagenes.forEach(im => {
+    const src = (im && (im.data || urlJimmi(im.url))) || "";
+    if (!src) return;
+    const img = document.createElement("img");
+    img.className = "jimmi-foto";
+    img.alt = (im && im.nombre) || "foto";
+    img.loading = "lazy";
+    img.src = src;
+    img.onclick = () => verFotoGrande(img.src);
+    wrap.appendChild(img);
+  });
+  if (wrap.childNodes.length) burbuja.appendChild(wrap);
 }
 function mostrarTyping() { const contenedor = document.getElementById("chat-mensajes"); const div = document.createElement("div"); div.className = "chat-msg asistente"; div.id = "typing-indicator"; div.innerHTML = `<div class="chat-typing"><span></span><span></span><span></span></div>`; contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; }
 function quitarTyping() { const el = document.getElementById("typing-indicator"); if (el) el.remove(); }
@@ -3610,7 +3630,8 @@ async function enviarConsulta() {
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
     if (data.ok) {
-      añadirMensaje(esc(data.data.respuesta) + htmlFotosJimmi(data.data.imagenes), "asistente");
+      const msg = añadirMensaje(esc(data.data.respuesta), "asistente");
+      pintarFotosJimmi(msg, data.data.imagenes);
       cargarContextoJimmi();
       if (data.data.conversacion_cerrada) {
         chatHistorial = [];

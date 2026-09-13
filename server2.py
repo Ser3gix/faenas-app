@@ -3432,7 +3432,10 @@ def secretario_chat():
             return jsonify(res), 400
         data = res.get("data") or {}
         if data.get("imagenes"):
-            data["imagenes"] = _enriquecer_imagenes_jimmi(data["imagenes"])
+            try:
+                data["imagenes"] = _enriquecer_imagenes_jimmi(data["imagenes"])
+            except Exception as e:
+                print("jimmi imagenes:", e)
             res["data"] = data
         return jsonify(res)
     except Exception as e:
