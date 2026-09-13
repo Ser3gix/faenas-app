@@ -341,13 +341,93 @@ def _pide_detalle_todas(pregunta):
     ))
 
 
-def _resolver_faena(conn, pregunta, faena_id=None):
-    tokens = _tokens_busqueda(pregunta)
-    for num in _numeros_pregunta(pregunta):
+def _mensajes_hilo(historial, pregunta=""):
+    actual = _norm_txt(pregunta)
+    out = []
+    for m in historial or []:
+        if not isinstance(m, dict):
+            continue
+        t = str(m.get("texto") or "").strip()
+        if not t:
+            continue
+        if actual and _norm_txt(t) == actual:
+            continue
+        out.append(t)
+    return out[-16:]
+
+
+def _ultima_pregunta_usuario(historial, pregunta=""):
+    actual = _norm_txt(pregunta)
+    for m in reversed(historial or []):
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("rol") or "").lower() not in ("usuario", "user"):
+            continue
+        t = str(m.get("texto") or "").strip()
+        if t and _norm_txt(t) != actual:
+            return t
+    return ""
+
+
+def _es_seguimiento(pregunta):
+    txt = _norm_txt(pregunta)
+    pal = set(txt.split())
+    if pal & {"esa", "ese", "eso", "tambien", "igual", "mismo", "misma", "anterior", "dicha", "dicho"}:
+        return True
+    if txt.startswith("y ") or txt.startswith("y las") or txt.startswith("y los") or txt.startswith("y la "):
+        return True
+    if len(pal) <= 5 and (pal & {
+        "nota", "notas", "anotacion", "anotaciones", "foto", "fotos",
+        "presupuesto", "gastos", "datos", "ficha", "tiempos",
+    }) and not _numeros_pregunta(pregunta):
+        return True
+    return False
+
+
+def _es_charla(pregunta):
+    txt = _norm_txt(pregunta)
+    pal = set(txt.split())
+    if not pal:
+        return False
+    if pal <= {"hola", "buenas", "hey", "hi", "gracias", "vale", "ok", "adios", "hasta", "luego", "buenos", "dias", "tardes", "noches"}:
+        return True
+    return txt in {"que tal", "como estas", "muy bien", "de nada", "que hay"}
+
+
+def _pregunta_para_buscar(pregunta, historial):
+    if not _es_seguimiento(pregunta):
+        return pregunta
+    extra = []
+    prev = _ultima_pregunta_usuario(historial, pregunta)
+    if prev:
+        extra.append(prev)
+    hilo = _mensajes_hilo(historial, pregunta)
+    if hilo:
+        extra.append(hilo[-1])
+    if not extra:
+        return pregunta
+    return (pregunta + " " + " ".join(extra)).strip()
+
+
+def _numeros_hilo(pregunta, historial):
+    nums = _numeros_pregunta(pregunta)
+    if nums:
+        return nums
+    for t in reversed(_mensajes_hilo(historial, pregunta)):
+        nums = _numeros_pregunta(t)
+        if nums:
+            return nums
+    return []
+
+
+def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
+    busqueda = _pregunta_para_buscar(pregunta, historial)
+    tokens = _tokens_busqueda(busqueda)
+    for num in _numeros_hilo(pregunta, historial) or _numeros_pregunta(busqueda):
         faena = _buscar_faena_por_numero(conn, num)
         if faena:
             return faena
-    if _pide_ultima(pregunta) and tokens:
+    if _pide_ultima(busqueda) and tokens:
         ultima = _ultima_por_cliente(conn, tokens)
         if ultima:
             return ultima
@@ -362,11 +442,11 @@ def _resolver_faena(conn, pregunta, faena_id=None):
         sqlite = None
         try:
             sqlite = get_sqlite_local()
-            for num in _numeros_pregunta(pregunta):
+            for num in _numeros_hilo(pregunta, historial) or _numeros_pregunta(busqueda):
                 faena = _buscar_faena_por_numero(sqlite, num)
                 if faena:
                     return faena
-            if _pide_ultima(pregunta) and tokens:
+            if _pide_ultima(busqueda) and tokens:
                 ultima = _ultima_por_cliente(sqlite, tokens)
                 if ultima:
                     return ultima
@@ -744,7 +824,7 @@ def _faenas_terminadas(conn, limite):
         ).fetchall())
 
 
-def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
+def snapshot_negocio(faena_id=None, modo="todo", pregunta=None, historial=None):
     modo = normalizar_modo(modo)
     incluir_faenas = modo in ("todo", "faenas")
     incluir_mats = modo in ("todo", "materiales")
@@ -792,11 +872,11 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None):
             ids_detalle = []
             if faena_id:
                 ids_detalle.append(faena_id)
-            for num in _numeros_pregunta(pregunta or ""):
+            for num in _numeros_hilo(pregunta or "", historial):
                 fnum = _buscar_faena_por_numero(conn, num)
                 if fnum and fnum.get("id") and fnum.get("id") not in ids_detalle:
                     ids_detalle.append(fnum.get("id"))
-            resuelta = _resolver_faena(conn, pregunta or "", faena_id)
+            resuelta = _resolver_faena(conn, pregunta or "", faena_id, historial=historial)
             if resuelta and resuelta.get("id") and resuelta.get("id") not in ids_detalle:
                 ids_detalle.append(resuelta.get("id"))
             for fid in ids_detalle[:3]:
@@ -1153,7 +1233,7 @@ def _texto_faenas(filas, tokens, etiqueta, limite=12):
     return cab + ":\n" + "\n".join(lineas) + extra
 
 
-def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
+def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None):
     modo = normalizar_modo(modo)
     tokens = _tokens_busqueda(pregunta)
     quiere_m = _huele_materiales(pregunta, modo)
@@ -1185,7 +1265,7 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
                 )
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
-            concreta = _resolver_faena(conn, pregunta, faena_id)
+            concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
             detalle_todas = _pide_detalle_todas(pregunta)
             listado = _pide_listado_faenas(pregunta) and not detalle_todas
             if detalle_todas:
@@ -1259,24 +1339,53 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None):
     return {"usar": True, "texto": "\n\n".join(partes)}
 
 
+def _contents_conversacion(historial, pregunta, payload):
+    contents = []
+    actual = _norm_txt(pregunta)
+    for m in historial or []:
+        if not isinstance(m, dict):
+            continue
+        t = str(m.get("texto") or "").strip()
+        if not t:
+            continue
+        rol = str(m.get("rol") or "").lower()
+        if rol in ("usuario", "user") and actual and _norm_txt(t) == actual:
+            continue
+        grol = "user" if rol in ("usuario", "user") else "model"
+        if contents and contents[-1]["role"] == grol:
+            contents[-1]["parts"][0]["text"] += "\n" + t[:4000]
+        else:
+            contents.append({"role": grol, "parts": [{"text": t[:4000]}]})
+    if contents and contents[0]["role"] == "model":
+        contents.insert(0, {"role": "user", "parts": [{"text": "Continuamos la conversación."}]})
+    contents.append({"role": "user", "parts": [{"text": payload}]})
+    return contents
+
+
 def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
     from server2 import _peticion_gemini, _gemini_extraer_texto, IA_API_KEY
     pregunta = (pregunta or "").strip()
     if not pregunta:
         return {"ok": False, "error": "Escribe una pregunta"}
 
+    historial = [m for m in (historial or []) if isinstance(m, dict)][-16:]
     modo = normalizar_modo(modo)
     local = None
     try:
-        local = _respuesta_local_datos(pregunta, modo, faena_id=faena_id)
+        if not _es_charla(pregunta):
+            local = _respuesta_local_datos(pregunta, modo, faena_id=faena_id, historial=historial)
     except Exception as e:
         print("jimmi local:", e)
         local = None
-    if local and local.get("usar") and not _pide_web(pregunta):
+    texto_local = (local or {}).get("texto") or ""
+    if (
+        local and local.get("usar") and not _pide_web(pregunta)
+        and "Dime el número de la faena" not in texto_local
+    ):
         return {
             "ok": True,
             "data": {
-                "respuesta": local.get("texto") or "",
+                "respuesta": texto_local,
                 "propuestas": [],
                 "ticket": None,
                 "motor": "datos",
@@ -1301,13 +1410,10 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
         return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
 
     memoria = memoria_para_modo(modo)
-    datos = snapshot_negocio(faena_id, modo, pregunta=pregunta)
-    hist = []
-    for m in (historial or [])[-8:]:
-        if isinstance(m, dict) and m.get("texto"):
-            hist.append(f"{m.get('rol', 'usuario')}: {m.get('texto')}")
+    datos = snapshot_negocio(faena_id, modo, pregunta=_pregunta_para_buscar(pregunta, historial), historial=historial)
     system = (
         "Eres Jimmi, secretario de un taller de carpintería. Hablas español, claro y breve. "
+        "Mantén el hilo: esa, esta, las notas o las fotos se refieren a lo último de lo que habéis hablado. "
         "Usa los datos de la app y tu memoria. No inventes precios ni faenas. "
         f"Modo de consulta: {modo}. "
         "Las faenas en curso están en datos_app.faenas. Las terminadas en datos_app.faenas_terminadas. "
@@ -1330,9 +1436,8 @@ def chat_jimmi(pregunta, historial=None, faena_id=None, modo="todo"):
         "modo": modo,
         "memoria_jimmi": memoria,
         "datos_app": datos,
-        "historial": hist,
     }
-    contents = [{"role": "user", "parts": [{"text": json.dumps(user, ensure_ascii=False)}]}]
+    contents = _contents_conversacion(historial, pregunta, json.dumps(user, ensure_ascii=False))
     usa_web = _pide_web(pregunta)
     try:
         kwargs = dict(

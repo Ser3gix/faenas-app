@@ -3585,7 +3585,7 @@ async function enviarConsulta() {
   const btn = document.getElementById("btn-consulta");
   añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
   try {
-    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial, modo }) });
+    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial.slice(-16), modo }) });
     quitarTyping(); const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });

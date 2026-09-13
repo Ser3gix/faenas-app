@@ -4454,7 +4454,7 @@ async function enviarConsultaIA() {
     const r = await fetch(`${getServerUrl()}/secretario/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial, modo })
+      body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial.slice(-16), modo })
     });
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
