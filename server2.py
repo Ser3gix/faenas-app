@@ -31,7 +31,7 @@ from database import (
     fila_a_dict, filas_a_lista, listar_anotaciones_faena, insertar_anotacion_faena,
     CATEGORIAS_MATERIAL_DEFECTO,
 )
-from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
+from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente, listar_claves
 from secretario import (
     chat_jimmi, cruzar_articulos, anotar_contexto, leer_contexto_detalle,
     escribir_contexto, borrar_linea_contexto, guardar_extraccion_compra, extraer_referencia_faena,
@@ -317,8 +317,8 @@ def _payload_foto(fila):
         except Exception:
             data = url_api
     else:
-        publica = _url_desde_ruta(ruta)
-        data = publica if publica.startswith("http://") or publica.startswith("https://") else url_api
+        # El bucket de Cloudflare suele ser privado: el navegador no puede abrir url_publica.
+        data = url_api
     if not data:
         data = url_api
     return {
@@ -378,8 +378,9 @@ def _claves_r2_desde_ruta(ruta):
         numero = ""
         tipo = "fotos"
         for i, parte in enumerate(partes):
-            if re.match(r"^\d{4,8}_", parte):
-                numero = parte.split("_")[0]
+            m = re.match(r"^(\d{4,8})(_|$)", parte)
+            if m:
+                numero = m.group(1)
                 if i + 1 < len(partes) and partes[i + 1].lower() in {"fotos", "documentos", "tickets", "pdf"}:
                     tipo = partes[i + 1].lower()
                 break
@@ -423,6 +424,10 @@ def _bytes_desde_ruta_foto(ruta, faena_id=None):
         if _parece_imagen(data):
             return data
     nombre = os.path.basename(ruta.replace("\\", "/"))
+    if _es_clave_objeto(ruta):
+        data = descargar_bytes(ruta.replace("\\", "/").lstrip("/"))
+        if _parece_imagen(data):
+            return data
     local_book = os.path.join(CARPETA_RAIZ, "_book", nombre) if nombre else ""
     if local_book and os.path.exists(local_book):
         with open(local_book, "rb") as fh:
@@ -500,6 +505,95 @@ def _bytes_fotos_de_faena(faena_id, nombre_pista=""):
             if _parece_imagen(data):
                 return data
     return None
+
+
+def _numeros_clave_faena(numero):
+    n = str(numero or "").strip()
+    out = []
+    if n:
+        out.append(n)
+    d = "".join(ch for ch in n if ch.isdigit())
+    if d and d not in out:
+        out.append(d)
+    return out
+
+
+def _claves_r2_de_foto(faena_id, nombre, ruta="", numero=""):
+    nombre = os.path.basename(str(nombre or "").replace("\\", "/"))
+    claves = []
+    if ruta:
+        if _es_clave_objeto(ruta):
+            claves.append(ruta.replace("\\", "/").lstrip("/"))
+        claves.extend(_claves_r2_desde_ruta(ruta))
+    if not numero and faena_id:
+        conn = _conn_para_faena(faena_id)
+        try:
+            fila = conn.execute("SELECT numero FROM faenas WHERE id=?", (faena_id,)).fetchone()
+            if fila:
+                numero = (fila_a_dict(fila) or {}).get("numero") or ""
+        finally:
+            conn.close()
+    nom_l = nombre.lower()
+    for num in _numeros_clave_faena(numero):
+        if nombre:
+            claves.append(clave_objeto(num, "fotos", nombre))
+        if r2_activo():
+            for k in listar_claves(clave_objeto(num, "fotos") + "/", 200):
+                if k.replace("\\", "/").split("/")[-1].lower() == nom_l:
+                    claves.append(k)
+            for k in listar_claves(str(num) + "_", 120):
+                partes = k.replace("\\", "/").split("/")
+                if len(partes) >= 2 and partes[-2].lower() == "fotos" and partes[-1].lower() == nom_l:
+                    claves.append(k)
+    vistas = []
+    for k in claves:
+        k = (k or "").replace("\\", "/").lstrip("/")
+        if k and k not in vistas:
+            vistas.append(k)
+    return vistas
+
+
+def _bytes_r2_de_foto(faena_id, nombre, ruta="", numero=""):
+    if not r2_activo():
+        return None
+    for clave in _claves_r2_de_foto(faena_id, nombre, ruta, numero):
+        data = descargar_bytes(clave)
+        if _parece_imagen(data):
+            return data
+        pub = url_publica(clave)
+        data = _http_imagen(pub)
+        if data:
+            return data
+    return None
+
+
+def _entradas_r2_fotos(faena_id, numero, ya_nombres):
+    if not r2_activo() or not faena_id:
+        return []
+    extra = []
+    vistos = set(ya_nombres or [])
+    extensiones = {".jpg", ".jpeg", ".png", ".webp"}
+    claves = []
+    for num in _numeros_clave_faena(numero):
+        claves.extend(listar_claves(clave_objeto(num, "fotos") + "/", 200))
+        claves.extend([k for k in listar_claves(str(num) + "_", 120) if "/fotos/" in k.replace("\\", "/").lower()])
+    for clave in claves:
+        nom = clave.replace("\\", "/").split("/")[-1]
+        if not nom or nom in vistos:
+            continue
+        if os.path.splitext(nom)[1].lower() not in extensiones:
+            continue
+        vistos.add(nom)
+        url = _url_api_foto(faena_id, nom)
+        extra.append({
+            "id": None,
+            "faena_id": faena_id,
+            "nombre": nom,
+            "ruta": clave,
+            "data": url,
+            "url": url,
+        })
+    return extra
 
 
 def _borrar_binario(ruta, object_key=""):
@@ -4445,7 +4539,9 @@ def listar_fotos(id):
                         data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
                 except Exception:
                     continue
-                fotos.append({"id": None, "nombre": nombre, "ruta": ruta, "data": data})
+                fotos.append({"id": None, "nombre": nombre, "ruta": ruta, "data": data, "url": _url_api_foto(id, nombre)})
+
+    fotos.extend(_entradas_r2_fotos(id, numero, {f.get("nombre") for f in fotos}))
 
     conn.close()
     return jsonify({"ok": True, "data": fotos})
@@ -4486,8 +4582,12 @@ def servir_foto_faena(id, nombre):
                 raw = None
         if not raw:
             raw = _bytes_desde_ruta_foto(fila.get("ruta_foto"), id)
+        if not raw:
+            raw = _bytes_r2_de_foto(id, fila.get("nombre") or nombre, fila.get("ruta_foto") or "")
     if not raw:
         raw = _bytes_fotos_de_faena(id, nombre)
+    if not raw:
+        raw = _bytes_r2_de_foto(id, nombre)
     if not raw:
         return Response("No encontrada", status=404)
     resp = send_file(io.BytesIO(raw), mimetype=_mime_por_extension(nombre), download_name=nombre)

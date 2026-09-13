@@ -164,6 +164,40 @@ def borrar_objeto(object_key):
         return False
 
 
+def listar_claves(prefix="", limite=200):
+    """Lista claves del bucket (para encontrar fotos aunque TiDB tenga otra ruta)."""
+    cliente = _get_cliente()
+    if not cliente:
+        return []
+    from config import OBJECT_STORAGE_BUCKET
+    claves = []
+    token = None
+    pref = (prefix or "").replace("\\", "/").lstrip("/")
+    try:
+        while len(claves) < limite:
+            kwargs = {
+                "Bucket": OBJECT_STORAGE_BUCKET,
+                "MaxKeys": min(100, limite - len(claves)),
+            }
+            if pref:
+                kwargs["Prefix"] = pref
+            if token:
+                kwargs["ContinuationToken"] = token
+            resp = cliente.list_objects_v2(**kwargs)
+            for obj in resp.get("Contents") or []:
+                k = (obj.get("Key") or "").strip()
+                if k:
+                    claves.append(k)
+            if not resp.get("IsTruncated"):
+                break
+            token = resp.get("NextContinuationToken")
+            if not token:
+                break
+    except Exception:
+        return claves
+    return claves
+
+
 def descargar_bytes(object_key):
     cliente = _get_cliente()
     if not cliente or not object_key:
