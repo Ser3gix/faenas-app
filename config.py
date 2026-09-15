@@ -74,13 +74,26 @@ DB_PATH = os.path.join(CARPETA_RAIZ, "faenas.db")
 # Por defecto la app sigue usando SQLite en local.
 # Si defines las variables de MySQL/Hostinger, puedes cambiar a MySQL con DB_BACKEND=mysql.
 MYSQL_HOST = os.environ.get("MYSQL_HOST", os.environ.get("DB_HOST", "")).strip()
-MYSQL_PORT = int(os.environ.get("MYSQL_PORT", os.environ.get("DB_PORT", "3306")) or 3306)
+_mysql_port_env = (os.environ.get("MYSQL_PORT") or os.environ.get("DB_PORT") or "").strip()
+_es_tidb = "tidbcloud.com" in MYSQL_HOST.lower()
+if _mysql_port_env:
+	MYSQL_PORT = int(_mysql_port_env)
+elif _es_tidb:
+	MYSQL_PORT = 4000
+else:
+	MYSQL_PORT = 3306
+if _es_tidb and MYSQL_PORT == 3306:
+	MYSQL_PORT = 4000
 MYSQL_USER = os.environ.get("MYSQL_USER", os.environ.get("DB_USER", "")).strip()
 MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", os.environ.get("DB_PASSWORD", ""))
 MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", os.environ.get("DB_DATABASE", "")).strip()
 MYSQL_CHARSET = os.environ.get("MYSQL_CHARSET", "utf8mb4").strip()
 MYSQL_CREATE_DATABASE = os.environ.get("MYSQL_CREATE_DATABASE", "0").strip() in {"1", "true", "yes", "si", "sí"}
-MYSQL_SSL = os.environ.get("MYSQL_SSL", "0").strip() in {"1", "true", "yes", "si", "sí"}
+_mysql_ssl_env = os.environ.get("MYSQL_SSL")
+if _mysql_ssl_env is None or str(_mysql_ssl_env).strip() == "":
+	MYSQL_SSL = _es_tidb
+else:
+	MYSQL_SSL = str(_mysql_ssl_env).strip().lower() in {"1", "true", "yes", "si", "sí"}
 
 DB_BACKEND = os.environ.get("DB_BACKEND", "").strip().lower()
 if DB_BACKEND in {"tidb", "tidbcloud"}:
