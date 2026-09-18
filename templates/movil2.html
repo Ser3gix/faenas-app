@@ -916,6 +916,8 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="slide" id="sl-faenas">
     <div class="lista-toolbar">
       <button class="btn btn-p btn-nueva" onclick="abrirNuevaFaena()">+ Nueva faena</button>
+      <button class="btn btn-s btn-nueva" onclick="document.getElementById('zip-rescatar-mov').click()">Rescatar ZIP</button>
+      <input id="zip-rescatar-mov" type="file" accept=".zip,application/zip" style="display:none" onchange="rescatarFaenaZipMovil(this)">
     </div>
     <div class="fase-tabs-mov" id="fase-tabs-mov">
       <button class="fase-tab-mov" data-fase="medicion" onclick="seleccionarFaseMovil('medicion')">Medición</button>
@@ -1223,6 +1225,8 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="form-title" id="gasto-title">💶 Nuevo presupuesto</div>
     <input type="hidden" id="gasto-faena-id">
     <input type="hidden" id="gasto-id">
+    <input type="hidden" id="gasto-bloque">
+    <div class="field"><label>Presupuesto</label><input id="gasto-bloque-txt" placeholder="Puertas de paso, encimera..."></div>
     <div class="field"><label>Concepto</label><input id="gasto-desc" placeholder="4 puertas, rodapié..."></div>
     <div class="field"><label>Tipo</label><input id="gasto-tipo" placeholder="mano de obra, material..." value="presupuesto"></div>
     <div class="field"><label>Cantidad</label><input id="gasto-cant" type="number" step="0.01" value="1"></div>
@@ -2076,29 +2080,47 @@ function renderPanelPresupuesto(f) {
   const gastosReales = (f.gastos_reales && f.gastos_reales.length)
     ? f.gastos_reales
     : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
-  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(presupuesto);
+  const totalPresupuesto = typeof f.total_incluido === "number"
+    ? f.total_incluido
+    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   const totalGastos = gastosReales.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
 
   let lineas = "";
-  if (presupuesto.length) {
-    lineas = presupuesto.map(g => `
-      <div class="presup-line">
-        <div class="presup-concepto">
-          ${escHtml(g.descripcion || "—")}
-          <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${escHtml(g.tipo||"")}</span>
-          <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad||1)} x ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
-        </div>
-        <div style="text-align:right">
-          <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
-          <div class="presup-actions" style="justify-content:flex-end">
-            <button class="btn btn-s" onclick="abrirGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Editar</button>
-            <button class="btn btn-d" onclick="eliminarGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Borrar</button>
+  if (bloquesP.length) {
+    lineas = bloquesP.map(b => {
+      const nom = b.nombre_db || "";
+      const sub = parseFloat(b.incluido ? (b.total_incluido || b.total || 0) : (b.total || 0)) || 0;
+      const partidas = (b.partidas || []).map(g => `
+        <div class="presup-line">
+          <div class="presup-concepto">
+            ${escHtml(g.descripcion || "—")}
+            <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${escHtml(g.tipo||"")}</span>
+            <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad||1)} x ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
           </div>
+          <div style="text-align:right">
+            <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
+            <div class="presup-actions" style="justify-content:flex-end">
+              <button class="btn btn-s" onclick="abrirGastoPresupuesto('${f.id || f._tempId}','${g.id}',${JSON.stringify(nom)})">Editar</button>
+              <button class="btn btn-d" onclick="eliminarGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Borrar</button>
+            </div>
+          </div>
+        </div>`).join("");
+      return `<div class="presup-bloque" style="border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:10px;${b.incluido?"":"opacity:0.55"}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <strong>${escHtml(b.nombre || "General")}</strong>
+          <span>${sub.toFixed(2)} €</span>
         </div>
-      </div>
-    `).join("");
+        ${partidas || '<div class="presup-empty">Sin partidas</div>'}
+        <div class="presup-actions">
+          <button class="btn btn-s" onclick="toggleBloquePresupuestoMovil('${f.id || f._tempId}',${JSON.stringify(nom)},${b.incluido?0:1})">${b.incluido ? "No incluir" : "Incluir"}</button>
+          <button class="btn btn-p" onclick="abrirGastoPresupuesto('${f.id || f._tempId}','',${JSON.stringify(nom)})">+ Partida</button>
+          <button class="btn btn-d" onclick="borrarBloquePresupuestoMovil('${f.id || f._tempId}',${JSON.stringify(nom)})">Borrar</button>
+        </div>
+      </div>`;
+    }).join("");
   } else {
-    lineas = `<div class="presup-empty">Sin conceptos de presupuesto.<br><small>Añade aquí lo que vas a cobrar al cliente.</small></div>`;
+    lineas = `<div class="presup-empty">Sin presupuestos.<br><small>Crea uno por cada trabajo (puertas, encimera…).</small></div>`;
   }
 
   const totalEstimado = totalPresupuesto;
@@ -2106,30 +2128,49 @@ function renderPanelPresupuesto(f) {
   document.getElementById("p-presupuesto-content").innerHTML = `
     <div class="presup-total">
       <div>
+        <div class="presup-total-label">Total conjunto</div>
         <div class="presup-total-val">${totalEstimado > 0 ? totalEstimado.toFixed(2) + " €" : "—"}</div>
       </div>
-      ${presupuesto.length ? `<div style="text-align:right">
+      ${bloquesP.length ? `<div style="text-align:right">
         <div class="presup-total-label">Gastos</div>
         <div style="font-size:1.2rem;font-family:var(--font-serif);color:#f0b080">${totalGastos.toFixed(2)} €</div>
       </div>` : ""}
     </div>
     <div class="datos-section-title" style="margin-bottom:10px">
-      💶 Presupuesto
-      <span style="font-size:0.75rem;color:#aaa">${presupuesto.length} concepto${presupuesto.length!==1?"s":""}</span>
+      Presupuestos
+      <span style="font-size:0.75rem;color:#aaa">${bloquesP.length}</span>
     </div>
     ${lineas}
     <div class="presup-actions">
-      <button class="btn btn-p" onclick="abrirGastoPresupuesto('${f.id || f._tempId}')">+ Añadir presupuesto</button>
+      <button class="btn btn-p" onclick="nuevoBloquePresupuestoMovil('${f.id || f._tempId}')">+ Presupuesto</button>
     </div>
     <div style="height:14px"></div>
     <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
-      📄 Cargar presupuesto del PC
+      Cargar presupuesto del PC
     </button>
     <div id="presup-txt-${f.id||f._tempId}" style="display:none;margin-top:10px;background:var(--ink);color:var(--wood-light);border-radius:6px;padding:14px;font-size:0.78rem;line-height:1.6;white-space:pre-wrap;overflow-x:auto"></div>
   `;
 }
 
-function abrirGastoPresupuesto(faenaId, gastoId = "") {
+function bloquesDePresupuestoMovil(lista) {
+  const map = new Map();
+  for (const p of lista || []) {
+    const db = String(p.bloque || "").trim();
+    const n = db || "General";
+    if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
+    const g = map.get(n);
+    g.partidas.push(p);
+    const tot = parseFloat(p.total) || 0;
+    g.total += tot;
+    if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
+  }
+  for (const g of map.values()) {
+    g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
+  }
+  return [...map.values()];
+}
+
+function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
   const presupuesto = (f.presupuesto && f.presupuesto.length)
@@ -2138,11 +2179,13 @@ function abrirGastoPresupuesto(faenaId, gastoId = "") {
   const gasto = presupuesto.find(g => String(g.id) === String(gastoId));
   document.getElementById("gasto-faena-id").value = faenaId;
   document.getElementById("gasto-id").value = gasto?.id || "";
-  document.getElementById("gasto-title").textContent = gasto ? "💶 Editar importe estimado" : "💶 Nuevo importe estimado";
+  document.getElementById("gasto-title").textContent = gasto ? "Editar partida" : "Nueva partida";
   document.getElementById("gasto-desc").value = gasto?.descripcion || "";
   document.getElementById("gasto-tipo").value = gasto?.tipo || "material";
   document.getElementById("gasto-cant").value = gasto?.cantidad ?? 1;
   document.getElementById("gasto-precio").value = gasto?.precio_unitario ?? "";
+  const bloq = gasto ? String(gasto.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
+  document.getElementById("gasto-bloque-txt").value = bloq;
   abrirModal("m-gasto-presupuesto");
 }
 
@@ -2160,7 +2203,14 @@ async function guardarGastoPresupuesto() {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
     const method = gastoId ? "PUT" : "POST";
-    const body = { descripcion, tipo: document.getElementById("gasto-tipo").value.trim() || "material", cantidad, precio_unitario };
+    const body = {
+      descripcion,
+      tipo: document.getElementById("gasto-tipo").value.trim() || "material",
+      cantidad,
+      precio_unitario,
+      bloque: (document.getElementById("gasto-bloque-txt").value || "").trim(),
+      incluido: 1
+    };
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
@@ -2199,12 +2249,92 @@ async function recargarPresupuestoFaena(faenaId) {
     if (d.ok) {
       f.presupuesto = d.data?.presupuesto || [];
       f.gastos_reales = d.data?.gastos || [];
+      f.bloques = d.data?.bloques || [];
+      f.total_incluido = d.data?.total_incluido;
       localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
       renderPanelPresupuesto(f);
       renderFaenas();
     }
   } catch (e) {
     console.error(e);
+  }
+}
+
+function nuevoBloquePresupuestoMovil(faenaId) {
+  const nombre = prompt("Nombre de este presupuesto (ej. Encimera, Puertas de paso)");
+  if (nombre == null) return;
+  abrirGastoPresupuesto(faenaId, "", nombre.trim());
+}
+
+async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre: nombreDb || "", incluido }),
+      signal: AbortSignal.timeout(6000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+  } catch (e) {
+    toast("No se pudo cambiar", true);
+  }
+}
+
+async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
+  if (!confirm("¿Borrar este presupuesto y todas sus partidas?")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre: nombreDb || "", borrar: true }),
+      signal: AbortSignal.timeout(6000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error");
+    await recargarPresupuestoFaena(faenaId);
+    toast("Presupuesto borrado");
+  } catch (e) {
+    toast("No se pudo borrar", true);
+  }
+}
+
+async function rescatarFaenaZipMovil(input) {
+  const file = input.files && input.files[0];
+  input.value = "";
+  if (!file) return;
+  toast("Rescatando faena…");
+  try {
+    const fd = new FormData();
+    fd.append("archivo", file, file.name || "faena.zip");
+    const r = await fetch(`${getServerUrl()}/faenas/desde-zip`, { method: "POST", body: fd, signal: AbortSignal.timeout(120000) });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudo rescatar", true); return; }
+    toast("Faena rescatada: " + ((d.data && d.data.numero) || ""));
+    await cargarDatosIniciales(true);
+    seleccionarFaseMovil("medicion");
+  } catch (e) {
+    toast("No se pudo rescatar el ZIP", true);
+  }
+}
+
+async function reabrirFaenaMovil(event, id) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fase: "medicion" }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudo reabrir", true); return; }
+    toast("Faena reabierta en Medición");
+    await cargarDatosIniciales(true);
+    seleccionarFaseMovil("medicion");
+  } catch (e) {
+    toast("No se pudo reabrir", true);
   }
 }
 
@@ -3351,6 +3481,9 @@ function renderFaenas() {
         </div>
         <div class="fc-cliente">${escHtml(f.cliente_nombre || "—")}</div>
         <div class="fc-tipo">${escHtml(f.tipo_trabajo || "Sin descripción")}</div>
+        <div class="fc-footer">
+          <button class="btn btn-p btn-inline" onclick="reabrirFaenaMovil(event,'${f.id}')">Reabrir</button>
+        </div>
       </div>`;
     }).join("");
     return;

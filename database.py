@@ -716,6 +716,8 @@ def _crear_esquema_sqlite(cursor):
             precio_unitario REAL DEFAULT 0,
             total REAL DEFAULT 0,
             fecha TEXT DEFAULT (datetime('now')),
+            bloque TEXT DEFAULT '',
+            incluido INTEGER DEFAULT 1,
             FOREIGN KEY (faena_id) REFERENCES faenas(id)
         )
     """)
@@ -737,6 +739,7 @@ def _crear_esquema_sqlite(cursor):
         pass
 
     _asegurar_columna_fase(cursor, mysql=False)
+    _asegurar_columnas_presupuesto(cursor, mysql=False)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS book_fotos (
@@ -978,6 +981,8 @@ def _crear_esquema_mysql(cursor):
             precio_unitario DOUBLE NOT NULL DEFAULT 0,
             total DOUBLE NOT NULL DEFAULT 0,
             fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            bloque VARCHAR(255) NOT NULL DEFAULT '',
+            incluido TINYINT NOT NULL DEFAULT 1,
             CONSTRAINT fk_presupuestos_faena
                 FOREIGN KEY (faena_id) REFERENCES faenas(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -1146,8 +1151,27 @@ def _crear_esquema_mysql(cursor):
         pass
 
     _asegurar_columna_fase(cursor, mysql=True)
+    _asegurar_columnas_presupuesto(cursor, mysql=True)
     _asegurar_anotaciones_contenido(cursor, mysql=True)
     _asegurar_categorias_material(cursor, mysql=True)
+
+
+def _asegurar_columnas_presupuesto(cursor, mysql=False):
+    """Añade bloque e incluido sin romper partidas ya guardadas."""
+    try:
+        if mysql:
+            cursor.execute("ALTER TABLE presupuestos_faena ADD COLUMN bloque VARCHAR(255) NOT NULL DEFAULT ''")
+        else:
+            cursor.execute("ALTER TABLE presupuestos_faena ADD COLUMN bloque TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        if mysql:
+            cursor.execute("ALTER TABLE presupuestos_faena ADD COLUMN incluido TINYINT NOT NULL DEFAULT 1")
+        else:
+            cursor.execute("ALTER TABLE presupuestos_faena ADD COLUMN incluido INTEGER DEFAULT 1")
+    except Exception:
+        pass
 
 
 def _asegurar_anotaciones_contenido(cursor, mysql=False):

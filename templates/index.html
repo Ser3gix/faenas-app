@@ -602,6 +602,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <h2>Faenas</h2>
     <div class="btn-row">
       <button class="btn btn-s btn-sm" onclick="sincronizarArchivosPC()">↻ Archivos del PC</button>
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('zip-rescatar-pc').click()">Rescatar ZIP</button>
+      <input id="zip-rescatar-pc" type="file" accept=".zip,application/zip" style="display:none" onchange="rescatarFaenaZip(this)">
       <button class="btn btn-p btn-sm" onclick="abrirModal('m-faena')">+ Nueva faena</button>
     </div>
   </div>
@@ -1298,6 +1300,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <input type="hidden" id="presupuesto-item-id">
     <input type="hidden" id="presupuesto-faena-id">
     <div class="form-grid g1">
+      <div><label>Presupuesto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera..."></div>
+    </div>
+    <div class="form-grid g1">
       <div><label>Descripción</label><input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..."></div>
     </div>
     <div class="form-grid">
@@ -1986,7 +1991,8 @@ function renderFaenas() {
           <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
           <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
           <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
+        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
+          <button class="btn btn-p btn-sm" onclick="reabrirFaena(${f.id})">Reabrir</button>`;
       return `<tr>
         <td><span class="num-faena">${f.numero}</span></td>
         <td>
@@ -2186,11 +2192,16 @@ async function verDetalle(id) {
   const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
   const presupuesto = conceptos.presupuesto || [];
   const gastos = conceptos.gastos || [];
+  const bloquesP = (conceptos.bloques && conceptos.bloques.length)
+    ? conceptos.bloques
+    : bloquesDePresupuesto(presupuesto);
+  const totalPresupuesto = typeof conceptos.total_incluido === "number"
+    ? conceptos.total_incluido
+    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   state.detalleId = id;
-  state.detalleActual = { gastos, presupuesto };
+  state.detalleActual = { gastos, presupuesto, bloques: bloquesP };
   const docs = rDocs.ok ? rDocs.data : [];
   const fotos = rFotos.ok ? rFotos.data : [];
-  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
   const esDirecto = f.intermediario_id === 0;
   function formatBytes(b) {
@@ -2260,27 +2271,42 @@ async function verDetalle(id) {
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>'}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">Presupuesto (${presupuesto.length})</strong>
+      <strong style="font-size:0.85rem">Presupuestos</strong>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id})">+ Partida</button>
-        <span class="badge b-orange">Total ${totalPresupuesto.toFixed(2)} €</span>
+        <button class="btn btn-s btn-sm" onclick="nuevoBloquePresupuesto(${f.id})">+ Presupuesto</button>
+        <span class="badge b-orange">Total conjunto ${totalPresupuesto.toFixed(2)} €</span>
       </div>
     </div>
-    ${presupuesto.length ? `
-      <table class="gastos-table">
-        <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
-        <tbody>
-          ${presupuesto.map(g => `<tr>
-            <td>${g.descripcion}</td>
-            <td><span class="badge b-orange">${g.tipo}</span></td>
-            <td>${g.cantidad ?? ""}</td>
-            <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
-            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
-            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end"><button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id}, ${g.id})">✏️</button><button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${f.id})">×</button></div></td>
-          </tr>`).join("")}
-        </tbody>
-       </table>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin conceptos de presupuesto</p>'}
+    ${bloquesP.length ? bloquesP.map(b => {
+      const nomJs = JSON.stringify(b.nombre_db || "");
+      const sub = parseFloat(b.incluido ? (b.total_incluido || b.total || 0) : (b.total || 0)) || 0;
+      return `
+      <div style="border:1px solid var(--sawdust);border-radius:6px;padding:8px;margin-bottom:8px;${b.incluido ? "" : "opacity:0.55"}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <strong style="font-size:0.82rem">${esc(b.nombre || "General")}</strong>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:0.78rem">${sub.toFixed(2)} €</span>
+            <button class="btn btn-s btn-sm" onclick='toggleBloquePresupuesto(${f.id}, ${nomJs}, ${b.incluido ? 0 : 1})'>${b.incluido ? "No incluir" : "Incluir"}</button>
+            <button class="btn btn-s btn-sm" onclick='abrirPresupuestoItem(${f.id}, null, ${nomJs})'>+ Partida</button>
+            <button class="btn btn-d btn-sm" onclick='borrarBloquePresupuesto(${f.id}, ${nomJs})'>×</button>
+          </div>
+        </div>
+        ${(b.partidas || []).length ? `
+          <table class="gastos-table">
+            <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
+            <tbody>
+              ${(b.partidas || []).map(g => `<tr>
+                <td>${esc(g.descripcion)}</td>
+                <td><span class="badge b-orange">${esc(g.tipo)}</span></td>
+                <td>${g.cantidad ?? ""}</td>
+                <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
+                <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
+                <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end"><button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id}, ${g.id})">✏️</button><button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${f.id})">×</button></div></td>
+              </tr>`).join("")}
+            </tbody>
+          </table>` : '<p style="font-size:0.78rem;color:#aaa;margin:4px 0">Sin partidas</p>'}
+      </div>`;
+    }).join("") : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos — crea uno por cada trabajo (puertas, encimera…)</p>'}
 
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -3366,7 +3392,25 @@ function renderConsultaMat() {
 }
 function usarPrecioEnPresupuesto(nombre, precio) { presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio }); renderTablasMateriales(); actualizarTotales(); cerrarModal("m-consulta-mat"); toast(`✓ ${nombre} añadido al presupuesto`); }
 
-function abrirPresupuestoItem(faenaId, itemId = null) {
+function bloquesDePresupuesto(lista) {
+  const map = new Map();
+  for (const p of lista || []) {
+    const db = String(p.bloque || "").trim();
+    const n = db || "General";
+    if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
+    const g = map.get(n);
+    g.partidas.push(p);
+    const tot = parseFloat(p.total) || 0;
+    g.total += tot;
+    if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
+  }
+  for (const g of map.values()) {
+    g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
+  }
+  return [...map.values()];
+}
+
+function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
   document.getElementById("presupuesto-faena-id").value = faenaId;
   document.getElementById("presupuesto-item-id").value = itemId || "";
   const item = itemId ? (state.detalleActual.presupuesto || []).find(p => String(p.id) === String(itemId)) : null;
@@ -3375,6 +3419,8 @@ function abrirPresupuestoItem(faenaId, itemId = null) {
   document.getElementById("presupuesto-tipo").value = item?.tipo || "material";
   document.getElementById("presupuesto-cant").value = item?.cantidad ?? 1;
   document.getElementById("presupuesto-precio").value = item?.precio_unitario ?? 0;
+  const bloq = item ? String(item.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
+  document.getElementById("presupuesto-bloque").value = bloq;
   cerrarModal("m-detalle");
   abrirModal("m-presupuesto-item");
 }
@@ -3385,7 +3431,9 @@ async function guardarPresupuestoItem() {
     tipo: document.getElementById("presupuesto-tipo").value,
     descripcion: document.getElementById("presupuesto-desc").value,
     cantidad: parseFloat(document.getElementById("presupuesto-cant").value) || 1,
-    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0
+    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0,
+    bloque: document.getElementById("presupuesto-bloque").value.trim(),
+    incluido: 1
   };
   const r = itemId
     ? await api("PUT", `/presupuestos/${itemId}`, payload)
@@ -3407,6 +3455,59 @@ async function eliminarPresupuestoItem(itemId, faenaId) {
     verDetalle(faenaId);
   }
   else toast(r.error, true);
+}
+
+async function nuevoBloquePresupuesto(faenaId) {
+  const nombre = prompt("Nombre de este presupuesto (ej. Encimera, Puertas de paso)");
+  if (nombre == null) return;
+  abrirPresupuestoItem(faenaId, null, nombre.trim());
+}
+
+async function toggleBloquePresupuesto(faenaId, nombreDb, incluido) {
+  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", incluido });
+  if (!r.ok) { toast(r.error || "No se pudo cambiar", true); return; }
+  await cargarFaenas();
+  renderFaenas();
+  await verDetalle(faenaId);
+}
+
+async function borrarBloquePresupuesto(faenaId, nombreDb) {
+  if (!confirm("¿Borrar este presupuesto y todas sus partidas?")) return;
+  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", borrar: true });
+  if (!r.ok) { toast(r.error || "No se pudo borrar", true); return; }
+  await cargarFaenas();
+  renderFaenas();
+  await verDetalle(faenaId);
+}
+
+async function reabrirFaena(id) {
+  const r = await api("PUT", `/faenas/${id}/fase`, { fase: "medicion" });
+  if (!r.ok) { toast(r.error || "No se pudo reabrir", true); return; }
+  toast("Faena reabierta en Medición");
+  await cargarFaenas();
+  state.faseVista = "medicion";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "medicion");
+  });
+  renderFaenas();
+}
+
+async function rescatarFaenaZip(input) {
+  const file = input.files && input.files[0];
+  input.value = "";
+  if (!file) return;
+  toast("Rescatando faena…");
+  const fd = new FormData();
+  fd.append("archivo", file, file.name || "faena.zip");
+  const r = await apiForm("POST", "/faenas/desde-zip", fd, 120000, API);
+  if (!r.ok) { toast(r.error || "No se pudo rescatar el ZIP", true); return; }
+  toast("Faena rescatada: " + ((r.data && r.data.numero) || ""));
+  await cargarFaenas();
+  state.faseVista = "medicion";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "medicion");
+  });
+  renderFaenas();
 }
 
 // ===== BOOK DE FOTOS =====

@@ -1335,10 +1335,22 @@ def extraer_referencia_faena(faena_id):
         if not fila:
             return
         faena = fila_a_dict(fila)
-        pres = filas_a_lista(conn.execute(
-            "SELECT descripcion, cantidad, precio_unitario, total FROM presupuestos_faena WHERE faena_id=? LIMIT 40",
-            (faena_id,),
-        ).fetchall())
+        try:
+            pres = filas_a_lista(conn.execute(
+                "SELECT descripcion, cantidad, precio_unitario, total, bloque, incluido FROM presupuestos_faena WHERE faena_id=?",
+                (faena_id,),
+            ).fetchall())
+        except Exception:
+            pres = filas_a_lista(conn.execute(
+                "SELECT descripcion, cantidad, precio_unitario, total FROM presupuestos_faena WHERE faena_id=? LIMIT 40",
+                (faena_id,),
+            ).fetchall())
+        pres = [p for p in pres if _partida_incluida_ref(p)][:80]
+        vistos = []
+        for p in pres:
+            n = str(p.get("bloque") or "").strip() or "General"
+            if n not in vistos:
+                vistos.append(n)
         gastos = filas_a_lista(conn.execute(
             "SELECT descripcion, cantidad, precio_unitario, total FROM gastos_faena WHERE faena_id=? LIMIT 40",
             (faena_id,),
@@ -1350,6 +1362,7 @@ def extraer_referencia_faena(faena_id):
             "cliente": faena.get("cliente_nombre"),
             "importe": faena.get("importe"),
             "presupuesto": pres,
+            "bloques_aceptados": vistos,
             "gastos": gastos,
             "tiempos": tiempos,
         }
@@ -1411,6 +1424,16 @@ def _tiempos_resumen_faena(conn, faena_id):
         return []
 
 
+def _partida_incluida_ref(fila):
+    v = fila.get("incluido") if isinstance(fila, dict) else None
+    if v is None or v == "":
+        return True
+    try:
+        return int(v) != 0
+    except (TypeError, ValueError):
+        return True
+
+
 def _resumen_heuristico_faena(datos):
     tipo = datos.get("tipo_trabajo") or "faena"
     imp = datos.get("importe") or 0
@@ -1423,6 +1446,9 @@ def _resumen_heuristico_faena(datos):
     for t in datos.get("tiempos") or []:
         horas.append(f"{t.get('categoria')}: {round(float(t.get('minutos') or 0)/60, 1)} h")
     partes = [str(tipo), f"cobrado {imp} €"]
+    bloques = datos.get("bloques_aceptados") or []
+    if bloques:
+        partes.append("presupuestos " + ", ".join(bloques[:8]))
     if mats:
         partes.append("materiales " + ", ".join(mats[:5]))
     if horas:
