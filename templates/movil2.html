@@ -1311,10 +1311,10 @@ textarea { resize: vertical; min-height: 80px; }
     <input type="hidden" id="gasto-faena-id">
     <input type="hidden" id="gasto-id">
     <input type="hidden" id="gasto-bloque">
-    <div class="field"><label>Presupuesto</label><input id="gasto-bloque-txt" placeholder="Puertas de paso, encimera..."></div>
-    <div class="field"><label>Concepto</label>
+    <div class="field"><label>Concepto</label><input id="gasto-bloque-txt" placeholder="Puertas de paso, encimera, bisagras..."></div>
+    <div class="field"><label>Detalle</label>
       <div style="display:flex;gap:8px;align-items:center">
-        <input id="gasto-desc" placeholder="4 puertas, rodapié..." style="flex:1;margin:0">
+        <input id="gasto-desc" placeholder="Partida o material..." style="flex:1;margin:0">
         <button type="button" class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
       </div>
     </div>
@@ -2223,6 +2223,7 @@ function renderPanelPresupuesto(f) {
     ${lineas}
     <div class="presup-actions">
       <button class="btn btn-p" onclick="nuevoBloquePresupuestoMovil('${f.id || f._tempId}')">+ Presupuesto</button>
+      <button class="btn btn-s" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
     </div>
     <div style="height:14px"></div>
     <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
@@ -2359,13 +2360,15 @@ function renderConsultaMatMovil() {
 }
 
 function usarMaterialEnPresupuestoMovil(nombre, precio) {
-  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId;
+  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
   const bloque = document.getElementById("gasto-bloque-txt")?.value || state.presupuestoParcial?.nombreDb || "";
   if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    if (!faenaId) { toast("Abre un presupuesto primero", true); return; }
+    if (!faenaId) { toast("Abre una faena primero", true); return; }
     abrirGastoPresupuesto(faenaId, "", bloque);
   }
   document.getElementById("gasto-desc").value = nombre;
+  const bloq = document.getElementById("gasto-bloque-txt");
+  if (bloq && !String(bloq.value || "").trim()) bloq.value = nombre;
   document.getElementById("gasto-tipo").value = "material";
   document.getElementById("gasto-precio").value = Number(precio || 0);
   const cant = document.getElementById("gasto-cant");
@@ -2381,18 +2384,19 @@ async function guardarGastoPresupuesto() {
   const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
-  if (!descripcion) { toast("El concepto es obligatorio", true); return; }
+  if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim()) { toast("El concepto es obligatorio", true); return; }
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
   try {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
     const method = gastoId ? "PUT" : "POST";
-    const bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
+    const bloque = (document.getElementById("gasto-bloque-txt").value || "").trim() || descripcion;
+    const descFinal = descripcion || bloque;
     const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil((f.presupuesto || []).length ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"));
     const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
     const body = {
-      descripcion,
+      descripcion: descFinal,
       tipo: document.getElementById("gasto-tipo").value.trim() || "material",
       cantidad,
       precio_unitario,
@@ -2403,9 +2407,11 @@ async function guardarGastoPresupuesto() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
+    const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open");
     await recargarPresupuestoFaena(faenaId);
     cerrarModal("m-gasto-presupuesto");
-    toast(gastoId ? "✓ Concepto actualizado" : "✓ Concepto añadido");
+    if (!seguirParcial) cerrarPresupuestoParcialMovil();
+    toast(gastoId ? "Concepto actualizado" : "Concepto añadido");
   } catch (e) {
     console.error(e);
     toast("No se pudo guardar el concepto", true);
@@ -2452,9 +2458,8 @@ async function recargarPresupuestoFaena(faenaId) {
 }
 
 function nuevoBloquePresupuestoMovil(faenaId) {
-  const nombre = prompt("Nombre de este presupuesto (ej. Encimera, Puertas de paso)");
-  if (nombre == null) return;
-  abrirPresupuestoParcialMovil(faenaId, nombre.trim());
+  cerrarPresupuestoParcialMovil();
+  abrirGastoPresupuesto(faenaId, "", "");
 }
 
 async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {

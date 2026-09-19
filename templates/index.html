@@ -1319,12 +1319,12 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <input type="hidden" id="presupuesto-item-id">
     <input type="hidden" id="presupuesto-faena-id">
     <div class="form-grid g1">
-      <div><label>Presupuesto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera..."></div>
+      <div><label>Concepto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera, bisagras..."></div>
     </div>
     <div class="form-grid g1">
-      <div><label>Descripción</label>
+      <div><label>Detalle</label>
         <div style="display:flex;gap:8px;align-items:center">
-          <input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..." style="flex:1">
+          <input id="presupuesto-desc" placeholder="Partida o material..." style="flex:1">
           <button type="button" class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
         </div>
       </div>
@@ -2224,6 +2224,8 @@ async function verDetalle(id) {
     ? conceptos.total_incluido
     : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   state.detalleId = id;
+  const campoFaenaPres = document.getElementById("presupuesto-faena-id");
+  if (campoFaenaPres) campoFaenaPres.value = id;
   state.detalleActual = { gastos, presupuesto, bloques: bloquesP };
   const docs = rDocs.ok ? rDocs.data : [];
   const fotos = rFotos.ok ? rFotos.data : [];
@@ -2299,6 +2301,7 @@ async function verDetalle(id) {
       <strong style="font-size:0.85rem">Presupuestos</strong>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn btn-s btn-sm" onclick="nuevoBloquePresupuesto(${f.id})">+ Presupuesto</button>
+        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
         <span class="badge b-orange">Total conjunto ${totalPresupuesto.toFixed(2)} €</span>
       </div>
     </div>
@@ -3427,6 +3430,8 @@ function aplicarMaterialAPartidaFaena(nombre, precio) {
   const desc = document.getElementById("presupuesto-desc");
   if (!desc) return;
   desc.value = nombre;
+  const bloq = document.getElementById("presupuesto-bloque");
+  if (bloq && !String(bloq.value || "").trim()) bloq.value = nombre;
   document.getElementById("presupuesto-tipo").value = "material";
   document.getElementById("presupuesto-precio").value = Number(precio || 0);
   const cant = document.getElementById("presupuesto-cant");
@@ -3435,9 +3440,9 @@ function aplicarMaterialAPartidaFaena(nombre, precio) {
 function usarPrecioEnPresupuesto(nombre, precio) {
   if (state.consultaMatDestino === "faena" || document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
     if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
-      const faenaId = document.getElementById("presupuesto-parcial-faena-id")?.value || state.presupuestoParcial?.faenaId;
+      const faenaId = document.getElementById("presupuesto-faena-id")?.value || state.detalleId || state.presupuestoParcial?.faenaId;
       const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
-      if (!faenaId) { toast("Abre un presupuesto primero", true); return; }
+      if (!faenaId) { toast("Abre una faena primero", true); return; }
       abrirPresupuestoItem(faenaId, null, bloque);
     }
     aplicarMaterialAPartidaFaena(nombre, precio);
@@ -3554,12 +3559,14 @@ async function refrescarDetallePresupuesto(faenaId) {
 async function guardarPresupuestoItem() {
   const faenaId = document.getElementById("presupuesto-faena-id").value;
   const itemId = document.getElementById("presupuesto-item-id").value;
-  const bloque = document.getElementById("presupuesto-bloque").value.trim();
+  const desc = (document.getElementById("presupuesto-desc").value || "").trim();
+  const bloque = (document.getElementById("presupuesto-bloque").value || "").trim() || desc;
+  if (!bloque) { toast("El concepto es obligatorio", true); return; }
   const bloques = state.detalleActual.bloques || [];
   const b = bloques.find(x => String(x.nombre_db || "") === String(bloque));
   const payload = {
     tipo: document.getElementById("presupuesto-tipo").value,
-    descripcion: document.getElementById("presupuesto-desc").value,
+    descripcion: desc || bloque,
     cantidad: parseFloat(document.getElementById("presupuesto-cant").value) || 1,
     precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0,
     bloque,
@@ -3571,6 +3578,8 @@ async function guardarPresupuestoItem() {
   if (r.ok) {
     toast(itemId ? `Partida actualizada: ${r.data.total.toFixed(2)} €` : `Partida añadida: ${r.data.total.toFixed(2)} €`);
     cerrarModal("m-presupuesto-item");
+    const seguirParcial = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
+    if (!seguirParcial) state.presupuestoParcial = null;
     await refrescarDetallePresupuesto(faenaId);
   } else toast(r.error, true);
 }
@@ -3582,9 +3591,9 @@ async function eliminarPresupuestoItem(itemId, faenaId) {
 }
 
 async function nuevoBloquePresupuesto(faenaId) {
-  const nombre = prompt("Nombre de este presupuesto (ej. Encimera, Puertas de paso)");
-  if (nombre == null) return;
-  abrirPresupuestoParcial(faenaId, nombre.trim());
+  state.presupuestoParcial = null;
+  cerrarModal("m-presupuesto-parcial");
+  abrirPresupuestoItem(faenaId, null, "");
 }
 
 async function toggleBloquePresupuesto(faenaId, nombreDb, incluido) {

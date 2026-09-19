@@ -2271,7 +2271,7 @@ def crear_presupuesto_item(id):
         cantidad,
         precio_unitario,
         total,
-        datos.get("bloque", ""),
+        datos.get("bloque") or datos.get("descripcion") or "",
         1 if datos.get("incluido", 1) not in (0, "0", False, "false") else 0,
     )
     total_faena = sincronizar_importe_faena(conn, id)
