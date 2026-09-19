@@ -447,6 +447,48 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .presup-tabla tbody tr { cursor: pointer; }
 .presup-tabla tbody tr.excluido { opacity: 0.55; }
 .presup-tabla th:last-child, .presup-tabla td:last-child { width: 72px; text-align: center; }
+.presup-incluir {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  position: relative;
+  cursor: pointer;
+}
+.presup-incluir input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.presup-check {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  background: #fff;
+  display: block;
+  box-sizing: border-box;
+}
+.presup-incluir input:checked + .presup-check {
+  background: var(--accent);
+}
+.presup-incluir input:checked + .presup-check::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 11px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin: 1px 0 0 6px;
+}
 #m-presupuesto-parcial-mov { z-index: 210; }
 #m-gasto-presupuesto { z-index: 220; }
 
@@ -2130,7 +2172,10 @@ function renderPanelPresupuesto(f) {
             <td><strong>${escHtml(b.nombre || "General")}</strong></td>
             <td class="presup-precio">${sub.toFixed(2)} €</td>
             <td onclick="event.stopPropagation()">
-              <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoMovil(${JSON.stringify(String(fid))},${JSON.stringify(nom)},this.checked?1:0)'>
+              <label class="presup-incluir">
+                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoMovil(${JSON.stringify(String(fid))},${JSON.stringify(nom)},this.checked?1:0)'>
+                <span class="presup-check"></span>
+              </label>
             </td>
           </tr>`;
         }).join("")}
