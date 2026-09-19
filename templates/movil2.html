@@ -2350,25 +2350,28 @@ function renderConsultaMatMovil() {
     const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
     const precioBase = precios.length ? Number(precios[0].precio_unitario) || 0 : 0;
     const preciosHtml = precios.length
-      ? precios.map((p, i) => `<button type="button" class="btn ${i===0?"btn-p":"btn-s"} btn-inline" data-mat-idx="${idx}" data-mat-precio="${Number(p.precio_unitario)||0}" style="margin:4px 4px 0 0">${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
-      : `<button type="button" class="btn btn-p btn-inline" data-mat-idx="${idx}" data-mat-precio="0">Añadir</button>`;
-    return `<div class="presup-line" data-mat-idx="${idx}" data-mat-precio="${precioBase}" style="align-items:flex-start;cursor:pointer">
+      ? precios.map((p) => `<button type="button" class="btn btn-s btn-inline" data-mat-pick="${idx}" data-mat-precio="${Number(p.precio_unitario)||0}" style="margin:4px 4px 0 0">${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
+      : "";
+    return `<div class="presup-line" style="align-items:flex-start;flex-wrap:wrap">
       <div class="presup-concepto">
         <strong>${escHtml(m.nombre)}</strong>
         <div style="font-size:0.72rem;color:#888;margin-top:3px">${escHtml(m.unidad||"ud")} · ${escHtml(m.categoria||"")}</div>
-        <div onclick="event.stopPropagation()">${preciosHtml}</div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+          ${preciosHtml}
+          <button type="button" class="btn btn-p btn-inline" data-mat-pick="${idx}" data-mat-precio="${precioBase}">Añadir a la partida</button>
+        </div>
       </div>
     </div>`;
   }).join("");
-  el.onclick = function (ev) {
-    const t = ev.target.closest("[data-mat-idx]");
-    if (!t || !el.contains(t)) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const m = lista[Number(t.dataset.matIdx)];
-    if (!m) return;
-    usarMaterialEnPresupuestoMovil(m.nombre, Number(t.dataset.matPrecio) || 0);
-  };
+  el.querySelectorAll("[data-mat-pick]").forEach(btn => {
+    btn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const m = lista[Number(this.getAttribute("data-mat-pick"))];
+      if (!m) return;
+      usarMaterialEnPresupuestoMovil(m.nombre, Number(this.getAttribute("data-mat-precio")) || 0);
+    });
+  });
 }
 
 async function usarMaterialEnPresupuestoMovil(nombre, precio) {

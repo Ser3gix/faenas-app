@@ -3432,25 +3432,31 @@ function renderConsultaMat() {
     const precios = [...(m.precios || [])].sort((a, b) => Number(a.precio_unitario) - Number(b.precio_unitario));
     const precioBase = precios.length ? Number(precios[0].precio_unitario) || 0 : 0;
     const preciosHtml = precios.length
-      ? precios.map((p, i) => `<button type="button" class="btn btn-s btn-sm" data-mat-idx="${idx}" data-mat-precio="${Number(p.precio_unitario) || 0}" style="padding:4px 8px;font-size:0.72rem;${i === 0 ? "font-weight:600" : ""}">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)} €</button>`).join("")
-      : `<button type="button" class="btn btn-s btn-sm" data-mat-idx="${idx}" data-mat-precio="0">Añadir</button>`;
-    return `<div class="consulta-mat-fila" data-mat-idx="${idx}" data-mat-precio="${precioBase}" style="padding:10px 0;border-bottom:1px solid var(--sawdust);cursor:pointer">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      ? precios.map((p) => `<button type="button" class="btn btn-s btn-sm" data-mat-pick="${idx}" data-mat-precio="${Number(p.precio_unitario) || 0}" style="padding:6px 10px">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)} €</button>`).join(" ")
+      : "";
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <strong style="font-size:0.85rem">${esc(m.nombre)}</strong>
         <span style="font-size:0.72rem;color:#aaa">${esc(m.unidad)} · ${esc(m.categoria)}</span>
       </div>
-      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px" onclick="event.stopPropagation()">${preciosHtml}</div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${preciosHtml}
+        <button type="button" class="btn btn-p btn-sm" data-mat-pick="${idx}" data-mat-precio="${precioBase}">Añadir a la partida</button>
+      </div>
     </div>`;
   }).join("");
-  el.onclick = function (ev) {
-    const t = ev.target.closest("[data-mat-idx]");
-    if (!t || !el.contains(t)) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const m = lista[Number(t.dataset.matIdx)];
-    if (!m) return;
-    usarPrecioEnPresupuesto(m.nombre, Number(t.dataset.matPrecio) || 0);
-  };
+  enlazarClicMaterial(el, lista, usarPrecioEnPresupuesto);
+}
+function enlazarClicMaterial(el, lista, onPick) {
+  el.querySelectorAll("[data-mat-pick]").forEach(btn => {
+    btn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const m = lista[Number(this.getAttribute("data-mat-pick"))];
+      if (!m) return;
+      onPick(m.nombre, Number(this.getAttribute("data-mat-precio")) || 0);
+    });
+  });
 }
 function aplicarMaterialAPartidaFaena(nombre, precio) {
   const desc = document.getElementById("presupuesto-desc");
