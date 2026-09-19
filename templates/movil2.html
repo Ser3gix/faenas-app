@@ -817,6 +817,8 @@ textarea { resize: vertical; min-height: 80px; }
   background: #fff; border: 1px solid var(--sawdust);
   border-radius: 18px; padding: 18px; width: 100%; max-width: 420px;
   box-shadow: var(--shadow);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .toast {
@@ -2277,6 +2279,11 @@ function renderPresupuestoParcialMovil() {
         <div class="presup-total-val" style="font-size:1.3rem">${total.toFixed(2)} €</div>
       </div>
     </div>
+    <div class="presup-actions" style="margin:0 0 12px 0;flex-wrap:wrap">
+      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Partida</button>
+      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
+      ${b ? `<button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar</button>` : ""}
+    </div>
     ${partidas.length ? partidas.map(g => `
       <div class="presup-line">
         <div class="presup-concepto">
@@ -2292,11 +2299,6 @@ function renderPresupuestoParcialMovil() {
           </div>
         </div>
       </div>`).join("") : '<div class="presup-empty">Sin partidas</div>'}
-    <div class="presup-actions" style="margin:12px 0">
-      <button class="btn btn-p" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Partida</button>
-      <button class="btn btn-s" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
-      ${b ? `<button class="btn btn-d" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar presupuesto</button>` : ""}
-    </div>
   `;
 }
 
