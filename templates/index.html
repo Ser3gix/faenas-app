@@ -360,6 +360,7 @@ textarea { resize: vertical; min-height: 70px; }
 .gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
 #m-presupuesto-parcial { z-index: 210; }
 #m-presupuesto-item { z-index: 220; }
+#m-consulta-mat { z-index: 230; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 /* POLYBOARD */
@@ -1321,7 +1322,12 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <div><label>Presupuesto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera..."></div>
     </div>
     <div class="form-grid g1">
-      <div><label>Descripción</label><input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..."></div>
+      <div><label>Descripción</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..." style="flex:1">
+          <button type="button" class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
+        </div>
+      </div>
     </div>
     <div class="form-grid">
       <div><label>Tipo</label>
@@ -3388,15 +3394,63 @@ async function abrirPresupuestoEnCursor() {
   const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
   const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
 }
-function abrirModalMateriales() { renderConsultaMat(); abrirModal("m-consulta-mat"); }
+function abrirModalMateriales() {
+  state.consultaMatDestino = "calculadora";
+  const q = document.getElementById("q-consulta-mat");
+  if (q) q.value = "";
+  renderConsultaMat();
+  abrirModal("m-consulta-mat");
+}
+function abrirListaMaterialesPresupuesto() {
+  state.consultaMatDestino = "faena";
+  const q = document.getElementById("q-consulta-mat");
+  if (q) q.value = "";
+  renderConsultaMat();
+  abrirModal("m-consulta-mat");
+}
 function renderConsultaMat() {
   const q = (document.getElementById("q-consulta-mat")?.value || "").toLowerCase();
   const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
   const el = document.getElementById("consulta-mat-lista");
   if (!lista.length) { el.innerHTML = '<div class="empty" style="padding:20px">Sin resultados</div>'; return; }
-  el.innerHTML = lista.map(m => { const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario); return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:0.85rem">${m.nombre}</strong><span style="font-size:0.72rem;color:#aaa">${m.unidad} · ${m.categoria}</span></div><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${precios.map((p, i) => `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick="usarPrecioEnPresupuesto('${m.nombre.replace(/'/g,"\\'")}',${p.precio_unitario})">Usar</button></span>`).join("")}</div></div>`; }).join("");
+  el.innerHTML = lista.map(m => {
+    const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
+    const nomJs = JSON.stringify(m.nombre || "");
+    const usarSinPrecio = `<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem" onclick='usarPrecioEnPresupuesto(${nomJs},0)'>Usar</button>`;
+    const preciosHtml = precios.length
+      ? precios.map((p, i) => `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)}€<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick='usarPrecioEnPresupuesto(${nomJs},${Number(p.precio_unitario)||0})'>Usar</button></span>`).join("")
+      : `<span style="font-size:0.78rem;color:#aaa">Sin precio ${usarSinPrecio}</span>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:0.85rem">${esc(m.nombre)}</strong><span style="font-size:0.72rem;color:#aaa">${esc(m.unidad)} · ${esc(m.categoria)}</span></div><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${preciosHtml}</div></div>`;
+  }).join("");
 }
-function usarPrecioEnPresupuesto(nombre, precio) { presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio }); renderTablasMateriales(); actualizarTotales(); cerrarModal("m-consulta-mat"); toast(`✓ ${nombre} añadido al presupuesto`); }
+function aplicarMaterialAPartidaFaena(nombre, precio) {
+  const desc = document.getElementById("presupuesto-desc");
+  if (!desc) return;
+  desc.value = nombre;
+  document.getElementById("presupuesto-tipo").value = "material";
+  document.getElementById("presupuesto-precio").value = Number(precio || 0);
+  const cant = document.getElementById("presupuesto-cant");
+  if (!cant.value) cant.value = 1;
+}
+function usarPrecioEnPresupuesto(nombre, precio) {
+  if (state.consultaMatDestino === "faena" || document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
+    if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
+      const faenaId = document.getElementById("presupuesto-parcial-faena-id")?.value || state.presupuestoParcial?.faenaId;
+      const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
+      if (!faenaId) { toast("Abre un presupuesto primero", true); return; }
+      abrirPresupuestoItem(faenaId, null, bloque);
+    }
+    aplicarMaterialAPartidaFaena(nombre, precio);
+    cerrarModal("m-consulta-mat");
+    toast(`${nombre} cargado en la partida`);
+    return;
+  }
+  presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio });
+  renderTablasMateriales();
+  actualizarTotales();
+  cerrarModal("m-consulta-mat");
+  toast(`${nombre} añadido al presupuesto`);
+}
 
 function bloquesDePresupuesto(lista) {
   const map = new Map();
@@ -3439,6 +3493,7 @@ function renderPresupuestoParcial() {
       <span class="badge b-orange">${total.toFixed(2)} €</span>
       <div class="btn-row" style="margin:0;gap:6px">
         <button class="btn btn-s btn-sm" onclick='abrirPresupuestoItem(${st.faenaId}, null, ${nomJs})'>+ Partida</button>
+        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
         ${b ? `<button class="btn btn-d btn-sm" onclick='borrarBloquePresupuesto(${st.faenaId}, ${nomJs})'>Eliminar presupuesto</button>` : ""}
       </div>
     </div>

@@ -491,6 +491,7 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 }
 #m-presupuesto-parcial-mov { z-index: 210; }
 #m-gasto-presupuesto { z-index: 220; }
+#m-consulta-mat-mov { z-index: 230; }
 
 /* ──────── DOCUMENTOS ──────── */
 .doc-item {
@@ -1291,6 +1292,16 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<!-- Modal: Lista de materiales para presupuesto -->
+<div class="overlay-modal" id="m-consulta-mat-mov">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">Materiales</div>
+    <div class="field"><label>Buscar</label><input id="q-consulta-mat-mov" placeholder="Nombre o categoría" oninput="renderConsultaMatMovil()"></div>
+    <div id="consulta-mat-lista-mov"></div>
+    <button class="btn btn-s" onclick="cerrarModal('m-consulta-mat-mov')">Cerrar</button>
+  </div>
+</div>
+
 <!-- Modal: Presupuesto -->
 <div class="overlay-modal" id="m-gasto-presupuesto">
   <div class="modal-box">
@@ -1299,7 +1310,12 @@ textarea { resize: vertical; min-height: 80px; }
     <input type="hidden" id="gasto-id">
     <input type="hidden" id="gasto-bloque">
     <div class="field"><label>Presupuesto</label><input id="gasto-bloque-txt" placeholder="Puertas de paso, encimera..."></div>
-    <div class="field"><label>Concepto</label><input id="gasto-desc" placeholder="4 puertas, rodapié..."></div>
+    <div class="field"><label>Concepto</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="gasto-desc" placeholder="4 puertas, rodapié..." style="flex:1;margin:0">
+        <button type="button" class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
+      </div>
+    </div>
     <div class="field"><label>Tipo</label><input id="gasto-tipo" placeholder="mano de obra, material..." value="presupuesto"></div>
     <div class="field"><label>Cantidad</label><input id="gasto-cant" type="number" step="0.01" value="1"></div>
     <div class="field"><label>Importe estimado a cobrar (€)</label><input id="gasto-precio" type="number" step="0.01" placeholder="0.00"></div>
@@ -2278,6 +2294,7 @@ function renderPresupuestoParcialMovil() {
       </div>`).join("") : '<div class="presup-empty">Sin partidas</div>'}
     <div class="presup-actions" style="margin:12px 0">
       <button class="btn btn-p" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Partida</button>
+      <button class="btn btn-s" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
       ${b ? `<button class="btn btn-d" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar presupuesto</button>` : ""}
     </div>
   `;
@@ -2305,6 +2322,54 @@ function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
   const bloq = gasto ? String(gasto.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
   document.getElementById("gasto-bloque-txt").value = bloq;
   abrirModal("m-gasto-presupuesto");
+}
+
+function abrirListaMaterialesPresupuestoMovil() {
+  const q = document.getElementById("q-consulta-mat-mov");
+  if (q) q.value = "";
+  renderConsultaMatMovil();
+  abrirModal("m-consulta-mat-mov");
+}
+
+function renderConsultaMatMovil() {
+  const q = (document.getElementById("q-consulta-mat-mov")?.value || "").toLowerCase();
+  const lista = (state.materiales || []).filter(m => !q || String(m.nombre||"").toLowerCase().includes(q) || String(m.categoria||"").toLowerCase().includes(q));
+  const el = document.getElementById("consulta-mat-lista-mov");
+  if (!el) return;
+  if (!lista.length) {
+    el.innerHTML = `<div class="presup-empty">${(state.materiales||[]).length ? "Sin resultados" : "Sincroniza para ver materiales"}</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(m => {
+    const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
+    const nomJs = JSON.stringify(m.nombre || "");
+    const preciosHtml = precios.length
+      ? precios.map((p, i) => `<button class="btn ${i===0?"btn-p":"btn-s"} btn-inline" style="margin:4px 4px 0 0" onclick='usarMaterialEnPresupuestoMovil(${nomJs},${Number(p.precio_unitario)||0})'>${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
+      : `<button class="btn btn-s btn-inline" onclick='usarMaterialEnPresupuestoMovil(${nomJs},0)'>Usar sin precio</button>`;
+    return `<div class="presup-line" style="align-items:flex-start">
+      <div class="presup-concepto">
+        <strong>${escHtml(m.nombre)}</strong>
+        <div style="font-size:0.72rem;color:#888;margin-top:3px">${escHtml(m.unidad||"ud")} · ${escHtml(m.categoria||"")}</div>
+        <div>${preciosHtml}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function usarMaterialEnPresupuestoMovil(nombre, precio) {
+  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId;
+  const bloque = document.getElementById("gasto-bloque-txt")?.value || state.presupuestoParcial?.nombreDb || "";
+  if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    if (!faenaId) { toast("Abre un presupuesto primero", true); return; }
+    abrirGastoPresupuesto(faenaId, "", bloque);
+  }
+  document.getElementById("gasto-desc").value = nombre;
+  document.getElementById("gasto-tipo").value = "material";
+  document.getElementById("gasto-precio").value = Number(precio || 0);
+  const cant = document.getElementById("gasto-cant");
+  if (!cant.value) cant.value = 1;
+  cerrarModal("m-consulta-mat-mov");
+  toast(`${nombre} cargado en la partida`);
 }
 
 async function guardarGastoPresupuesto() {
