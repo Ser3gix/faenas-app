@@ -96,6 +96,8 @@ app = Flask(
     template_folder=os.path.join(APP_DIR, "templates")
 )
 app.config["MAX_CONTENT_LENGTH"] = 40 * 1024 * 1024
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 CORS(app, origins="*", allow_headers=["Content-Type"], supports_credentials=False)
 
 @app.after_request
@@ -103,6 +105,8 @@ def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    if (response.mimetype or "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return response
 
 
@@ -916,7 +920,9 @@ def static_files(filename):
 @app.route("/")
 @app.route("/index.html")
 def index():
-    return render_template("index.html", faenas_api_base=_url_api_publica())
+    resp = make_response(render_template("index.html", faenas_api_base=_url_api_publica()))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 def _url_api_publica():
     base = (PUBLIC_BASE_URL or "").rstrip("/")
