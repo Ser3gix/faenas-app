@@ -96,6 +96,8 @@ app = Flask(
     template_folder=os.path.join(APP_DIR, "templates")
 )
 app.config["MAX_CONTENT_LENGTH"] = 40 * 1024 * 1024
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 CORS(app, origins="*", allow_headers=["Content-Type"], supports_credentials=False)
 
 @app.after_request
@@ -103,6 +105,8 @@ def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    if (response.mimetype or "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return response
 
 
@@ -916,7 +920,9 @@ def static_files(filename):
 @app.route("/")
 @app.route("/index.html")
 def index():
-    return render_template("index.html", faenas_api_base=_url_api_publica())
+    resp = make_response(render_template("index.html", faenas_api_base=_url_api_publica()))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 def _url_api_publica():
     base = (PUBLIC_BASE_URL or "").rstrip("/")
@@ -1336,7 +1342,7 @@ def _importe_para_terminar(conn, faena_id, importe_actual):
     total = 0
     try:
         total = float(conn.execute(
-            "SELECT COALESCE(SUM(total),0) AS t FROM presupuestos_faena WHERE faena_id=?",
+            "SELECT COALESCE(SUM(total),0) AS t FROM presupuestos_faena WHERE faena_id=? AND COALESCE(incluido,1)<>0",
             (faena_id,),
         ).fetchone()["t"] or 0)
     except Exception:
@@ -1566,6 +1572,51 @@ def descargar_zip_faena(id):
     if not faena:
         conn.close()
         return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    cli = None
+    try:
+        if faena.get("cliente_id") is not None:
+            cli = conn.execute(
+                "SELECT nombre, telefono, direccion FROM clientes WHERE id=?",
+                (faena.get("cliente_id"),),
+            ).fetchone()
+            cli = fila_a_dict(cli) if cli else {}
+    except Exception:
+        cli = {}
+    cli = cli or {}
+    try:
+        pres = filas_a_lista(conn.execute(
+            "SELECT * FROM presupuestos_faena WHERE faena_id=?", (id,)
+        ).fetchall())
+    except Exception:
+        pres = []
+    aceptadas = [p for p in pres if _partida_incluida(p)]
+    bloques, total_inc = agrupar_bloques_presupuesto(aceptadas)
+    meta = {
+        "version": 1,
+        "numero": faena.get("numero") or "",
+        "numero_original": faena.get("numero") or "",
+        "cliente_nombre": cli.get("nombre") or "",
+        "cliente_telefono": cli.get("telefono") or "",
+        "direccion": faena.get("direccion") or cli.get("direccion") or "",
+        "tipo_trabajo": faena.get("tipo_trabajo") or "",
+        "importe": total_inc,
+        "bloques": [
+            {
+                "nombre": b.get("nombre_db") or "",
+                "partidas": [
+                    {
+                        "tipo": p.get("tipo") or "material",
+                        "descripcion": p.get("descripcion") or "",
+                        "cantidad": p.get("cantidad") or 1,
+                        "precio_unitario": p.get("precio_unitario") or 0,
+                        "total": p.get("total") or 0,
+                    }
+                    for p in (b.get("partidas") or [])
+                ],
+            }
+            for b in bloques
+        ],
+    }
     fotos = filas_a_lista(conn.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (id,)).fetchall())
     archivos = []
     try:
@@ -1606,9 +1657,144 @@ def descargar_zip_faena(id):
         if lista_docs:
             zf.writestr("documentos/lista.txt", "\n".join(lista_docs) + "\n")
         zf.writestr("faena.txt", f"{faena.get('numero') or id}\n{faena.get('direccion') or ''}\n")
+        zf.writestr("faena.json", json.dumps(meta, ensure_ascii=False, indent=2))
     buf.seek(0)
     numero = str(faena.get("numero") or id).replace("/", "-")
     return send_file(buf, as_attachment=True, download_name=f"faena_{numero}.zip", mimetype="application/zip")
+
+
+@app.route("/api/faenas/desde-zip", methods=["POST"])
+def faena_desde_zip():
+    import zipfile
+    f = request.files.get("archivo") or request.files.get("file") or request.files.get("zip")
+    if not f:
+        return jsonify({"ok": False, "error": "Selecciona el ZIP de la faena"}), 400
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(f.read()))
+    except Exception:
+        return jsonify({"ok": False, "error": "El archivo no es un ZIP válido"}), 400
+    nombres = zf.namelist()
+    meta_name = None
+    for n in nombres:
+        base = n.replace("\\", "/").split("/")[-1]
+        if base == "faena.json":
+            meta_name = n
+            break
+    if not meta_name:
+        return jsonify({"ok": False, "error": "Este ZIP no se puede rescatar: falta faena.json"}), 400
+    try:
+        meta = json.loads(zf.read(meta_name).decode("utf-8"))
+    except Exception:
+        return jsonify({"ok": False, "error": "faena.json no es válido"}), 400
+    if not isinstance(meta, dict):
+        return jsonify({"ok": False, "error": "faena.json no es válido"}), 400
+    cliente_nombre = (meta.get("cliente_nombre") or "Cliente").strip() or "Cliente"
+    direccion = (meta.get("direccion") or "").strip()
+    tipo_trabajo = (meta.get("tipo_trabajo") or "").strip()
+    numero_orig = (meta.get("numero") or meta.get("numero_original") or "").strip()
+    conn = get_connection()
+    try:
+        cli = conn.execute(
+            "SELECT id, intermediario_id, direccion FROM clientes WHERE LOWER(nombre)=LOWER(?)",
+            (cliente_nombre,),
+        ).fetchone()
+        if cli:
+            cli = fila_a_dict(cli)
+            cliente_id = cli["id"]
+            intermediario_id = cli.get("intermediario_id") or 0
+            if not direccion:
+                direccion = (cli.get("direccion") or "").strip()
+        else:
+            cursor = conn.execute(
+                "INSERT INTO clientes (nombre, telefono, direccion) VALUES (?, ?, ?)",
+                (cliente_nombre, meta.get("cliente_telefono") or "", direccion),
+            )
+            cliente_id = cursor.lastrowid
+            intermediario_id = 0
+        numero = numero_orig
+        if numero:
+            ocupado = conn.execute("SELECT id FROM faenas WHERE numero=?", (numero,)).fetchone()
+            if ocupado:
+                numero = generar_numero_faena(intermediario_id, cliente_id, conn)
+        else:
+            numero = generar_numero_faena(intermediario_id, cliente_id, conn)
+        carpeta = crear_carpeta_faena(numero, cliente_nombre)
+        cursor = conn.execute("""
+            INSERT INTO faenas
+                (numero, cliente_id, intermediario_id, direccion, tipo_trabajo, importe, fecha_inicio, carpeta, fase)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            numero,
+            cliente_id,
+            intermediario_id,
+            direccion,
+            tipo_trabajo,
+            float(meta.get("importe") or 0),
+            "",
+            carpeta,
+            "medicion",
+        ))
+        nuevo_id = cursor.lastrowid
+        faena = fila_a_dict(conn.execute("SELECT * FROM faenas WHERE id=?", (nuevo_id,)).fetchone())
+        for bloque in meta.get("bloques") or []:
+            nom_b = _nombre_bloque(bloque.get("nombre"))
+            for p in bloque.get("partidas") or []:
+                cant = float(p.get("cantidad") or 1)
+                precio = float(p.get("precio_unitario") or 0)
+                total = float(p.get("total") or (cant * precio))
+                _insertar_partida_presupuesto(
+                    conn, nuevo_id, p.get("tipo") or "material", p.get("descripcion") or "",
+                    cant, precio, total, nom_b, 1,
+                )
+        sincronizar_importe_faena(conn, nuevo_id)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    fotos_ok = 0
+    docs_ok = 0
+    try:
+        for n in nombres:
+            ruta_n = n.replace("\\", "/")
+            if ruta_n.endswith("/"):
+                continue
+            partes = ruta_n.split("/")
+            carpeta_zip = partes[-2].lower() if len(partes) >= 2 else ""
+            nombre = partes[-1]
+            if nombre in {"faena.json", "faena.txt", "lista.txt"}:
+                continue
+            data = zf.read(n)
+            if not data:
+                continue
+            if carpeta_zip == "fotos" or _es_foto_nombre(nombre):
+                try:
+                    ruta, key, url, backend = _guardar_binario(faena, "fotos", nombre, data, _mime_archivo(nombre))
+                    conn.execute(
+                        "INSERT INTO fotos_faena (faena_id, nombre, ruta_foto, data_base64, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
+                        (nuevo_id, nombre, key or ruta, ""),
+                    )
+                    fotos_ok += 1
+                except Exception:
+                    pass
+            elif carpeta_zip in {"documentos", "pdf", "docs"}:
+                try:
+                    tipo = "pdf" if _es_pdf_nombre(nombre) else "documento"
+                    ruta, key, url, backend = _guardar_binario(faena, "documentos", nombre, data, _mime_archivo(nombre))
+                    _registrar_archivo(conn, nuevo_id, tipo, nombre, backend or "r2", key or ruta, url, _mime_archivo(nombre), len(data))
+                    docs_ok += 1
+                except Exception:
+                    pass
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+    return jsonify({"ok": True, "data": {
+        "id": nuevo_id,
+        "numero": numero,
+        "numero_original": numero_orig,
+        "fotos": fotos_ok,
+        "documentos": docs_ok,
+    }})
 
 
 # -------------------- ANOTACIONES --------------------
@@ -1916,6 +2102,7 @@ def get_conceptos_faena(id):
     conn = get_connection()
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     presupuesto = asegurar_presupuesto_editable(conn, id, faena["carpeta"] if faena else None)
+    bloques, total_incluido = agrupar_bloques_presupuesto(presupuesto)
     try:
         gastos = conn.execute(
             "SELECT * FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))<>'presupuesto' ORDER BY fecha DESC, id DESC", (id,)
@@ -1923,7 +2110,12 @@ def get_conceptos_faena(id):
     except Exception:
         gastos = []
     conn.close()
-    return jsonify({"ok": True, "data": {"presupuesto": presupuesto, "gastos": filas_a_lista(gastos)}})
+    return jsonify({"ok": True, "data": {
+        "presupuesto": presupuesto,
+        "gastos": filas_a_lista(gastos),
+        "bloques": bloques,
+        "total_incluido": total_incluido,
+    }})
 
 @app.route("/api/faenas/<int:id>/gastos", methods=["POST"])
 def crear_gasto(id):
@@ -1983,12 +2175,84 @@ def editar_gasto(id):
     conn.close()
     return jsonify({"ok": True, "data": {"id": id, "total": total}})
 
+def _nombre_bloque(valor):
+    return (valor or "").strip()
+
+
+def _partida_incluida(fila):
+    v = fila.get("incluido") if isinstance(fila, dict) else None
+    if v is None or v == "":
+        return 1
+    try:
+        return 1 if int(v) else 0
+    except (TypeError, ValueError):
+        return 1
+
+
+def agrupar_bloques_presupuesto(filas):
+    grupos = {}
+    orden = []
+    for raw in filas or []:
+        p = dict(raw)
+        nom = _nombre_bloque(p.get("bloque"))
+        p["bloque"] = nom
+        p["incluido"] = _partida_incluida(p)
+        if nom not in grupos:
+            grupos[nom] = {
+                "nombre": nom or "General",
+                "nombre_db": nom,
+                "incluido": 1,
+                "partidas": [],
+                "total": 0.0,
+                "total_incluido": 0.0,
+            }
+            orden.append(nom)
+        g = grupos[nom]
+        tot = float(p.get("total") or 0)
+        g["partidas"].append(p)
+        g["total"] += tot
+        if p["incluido"]:
+            g["total_incluido"] += tot
+    for g in grupos.values():
+        g["incluido"] = 1 if g["partidas"] and all(_partida_incluida(p) for p in g["partidas"]) else 0
+    total_incluido = sum(g["total_incluido"] for g in grupos.values())
+    return [grupos[k] for k in orden], total_incluido
+
+
+def _insertar_partida_presupuesto(conn, faena_id, tipo, descripcion, cantidad, precio_unitario, total, bloque="", incluido=1):
+    bloque = _nombre_bloque(bloque)
+    incluido = 1 if incluido else 0
+    try:
+        cursor = conn.execute(
+            """INSERT INTO presupuestos_faena
+                (faena_id, tipo, descripcion, cantidad, precio_unitario, total, bloque, incluido)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (faena_id, tipo, descripcion, cantidad, precio_unitario, total, bloque, incluido),
+        )
+        return cursor
+    except Exception:
+        return conn.execute(
+            """INSERT INTO presupuestos_faena
+                (faena_id, tipo, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+            (faena_id, tipo, descripcion, cantidad, precio_unitario, total),
+        )
+
+
 def sincronizar_importe_faena(conn, faena_id):
-    fila = conn.execute(
-        "SELECT COALESCE(SUM(total), 0) AS total FROM presupuestos_faena WHERE faena_id=?",
-        (faena_id,)
-    ).fetchone()
-    total = float(fila["total"] or 0)
+    total = 0.0
+    try:
+        fila = conn.execute(
+            "SELECT COALESCE(SUM(total), 0) AS total FROM presupuestos_faena WHERE faena_id=? AND COALESCE(incluido,1)<>0",
+            (faena_id,),
+        ).fetchone()
+        total = float(fila["total"] or 0)
+    except Exception:
+        fila = conn.execute(
+            "SELECT COALESCE(SUM(total), 0) AS total FROM presupuestos_faena WHERE faena_id=?",
+            (faena_id,),
+        ).fetchone()
+        total = float(fila["total"] or 0)
     conn.execute("UPDATE faenas SET importe=? WHERE id=?", (total, faena_id))
     return total
 
@@ -1999,19 +2263,17 @@ def crear_presupuesto_item(id):
     precio_unitario = float(datos.get("precio_unitario", 0) or 0)
     total = cantidad * precio_unitario
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO presupuestos_faena
-            (faena_id, tipo, descripcion, cantidad, precio_unitario, total)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
+    cursor = _insertar_partida_presupuesto(
+        conn,
         id,
         datos.get("tipo", "material"),
         datos.get("descripcion", ""),
         cantidad,
         precio_unitario,
         total,
-    ))
+        datos.get("bloque") or datos.get("descripcion") or "",
+        1 if datos.get("incluido", 1) not in (0, "0", False, "false") else 0,
+    )
     total_faena = sincronizar_importe_faena(conn, id)
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -2026,18 +2288,43 @@ def editar_presupuesto_item(id):
     total = cantidad * precio_unitario
     conn = get_connection()
     fila = conn.execute("SELECT faena_id FROM presupuestos_faena WHERE id=?", (id,)).fetchone()
-    cursor = conn.execute("""
-        UPDATE presupuestos_faena
-        SET tipo=?, descripcion=?, cantidad=?, precio_unitario=?, total=?
-        WHERE id=?
-    """, (
-        datos.get("tipo", "material"),
-        datos.get("descripcion", ""),
-        cantidad,
-        precio_unitario,
-        total,
-        id,
-    ))
+    bloque = datos.get("bloque")
+    incluido = datos.get("incluido")
+    try:
+        if bloque is not None or incluido is not None:
+            if incluido is None:
+                incluido_val = 1
+            else:
+                incluido_val = 0 if incluido in (0, "0", False, "false") else 1
+            cursor = conn.execute("""
+                UPDATE presupuestos_faena
+                SET tipo=?, descripcion=?, cantidad=?, precio_unitario=?, total=?, bloque=?, incluido=?
+                WHERE id=?
+            """, (
+                datos.get("tipo", "material"),
+                datos.get("descripcion", ""),
+                cantidad,
+                precio_unitario,
+                total,
+                _nombre_bloque(bloque) if bloque is not None else "",
+                incluido_val,
+                id,
+            ))
+        else:
+            raise Exception("sin columnas nuevas")
+    except Exception:
+        cursor = conn.execute("""
+            UPDATE presupuestos_faena
+            SET tipo=?, descripcion=?, cantidad=?, precio_unitario=?, total=?
+            WHERE id=?
+        """, (
+            datos.get("tipo", "material"),
+            datos.get("descripcion", ""),
+            cantidad,
+            precio_unitario,
+            total,
+            id,
+        ))
     total_faena = sincronizar_importe_faena(conn, fila["faena_id"]) if fila else 0
     conn.commit()
     conn.close()
@@ -2056,6 +2343,54 @@ def eliminar_presupuesto_item(id):
     if cursor.rowcount == 0:
         return jsonify({"ok": False, "error": "Partida de presupuesto no encontrada"}), 404
     return jsonify({"ok": True, "data": {"importe": total_faena}})
+
+
+@app.route("/api/faenas/<int:id>/presupuesto/bloque", methods=["PUT"])
+def gestionar_bloque_presupuesto(id):
+    datos = request.json or {}
+    nombre = _nombre_bloque(datos.get("nombre"))
+    nuevo = datos.get("nuevo_nombre")
+    borrar = bool(datos.get("borrar"))
+    conn = get_connection()
+    filas = filas_a_lista(conn.execute(
+        "SELECT * FROM presupuestos_faena WHERE faena_id=? ORDER BY id", (id,)
+    ).fetchall())
+    ids = [p["id"] for p in filas if _nombre_bloque(p.get("bloque")) == nombre]
+    if borrar:
+        if not ids and not nombre:
+            conn.close()
+            return jsonify({"ok": False, "error": "No hay partidas en General"}), 404
+        for pid in ids:
+            conn.execute("DELETE FROM presupuestos_faena WHERE id=?", (pid,))
+        total_faena = sincronizar_importe_faena(conn, id)
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "data": {"importe": total_faena}})
+    if nuevo is not None:
+        nuevo_n = _nombre_bloque(nuevo)
+        try:
+            conn.execute(
+                "UPDATE presupuestos_faena SET bloque=? WHERE faena_id=? AND TRIM(COALESCE(bloque,''))=?",
+                (nuevo_n, id, nombre),
+            )
+        except Exception:
+            conn.close()
+            return jsonify({"ok": False, "error": "No se pudo renombrar"}), 400
+    if "incluido" in datos:
+        inc = 0 if datos.get("incluido") in (0, "0", False, "false") else 1
+        try:
+            conn.execute(
+                "UPDATE presupuestos_faena SET incluido=? WHERE faena_id=? AND TRIM(COALESCE(bloque,''))=?",
+                (inc, id, nombre),
+            )
+        except Exception:
+            conn.close()
+            return jsonify({"ok": False, "error": "No se pudo cambiar la inclusión"}), 400
+    total_faena = sincronizar_importe_faena(conn, id)
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"importe": total_faena}})
+
 
 # -------------------- PROMPTS --------------------
 @app.route("/api/prompts/ticket", methods=["GET"])
@@ -3493,10 +3828,7 @@ def secretario_aplicar():
             precio = _to_float_seguro(datos.get("precio_unitario") or 0)
             total = cantidad * precio
             conn = get_connection()
-            conn.execute(
-                "INSERT INTO presupuestos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total) VALUES (?, ?, ?, ?, ?, ?)",
-                (faena_id, "presupuesto", desc, cantidad, precio, total),
-            )
+            _insertar_partida_presupuesto(conn, faena_id, "presupuesto", desc, cantidad, precio, total, "", 1)
             conn.commit()
             conn.close()
             anotar_contexto(f"Aceptó partida de presupuesto en faena {faena_id}: {desc} {total:.2f} €")
@@ -4202,8 +4534,11 @@ def sync_datos():
         ).fetchall()
         faena["anotaciones"] = filas_a_lista(anotaciones)
         presupuesto_lista = asegurar_presupuesto_editable(conn, f["id"], f["carpeta"])
+        bloques, total_inc = agrupar_bloques_presupuesto(presupuesto_lista)
+        faena["bloques"] = bloques
+        faena["total_incluido"] = total_inc
         if presupuesto_lista:
-            faena["importe"] = sum(float(p.get("total", 0) or 0) for p in presupuesto_lista)
+            faena["importe"] = total_inc
         try:
             gastos = conn.execute(
                 "SELECT * FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))<>'presupuesto' ORDER BY fecha DESC, id DESC",
@@ -4874,16 +5209,16 @@ def asegurar_presupuesto_editable(conn, faena_id, carpeta):
         return []
 
     for concepto in presupuesto_txt:
-        conn.execute(
-            "INSERT INTO presupuestos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                faena_id,
-                concepto.get("tipo", "material"),
-                concepto.get("descripcion", ""),
-                float(concepto.get("cantidad", 1) or 1),
-                float(concepto.get("precio_unitario", 0) or 0),
-                float(concepto.get("total", 0) or 0),
-            )
+        _insertar_partida_presupuesto(
+            conn,
+            faena_id,
+            concepto.get("tipo", "material"),
+            concepto.get("descripcion", ""),
+            float(concepto.get("cantidad", 1) or 1),
+            float(concepto.get("precio_unitario", 0) or 0),
+            float(concepto.get("total", 0) or 0),
+            "",
+            1,
         )
     conn.commit()
 
@@ -4936,18 +5271,12 @@ def guardar_presupuesto(id):
         cant  = float(m.get("cantidad", 0))
         precio = float(m.get("precio_unitario", 0))
         total_linea = cant * precio
-        conn.execute(
-            "INSERT INTO presupuestos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total) VALUES (?, ?, ?, ?, ?, ?)",
-            (id, "material", m.get("descripcion", ""), cant, precio, total_linea)
-        )
+        _insertar_partida_presupuesto(conn, id, "material", m.get("descripcion", ""), cant, precio, total_linea, "", 1)
     for l in mano_obra:
         cant   = float(l.get("cantidad", 0))
         precio = float(l.get("precio", 0))
         total_linea = cant * precio
-        conn.execute(
-            "INSERT INTO presupuestos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total) VALUES (?, ?, ?, ?, ?, ?)",
-            (id, l.get("tipo", "hora"), l.get("descripcion", ""), cant, precio, total_linea)
-        )
+        _insertar_partida_presupuesto(conn, id, l.get("tipo", "hora"), l.get("descripcion", ""), cant, precio, total_linea, "", 1)
     total_faena = sincronizar_importe_faena(conn, id)
     conn.commit()
     conn.close()

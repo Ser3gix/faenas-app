@@ -354,7 +354,13 @@ textarea { resize: vertical; min-height: 70px; }
 .gastos-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.8rem; }
 .gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.72rem; color: var(--muted); border-bottom: 2px solid var(--sawdust); }
 .gastos-table td { padding: 7px 10px; border-bottom: 1px solid var(--sawdust); }
+.gastos-table tbody tr.presup-fila { cursor: pointer; }
+.gastos-table tbody tr.presup-fila:hover { background: var(--paper-dark); }
+.gastos-table tbody tr.presup-fila.excluido { opacity: 0.55; }
 .gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
+#m-presupuesto-parcial { z-index: 210; }
+#m-presupuesto-item { z-index: 220; }
+#m-consulta-mat { z-index: 230; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 /* POLYBOARD */
@@ -602,6 +608,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <h2>Faenas</h2>
     <div class="btn-row">
       <button class="btn btn-s btn-sm" onclick="sincronizarArchivosPC()">↻ Archivos del PC</button>
+      <button class="btn btn-s btn-sm" onclick="document.getElementById('zip-rescatar-pc').click()">Rescatar ZIP</button>
+      <input id="zip-rescatar-pc" type="file" accept=".zip,application/zip" style="display:none" onchange="rescatarFaenaZip(this)">
       <button class="btn btn-p btn-sm" onclick="abrirModal('m-faena')">+ Nueva faena</button>
     </div>
   </div>
@@ -1291,6 +1299,19 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
+<!-- Modal Presupuesto parcial -->
+<div class="overlay" id="m-presupuesto-parcial">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-title" id="presupuesto-parcial-title">Presupuesto</div>
+    <input type="hidden" id="presupuesto-parcial-faena-id">
+    <input type="hidden" id="presupuesto-parcial-bloque">
+    <div id="presupuesto-parcial-contenido"></div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-s" onclick="cerrarPresupuestoParcial()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Partida de Presupuesto -->
 <div class="overlay" id="m-presupuesto-item">
   <div class="modal">
@@ -1298,7 +1319,15 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <input type="hidden" id="presupuesto-item-id">
     <input type="hidden" id="presupuesto-faena-id">
     <div class="form-grid g1">
-      <div><label>Descripción</label><input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..."></div>
+      <div><label>Concepto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera, bisagras..."></div>
+    </div>
+    <div class="form-grid g1">
+      <div><label>Detalle</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="presupuesto-desc" placeholder="Partida o material..." style="flex:1">
+          <button type="button" class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
+        </div>
+      </div>
     </div>
     <div class="form-grid">
       <div><label>Tipo</label>
@@ -1597,7 +1626,8 @@ let state = {
   categorias: [], filtroCat: "",
   faseVista: "en_proceso",
   detalleId: null,
-  detalleActual: { gastos: [], presupuesto: [] }
+  detalleActual: { gastos: [], presupuesto: [] },
+  presupuestoParcial: null
 };
 
 // ===== ARRANQUE =====
@@ -1986,7 +2016,8 @@ function renderFaenas() {
           <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
           <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
           <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
+        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
+          <button class="btn btn-p btn-sm" onclick="reabrirFaena(${f.id})">Reabrir</button>`;
       return `<tr>
         <td><span class="num-faena">${f.numero}</span></td>
         <td>
@@ -2186,11 +2217,18 @@ async function verDetalle(id) {
   const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
   const presupuesto = conceptos.presupuesto || [];
   const gastos = conceptos.gastos || [];
+  const bloquesP = (conceptos.bloques && conceptos.bloques.length)
+    ? conceptos.bloques
+    : bloquesDePresupuesto(presupuesto);
+  const totalPresupuesto = typeof conceptos.total_incluido === "number"
+    ? conceptos.total_incluido
+    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   state.detalleId = id;
-  state.detalleActual = { gastos, presupuesto };
+  const campoFaenaPres = document.getElementById("presupuesto-faena-id");
+  if (campoFaenaPres) campoFaenaPres.value = id;
+  state.detalleActual = { gastos, presupuesto, bloques: bloquesP };
   const docs = rDocs.ok ? rDocs.data : [];
   const fotos = rFotos.ok ? rFotos.data : [];
-  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
   const esDirecto = f.intermediario_id === 0;
   function formatBytes(b) {
@@ -2260,27 +2298,30 @@ async function verDetalle(id) {
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>'}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">Presupuesto (${presupuesto.length})</strong>
+      <strong style="font-size:0.85rem">Presupuestos</strong>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id})">+ Partida</button>
-        <span class="badge b-orange">Total ${totalPresupuesto.toFixed(2)} €</span>
+        <button class="btn btn-s btn-sm" onclick="nuevoBloquePresupuesto(${f.id})">+ Presupuesto</button>
+        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
+        <span class="badge b-orange">Total conjunto ${totalPresupuesto.toFixed(2)} €</span>
       </div>
     </div>
-    ${presupuesto.length ? `
+    ${bloquesP.length ? `
       <table class="gastos-table">
-        <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
+        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th></tr></thead>
         <tbody>
-          ${presupuesto.map(g => `<tr>
-            <td>${g.descripcion}</td>
-            <td><span class="badge b-orange">${g.tipo}</span></td>
-            <td>${g.cantidad ?? ""}</td>
-            <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
-            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
-            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end"><button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id}, ${g.id})">✏️</button><button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${f.id})">×</button></div></td>
-          </tr>`).join("")}
+          ${bloquesP.map(b => {
+            const nomJs = JSON.stringify(b.nombre_db || "");
+            const sub = parseFloat(b.total || 0) || 0;
+            return `<tr class="presup-fila${b.incluido ? "" : " excluido"}" onclick='abrirPresupuestoParcial(${f.id}, ${nomJs})'>
+              <td><strong>${esc(b.nombre || "General")}</strong></td>
+              <td>${sub.toFixed(2)} €</td>
+              <td onclick="event.stopPropagation()">
+                <input type="checkbox" ${b.incluido ? "checked" : ""} title="Incluir en el presupuesto de la faena" onchange='toggleBloquePresupuesto(${f.id}, ${nomJs}, this.checked ? 1 : 0)'>
+              </td>
+            </tr>`;
+          }).join("")}
         </tbody>
-       </table>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin conceptos de presupuesto</p>'}
+      </table>` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos — crea uno por cada trabajo (puertas, encimera…)</p>'}
 
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -3356,57 +3397,249 @@ async function abrirPresupuestoEnCursor() {
   const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
   const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
 }
-function abrirModalMateriales() { renderConsultaMat(); abrirModal("m-consulta-mat"); }
+function abrirModalMateriales() {
+  state.consultaMatDestino = "calculadora";
+  const q = document.getElementById("q-consulta-mat");
+  if (q) q.value = "";
+  renderConsultaMat();
+  abrirModal("m-consulta-mat");
+}
+function abrirListaMaterialesPresupuesto() {
+  state.consultaMatDestino = "faena";
+  const q = document.getElementById("q-consulta-mat");
+  if (q) q.value = "";
+  renderConsultaMat();
+  abrirModal("m-consulta-mat");
+}
 function renderConsultaMat() {
   const q = (document.getElementById("q-consulta-mat")?.value || "").toLowerCase();
   const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
   const el = document.getElementById("consulta-mat-lista");
   if (!lista.length) { el.innerHTML = '<div class="empty" style="padding:20px">Sin resultados</div>'; return; }
-  el.innerHTML = lista.map(m => { const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario); return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:0.85rem">${m.nombre}</strong><span style="font-size:0.72rem;color:#aaa">${m.unidad} · ${m.categoria}</span></div><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${precios.map((p, i) => `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick="usarPrecioEnPresupuesto('${m.nombre.replace(/'/g,"\\'")}',${p.precio_unitario})">Usar</button></span>`).join("")}</div></div>`; }).join("");
+  el.innerHTML = lista.map(m => {
+    const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
+    const nomJs = JSON.stringify(m.nombre || "");
+    const usarSinPrecio = `<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem" onclick='usarPrecioEnPresupuesto(${nomJs},0)'>Usar</button>`;
+    const preciosHtml = precios.length
+      ? precios.map((p, i) => `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)}€<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick='usarPrecioEnPresupuesto(${nomJs},${Number(p.precio_unitario)||0})'>Usar</button></span>`).join("")
+      : `<span style="font-size:0.78rem;color:#aaa">Sin precio ${usarSinPrecio}</span>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:0.85rem">${esc(m.nombre)}</strong><span style="font-size:0.72rem;color:#aaa">${esc(m.unidad)} · ${esc(m.categoria)}</span></div><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${preciosHtml}</div></div>`;
+  }).join("");
 }
-function usarPrecioEnPresupuesto(nombre, precio) { presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio }); renderTablasMateriales(); actualizarTotales(); cerrarModal("m-consulta-mat"); toast(`✓ ${nombre} añadido al presupuesto`); }
+function aplicarMaterialAPartidaFaena(nombre, precio) {
+  const desc = document.getElementById("presupuesto-desc");
+  if (!desc) return;
+  desc.value = nombre;
+  const bloq = document.getElementById("presupuesto-bloque");
+  if (bloq && !String(bloq.value || "").trim()) bloq.value = nombre;
+  document.getElementById("presupuesto-tipo").value = "material";
+  document.getElementById("presupuesto-precio").value = Number(precio || 0);
+  const cant = document.getElementById("presupuesto-cant");
+  if (!cant.value) cant.value = 1;
+}
+function usarPrecioEnPresupuesto(nombre, precio) {
+  if (state.consultaMatDestino === "faena" || document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
+    if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
+      const faenaId = document.getElementById("presupuesto-faena-id")?.value || state.detalleId || state.presupuestoParcial?.faenaId;
+      const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
+      if (!faenaId) { toast("Abre una faena primero", true); return; }
+      abrirPresupuestoItem(faenaId, null, bloque);
+    }
+    aplicarMaterialAPartidaFaena(nombre, precio);
+    cerrarModal("m-consulta-mat");
+    toast(`${nombre} cargado en la partida`);
+    return;
+  }
+  presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio });
+  renderTablasMateriales();
+  actualizarTotales();
+  cerrarModal("m-consulta-mat");
+  toast(`${nombre} añadido al presupuesto`);
+}
 
-function abrirPresupuestoItem(faenaId, itemId = null) {
+function bloquesDePresupuesto(lista) {
+  const map = new Map();
+  for (const p of lista || []) {
+    const db = String(p.bloque || "").trim();
+    const n = db || "General";
+    if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
+    const g = map.get(n);
+    g.partidas.push(p);
+    const tot = parseFloat(p.total) || 0;
+    g.total += tot;
+    if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
+  }
+  for (const g of map.values()) {
+    g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
+  }
+  return [...map.values()];
+}
+
+function abrirPresupuestoParcial(faenaId, nombreDb) {
+  state.presupuestoParcial = { faenaId, nombreDb: nombreDb || "" };
+  document.getElementById("presupuesto-parcial-faena-id").value = faenaId;
+  document.getElementById("presupuesto-parcial-bloque").value = nombreDb || "";
+  renderPresupuestoParcial();
+  abrirModal("m-presupuesto-parcial");
+}
+
+function renderPresupuestoParcial() {
+  const st = state.presupuestoParcial;
+  if (!st) return;
+  const bloques = state.detalleActual.bloques || [];
+  const b = bloques.find(x => String(x.nombre_db || "") === String(st.nombreDb || ""));
+  const partidas = b ? (b.partidas || []) : [];
+  const nombre = b ? (b.nombre || "General") : (st.nombreDb || "General");
+  const total = b ? (parseFloat(b.total) || 0) : 0;
+  const nomJs = JSON.stringify(st.nombreDb || "");
+  document.getElementById("presupuesto-parcial-title").textContent = nombre;
+  document.getElementById("presupuesto-parcial-contenido").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span class="badge b-orange">${total.toFixed(2)} €</span>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn btn-s btn-sm" onclick='abrirPresupuestoItem(${st.faenaId}, null, ${nomJs})'>+ Partida</button>
+        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
+        ${b ? `<button class="btn btn-d btn-sm" onclick='borrarBloquePresupuesto(${st.faenaId}, ${nomJs})'>Eliminar presupuesto</button>` : ""}
+      </div>
+    </div>
+    ${partidas.length ? `
+      <table class="gastos-table">
+        <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
+        <tbody>
+          ${partidas.map(g => `<tr>
+            <td>${esc(g.descripcion)}</td>
+            <td><span class="badge b-orange">${esc(g.tipo)}</span></td>
+            <td>${g.cantidad ?? ""}</td>
+            <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
+            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
+            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end">
+              <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${st.faenaId}, ${g.id})">Editar</button>
+              <button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${st.faenaId})">×</button>
+            </div></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin partidas — añade una para este presupuesto</p>'}
+  `;
+}
+
+function cerrarPresupuestoParcial() {
+  state.presupuestoParcial = null;
+  cerrarModal("m-presupuesto-parcial");
+}
+
+function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
   document.getElementById("presupuesto-faena-id").value = faenaId;
   document.getElementById("presupuesto-item-id").value = itemId || "";
   const item = itemId ? (state.detalleActual.presupuesto || []).find(p => String(p.id) === String(itemId)) : null;
-  document.getElementById("presupuesto-item-title").textContent = item ? "✏️ Editar Partida de Presupuesto" : "📋 Nueva Partida de Presupuesto";
+  document.getElementById("presupuesto-item-title").textContent = item ? "Editar partida" : "Nueva partida";
   document.getElementById("presupuesto-desc").value = item?.descripcion || "";
   document.getElementById("presupuesto-tipo").value = item?.tipo || "material";
   document.getElementById("presupuesto-cant").value = item?.cantidad ?? 1;
   document.getElementById("presupuesto-precio").value = item?.precio_unitario ?? 0;
-  cerrarModal("m-detalle");
+  const bloq = item ? String(item.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
+  document.getElementById("presupuesto-bloque").value = bloq;
   abrirModal("m-presupuesto-item");
 }
+
+async function refrescarDetallePresupuesto(faenaId) {
+  await cargarFaenas();
+  renderFaenas();
+  const parcialAbierto = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
+  const st = state.presupuestoParcial;
+  await verDetalle(parseInt(faenaId, 10));
+  if (parcialAbierto && st) {
+    state.presupuestoParcial = st;
+    document.getElementById("presupuesto-parcial-faena-id").value = st.faenaId;
+    document.getElementById("presupuesto-parcial-bloque").value = st.nombreDb || "";
+    renderPresupuestoParcial();
+    abrirModal("m-presupuesto-parcial");
+  }
+}
+
 async function guardarPresupuestoItem() {
   const faenaId = document.getElementById("presupuesto-faena-id").value;
   const itemId = document.getElementById("presupuesto-item-id").value;
+  const desc = (document.getElementById("presupuesto-desc").value || "").trim();
+  const bloque = (document.getElementById("presupuesto-bloque").value || "").trim() || desc;
+  if (!bloque) { toast("El concepto es obligatorio", true); return; }
+  const bloques = state.detalleActual.bloques || [];
+  const b = bloques.find(x => String(x.nombre_db || "") === String(bloque));
   const payload = {
     tipo: document.getElementById("presupuesto-tipo").value,
-    descripcion: document.getElementById("presupuesto-desc").value,
+    descripcion: desc || bloque,
     cantidad: parseFloat(document.getElementById("presupuesto-cant").value) || 1,
-    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0
+    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0,
+    bloque,
+    incluido: b ? (b.incluido ? 1 : 0) : 1
   };
   const r = itemId
     ? await api("PUT", `/presupuestos/${itemId}`, payload)
     : await api("POST", `/faenas/${faenaId}/presupuesto/item`, payload);
   if (r.ok) {
-    toast(itemId ? `✓ Partida actualizada: ${r.data.total.toFixed(2)} €` : `✓ Partida añadida: ${r.data.total.toFixed(2)} €`);
+    toast(itemId ? `Partida actualizada: ${r.data.total.toFixed(2)} €` : `Partida añadida: ${r.data.total.toFixed(2)} €`);
     cerrarModal("m-presupuesto-item");
-    await cargarFaenas();
-    renderFaenas();
-    await verDetalle(parseInt(faenaId));
+    const seguirParcial = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
+    if (!seguirParcial) state.presupuestoParcial = null;
+    await refrescarDetallePresupuesto(faenaId);
   } else toast(r.error, true);
 }
 async function eliminarPresupuestoItem(itemId, faenaId) {
   if (!confirm("¿Eliminar esta partida de presupuesto?")) return;
   const r = await api("DELETE", `/presupuestos/${itemId}`);
-  if (r.ok) {
-    await cargarFaenas();
-    renderFaenas();
-    verDetalle(faenaId);
-  }
+  if (r.ok) await refrescarDetallePresupuesto(faenaId);
   else toast(r.error, true);
+}
+
+async function nuevoBloquePresupuesto(faenaId) {
+  state.presupuestoParcial = null;
+  cerrarModal("m-presupuesto-parcial");
+  abrirPresupuestoItem(faenaId, null, "");
+}
+
+async function toggleBloquePresupuesto(faenaId, nombreDb, incluido) {
+  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", incluido });
+  if (!r.ok) { toast(r.error || "No se pudo cambiar", true); return; }
+  await refrescarDetallePresupuesto(faenaId);
+}
+
+async function borrarBloquePresupuesto(faenaId, nombreDb) {
+  if (!confirm("¿Borrar este presupuesto y todas sus partidas?")) return;
+  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", borrar: true });
+  if (!r.ok) { toast(r.error || "No se pudo borrar", true); return; }
+  cerrarPresupuestoParcial();
+  await cargarFaenas();
+  renderFaenas();
+  await verDetalle(faenaId);
+}
+
+async function reabrirFaena(id) {
+  const r = await api("PUT", `/faenas/${id}/fase`, { fase: "medicion" });
+  if (!r.ok) { toast(r.error || "No se pudo reabrir", true); return; }
+  toast("Faena reabierta en Medición");
+  await cargarFaenas();
+  state.faseVista = "medicion";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "medicion");
+  });
+  renderFaenas();
+}
+
+async function rescatarFaenaZip(input) {
+  const file = input.files && input.files[0];
+  input.value = "";
+  if (!file) return;
+  toast("Rescatando faena…");
+  const fd = new FormData();
+  fd.append("archivo", file, file.name || "faena.zip");
+  const r = await apiForm("POST", "/faenas/desde-zip", fd, 120000, API);
+  if (!r.ok) { toast(r.error || "No se pudo rescatar el ZIP", true); return; }
+  toast("Faena rescatada: " + ((r.data && r.data.numero) || ""));
+  await cargarFaenas();
+  state.faseVista = "medicion";
+  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.fase === "medicion");
+  });
+  renderFaenas();
 }
 
 // ===== BOOK DE FOTOS =====
