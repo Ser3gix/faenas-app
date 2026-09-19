@@ -5597,12 +5597,7 @@ async function init() {
   });
   window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
   if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") actualizarEnSegundoPlano();
-  });
-  window.addEventListener("pageshow", ev => {
-    if (ev.persisted) actualizarEnSegundoPlano();
-  });
+  setInterval(actualizarEnSegundoPlano, 40000);
   actualizarEnSegundoPlano();
 }
 

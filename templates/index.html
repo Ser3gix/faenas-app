@@ -321,6 +321,7 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: #faf8f3; }
+.data-table tbody tr.fila-faena { cursor: pointer; }
 .data-table .acciones { white-space: nowrap; }
 .data-table .acciones .btn, .data-table .acciones .fase-sel { margin: 2px 4px 2px 0; }
 .table-wrap { overflow-x: auto; }
@@ -594,7 +595,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <button data-nav="intermediarios" onclick="nav('intermediarios')">Intermediarios</button>
     <button data-nav="materiales" onclick="nav('materiales')">Materiales</button>
     <button data-nav="polyboard" onclick="nav('polyboard')">PolyBoard</button>
-    <button data-nav="presupuesto" onclick="nav('presupuesto')">Presupuesto</button>
     <button data-nav="book" onclick="nav('book')">Book</button>
     <button data-nav="asistente" onclick="nav('asistente')">Jimmi</button>
   </nav>
@@ -818,110 +818,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </div>
     </div>
     <div id="pb-tabla"></div>
-  </div>
-</div>
-
-<!-- ===== PRESUPUESTO ===== -->
-<div id="s-presupuesto" class="section">
-  <div class="sec-header">
-    <h2>Presupuesto</h2>
-  </div>
-
-  <!-- Selección de faena -->
-  <div class="form-box">
-    <div class="form-title">🔨 Seleccionar faena</div>
-    <div class="form-grid">
-      <div>
-        <label>Faena</label>
-        <select id="pres-faena-sel" onchange="cargarPresupuesto()"></select>
-      </div>
-      <div>
-        <label>Tarifa €/hora</label>
-        <input type="number" id="pres-tarifa" value="35" step="0.5" placeholder="35.00"
-               oninput="actualizarTotales()">
-      </div>
-    </div>
-  </div>
-
-  <div class="form-box" style="border-color:var(--wood);background:linear-gradient(135deg,#faf6ee,#f5ede0)">
-    <div class="form-title">🤖 Asistente de materiales</div>
-    <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
-      La búsqueda automática con Ollama se ha quitado. Usa el prompt de Valencia o Copilot externo para revisar materiales.
-    </p>
-    <div class="btn-row">
-      <button class="btn btn-s btn-sm" onclick="generarPromptBusquedaValencia()">
-        🔍 Generar prompt para Copilot
-      </button>
-    </div>
-    <div id="pres-valencia-box" style="display:none;margin-top:12px">
-      <div style="font-size:0.78rem;font-weight:500;color:var(--accent);margin-bottom:6px">Prompt para Copilot:</div>
-      <div class="prompt-box" id="pres-valencia-txt" style="max-height:200px"></div>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="btn btn-g btn-sm" onclick="copiar('pres-valencia-txt')">📋 Copiar prompt</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MATERIALES -->
-  <div class="form-box">
-    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
-      📦 Materiales
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-s btn-sm" onclick="abrirModalMateriales()">🔍 Consultar precios</button>
-        <button class="btn btn-s btn-sm" onclick="añadirMaterial()">+ Añadir</button>
-      </div>
-    </div>
-    <table class="gastos-table" id="tabla-materiales-pres">
-      <thead>
-        <tr>
-          <th style="text-align:left">Descripción</th>
-          <th>Cantidad</th>
-          <th>Precio unit. (€)</th>
-          <th>Total</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="tbody-materiales"></tbody>
-    </table>
-    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
-      Subtotal materiales: <strong id="subtotal-mat">0.00 €</strong>
-    </div>
-  </div>
-
-  <!-- MANO DE OBRA -->
-  <div class="form-box">
-    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
-      🔨 Mano de obra
-      <button class="btn btn-s btn-sm" onclick="añadirManoObra()">+ Añadir</button>
-    </div>
-    <table class="gastos-table" id="tabla-mo-pres">
-      <thead>
-        <tr>
-          <th style="text-align:left">Descripción</th>
-          <th>Tipo</th>
-          <th>Cantidad</th>
-          <th>Precio (€)</th>
-          <th>Total</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="tbody-mo"></tbody>
-    </table>
-    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
-      Subtotal mano de obra: <strong id="subtotal-mo">0.00 €</strong>
-    </div>
-  </div>
-
-  <!-- TOTAL Y ACCIONES -->
-  <div class="form-box" style="border:2px solid var(--wood)">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:600;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
-      <span style="font-weight:600;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
-    </div>
-    <div class="btn-row" style="margin-top:14px">
-      <button class="btn btn-p" onclick="guardarPresupuesto()">💾 Guardar TXT en carpeta</button>
-      <button class="btn btn-s" onclick="abrirPresupuestoEnCursor()">📂 Abrir en Cursor</button>
-    </div>
   </div>
 </div>
 
@@ -1627,16 +1523,55 @@ let state = {
   faseVista: "en_proceso",
   detalleId: null,
   detalleActual: { gastos: [], presupuesto: [] },
-  presupuestoParcial: null
+  detalleExtra: null,
+  presupuestoParcial: null,
+  consultaMatDestino: "faena"
 };
+
+function leerJSONLocal(clave, fallback) {
+  try {
+    const v = JSON.parse(localStorage.getItem(clave) || "null");
+    return v == null ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function hidratarCachePC() {
+  const faenas = leerJSONLocal("faenas_cache", []);
+  const terminadas = leerJSONLocal("terminadas_cache", []);
+  const clientes = leerJSONLocal("clientes_cache", []);
+  const materiales = leerJSONLocal("materiales_cache", []);
+  if (Array.isArray(faenas)) state.faenas = faenas;
+  if (Array.isArray(terminadas)) state.terminadas = terminadas;
+  if (Array.isArray(clientes)) state.clientes = clientes;
+  if (Array.isArray(materiales)) state.materiales = materiales;
+}
+
+function guardarCachePC() {
+  try {
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas || []));
+    localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas || []));
+    localStorage.setItem("clientes_cache", JSON.stringify(state.clientes || []));
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales || []));
+  } catch (e) {}
+}
 
 // ===== ARRANQUE =====
 async function init() {
+  hidratarCachePC();
+  if (state.faenas.length || state.clientes.length || state.materiales.length) {
+    renderFaenas();
+    renderClientes();
+    renderMateriales();
+    poblarSelects();
+  }
   await cargarEstadoDb();
   await Promise.all([
     cargarFaenas(), cargarClientes(),
     cargarIntermediarios(), cargarMateriales(), cargarCategorias()
   ]);
+  guardarCachePC();
   rellenarSelectsCategoria();
   renderFiltroCats();
   renderFaenas();
@@ -1645,9 +1580,9 @@ async function init() {
   renderMateriales();
   poblarSelects();
   poblarSelectPolyboard();
-  poblarSelectPresupuesto();
   cargarIP();
   cargarEstadoR2();
+  setInterval(sincronizarSilencioso, 40000);
   if (esAppDelPc()) {
     try {
       const ocr = await fetch(API_OCR + "/info/ocr").then(r => r.json());
@@ -1795,6 +1730,26 @@ async function cargarFaenas() {
   ]);
   if (rAct.ok) state.faenas = rAct.data || [];
   if (rTer.ok) state.terminadas = rTer.data || [];
+  guardarCachePC();
+}
+
+let _syncSilencioso = false;
+async function sincronizarSilencioso() {
+  if (_syncSilencioso) return;
+  _syncSilencioso = true;
+  try {
+    await Promise.all([
+      cargarFaenas(), cargarClientes(), cargarMateriales(), cargarIntermediarios()
+    ]);
+    renderFaenas();
+    renderClientes();
+    renderMateriales();
+    poblarSelects();
+    if (state.detalleId && document.getElementById("m-detalle")?.classList.contains("open")) {
+      await verDetalle(state.detalleId, { soloConceptos: true });
+    }
+  } catch (e) {}
+  _syncSilencioso = false;
 }
 
 function faseDeFaena(f) {
@@ -1917,7 +1872,6 @@ function nav(id) {
   else if (typeof event !== "undefined" && event && event.target && event.target.tagName === "BUTTON") event.target.classList.add("active");
   if (id === "materiales") rellenarFaenasTicketDestino();
   if (id === "polyboard") poblarSelectPolyboard();
-  if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
   if (id === "asistente") { poblarSelectAsistente(); cargarContextoJimmi(); }
 }
@@ -1978,8 +1932,16 @@ function poblarSelectsPrompts() {
 }
 
 // ===== RENDER FAENAS =====
+function firmaListaFaenas(lista, q) {
+  return state.faseVista + "|" + (q || "") + "|" + lista.map(f => [
+    f.id, f.numero, f.cliente_nombre, f.tipo_trabajo, direccionDeFaena(f),
+    f.importe, faseDeFaena(f), f.intermediario_id, f.intermediario_nombre
+  ].join("~")).join("||");
+}
+
 function renderFaenas() {
-  const q = document.getElementById("q-faena").value.toLowerCase();
+  const qEl = document.getElementById("q-faena");
+  const q = qEl ? qEl.value.toLowerCase() : "";
   const origen = state.faseVista === "terminada" ? (state.terminadas || []) : (state.faenas || []);
   const lista = origen.filter(f => {
     if (state.faseVista !== "terminada" && faseDeFaena(f) !== state.faseVista) return false;
@@ -1991,6 +1953,10 @@ function renderFaenas() {
            (f.cliente_direccion || "").toLowerCase().includes(q);
   });
   const el = document.getElementById("lista-faenas");
+  if (!el) return;
+  const firma = firmaListaFaenas(lista, q);
+  if (el.dataset.firma === firma) return;
+  el.dataset.firma = firma;
   const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
   if (!lista.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
@@ -2012,13 +1978,10 @@ function renderFaenas() {
             <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
             <option value="terminada">Terminada</option>
           </select>
-          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
-          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
           <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
           <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
-          <button class="btn btn-p btn-sm" onclick="reabrirFaena(${f.id})">Reabrir</button>`;
-      return `<tr>
+        ` : `<button class="btn btn-p btn-sm" onclick="reabrirFaena(${f.id})">Reabrir</button>`;
+      return `<tr class="fila-faena" onclick="verDetalle(${f.id})">
         <td><span class="num-faena">${f.numero}</span></td>
         <td>
           <strong>${f.cliente_nombre || ""}</strong>
@@ -2028,7 +1991,7 @@ function renderFaenas() {
         <td>${direccionDeFaena(f) || "—"}</td>
         <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
         <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
-        <td class="acciones">${acciones}</td>
+        <td class="acciones" onclick="event.stopPropagation()">${acciones}</td>
       </tr>`;
     }).join("")}</tbody>
   </table></div>`;
@@ -2201,19 +2164,41 @@ async function eliminarMaterialDesdeModal() {
 }
 
 // ===== DETALLE FAENA =====
-async function verDetalle(id) {
+async function verDetalle(id, opts) {
+  opts = opts || {};
   let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
   if (!f) return;
-  const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
-    api("GET", `/faenas/${id}/anotaciones`),
-    api("GET", `/faenas/${id}/conceptos`),
-    api("GET", `/faenas/${id}/documentos`),
-    api("GET", `/faenas/${id}/fotos`),
-    api("GET", `/faenas/${id}/tiempos`)
-  ]);
+  const extraCache = state.detalleExtra && String(state.detalleId) === String(id) ? state.detalleExtra : null;
+  const usarCacheExtra = !!opts.soloConceptos && extraCache;
+  const peticiones = [api("GET", `/faenas/${id}/conceptos`)];
+  if (!usarCacheExtra) {
+    peticiones.push(
+      api("GET", `/faenas/${id}/anotaciones`),
+      api("GET", `/faenas/${id}/documentos`),
+      api("GET", `/faenas/${id}/fotos`),
+      api("GET", `/faenas/${id}/tiempos`)
+    );
+  }
+  const res = await Promise.all(peticiones);
+  const rConceptos = res[0];
+  let anotaciones, docs, fotos, rTiempos;
+  if (usarCacheExtra) {
+    anotaciones = extraCache.anotaciones || [];
+    docs = extraCache.docs || [];
+    fotos = extraCache.fotos || [];
+    rTiempos = extraCache.tiempos || { ok: false };
+  } else {
+    const rAnot = res[1];
+    const rDocs = res[2];
+    const rFotos = res[3];
+    rTiempos = res[4];
+    anotaciones = rAnot.ok ? rAnot.data : [];
+    docs = rDocs.ok ? rDocs.data : [];
+    fotos = rFotos.ok ? rFotos.data : [];
+    state.detalleExtra = { anotaciones, docs, fotos, tiempos: rTiempos };
+  }
   const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
   const tel = telefonoDeFaena(f) || cliente?.telefono || "";
-  const anotaciones = rAnot.ok ? rAnot.data : [];
   const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
   const presupuesto = conceptos.presupuesto || [];
   const gastos = conceptos.gastos || [];
@@ -2227,8 +2212,6 @@ async function verDetalle(id) {
   const campoFaenaPres = document.getElementById("presupuesto-faena-id");
   if (campoFaenaPres) campoFaenaPres.value = id;
   state.detalleActual = { gastos, presupuesto, bloques: bloquesP };
-  const docs = rDocs.ok ? rDocs.data : [];
-  const fotos = rFotos.ok ? rFotos.data : [];
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
   const esDirecto = f.intermediario_id === 0;
   function formatBytes(b) {
@@ -2534,7 +2517,21 @@ async function guardarEditarFaena() {
     importe: parseFloat(document.getElementById("ef-importe").value) || 0,
     fecha_inicio: document.getElementById("ef-fecha").value
   });
-  if (r.ok) { toast("✓ Faena actualizada"); cerrarModal("m-editar-faena"); await cargarFaenas(); renderFaenas(); verDetalle(parseInt(id)); }
+  if (r.ok) {
+    toast("✓ Faena actualizada");
+    cerrarModal("m-editar-faena");
+    const fid = parseInt(id, 10);
+    const f = state.faenas.find(x => x.id === fid) || (state.terminadas || []).find(x => x.id === fid);
+    if (f) {
+      f.direccion = document.getElementById("ef-dir").value;
+      f.tipo_trabajo = document.getElementById("ef-tipo").value;
+      f.importe = parseFloat(document.getElementById("ef-importe").value) || 0;
+      f.fecha_inicio = document.getElementById("ef-fecha").value;
+    }
+    guardarCachePC();
+    renderFaenas();
+    await verDetalle(fid, { soloConceptos: true });
+  }
   else toast(r.error, true);
 }
 
@@ -3329,80 +3326,6 @@ async function generarPdfPedido() {
   } catch(e) { toast("Error de conexión", true); }
 }
 
-function generarPromptBusquedaValencia() {
-  const descripcion = document.getElementById("pres-ollama-input").value.trim();
-  const prompt = `Necesito encontrar los siguientes materiales de carpintería en tiendas o proveedores de Valencia (España):\n\n${descripcion || "[Describe aquí los materiales que necesitas]"}\n\nPor favor:\n1. Sugiere tiendas o distribuidores de carpintería en Valencia donde pueda encontrar estos materiales\n2. Indica el nombre comercial exacto de cada producto para buscarlo\n3. Si conoces precios aproximados orientativos, inclúyelos\n4. Incluye también opciones de compra online con envío a Valencia\n\nBusca especialmente en:\n- Tiendas de herrajes para carpintería en Valencia\n- Distribuidores de materiales para ebanistería\n- Ferreterías industriales de Valencia`;
-  document.getElementById("pres-valencia-txt").textContent = prompt; document.getElementById("pres-valencia-box").style.display = "block"; document.getElementById("pres-valencia-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-let presState = { materiales: [], manoObra: [] };
-function poblarSelectPresupuesto() {
-  const sel = document.getElementById("pres-faena-sel");
-  if (sel) sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
-}
-async function cargarPresupuesto() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) return;
-  const r = await api("GET", `/faenas/${id}/presupuesto`);
-  if (r.ok && r.data.contenido) parsearTxtPresupuesto(r.data.contenido);
-  else { presState.materiales = []; presState.manoObra = []; renderTablasManoObra(); renderTablasMateriales(); actualizarTotales(); }
-}
-function parsearTxtPresupuesto(txt) {
-  presState.materiales = []; presState.manoObra = []; const lineas = txt.split("\n"); let seccion = null;
-  for (const linea of lineas) {
-    if (linea.startsWith("MATERIALES")) { seccion = "mat"; continue; }
-    if (linea.startsWith("MANO DE OBRA")) { seccion = "mo"; continue; }
-    if (linea.startsWith("=") || linea.startsWith("-") || linea.startsWith("Subtotal") || linea.startsWith("Total") || linea.startsWith("Tarifa") || linea.trim() === "") continue;
-    if (seccion === "mat") { const match = linea.match(/^(.+?)\s+([\d.]+)\s+€\s*$/); if (match) presState.materiales.push({ descripcion: match[1].trim(), cantidad: 1, precio_unitario: parseFloat(match[2]) }); }
-    if (seccion === "mo") { const match = linea.match(/^(.+?)\s*\((\d+\.?\d*)(h|ud)\)\s*.+?([\d.]+)\s+€\s*$/); if (match) presState.manoObra.push({ descripcion: match[1].trim(), tipo: match[3] === "h" ? "hora" : "unidad", cantidad: parseFloat(match[2]), precio: 0 }); }
-  }
-  renderTablasMateriales(); renderTablasManoObra(); actualizarTotales();
-}
-function renderTablasMateriales() {
-  const tbody = document.getElementById("tbody-materiales");
-  if (!presState.materiales.length) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin materiales — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.materiales.map((m, i) => { const total = (parseFloat(m.cantidad) || 0) * (parseFloat(m.precio_unitario) || 0); return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${m.descripcion}" onchange="presState.materiales[${i}].descripcion=this.value"></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${m.cantidad}" step="0.01" onchange="presState.materiales[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td><input type="number" style="border:none;background:transparent;width:80px;text-align:center;font-size:0.8rem" value="${m.precio_unitario}" step="0.01" onchange="presState.materiales[${i}].precio_unitario=parseFloat(this.value)||0;actualizarTotales()"></td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarMaterial(${i})">×</button></td></tr>`; }).join("");
-}
-function renderTablasManoObra() {
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const tbody = document.getElementById("tbody-mo");
-  if (!presState.manoObra.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin mano de obra — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:inherit" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
-}
-function actualizarTotales() {
-  renderTablasMateriales(); renderTablasManoObra();
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const totalMat = presState.materiales.reduce((s, m) => s + (parseFloat(m.cantidad)||0) * (parseFloat(m.precio_unitario)||0), 0);
-  const totalMO = presState.manoObra.reduce((s, l) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio)||0); return s + (parseFloat(l.cantidad)||0) * precio; }, 0);
-  document.getElementById("subtotal-mat").textContent = totalMat.toFixed(2) + " €";
-  document.getElementById("subtotal-mo").textContent  = totalMO.toFixed(2) + " €";
-  document.getElementById("total-faena").textContent  = (totalMat + totalMO).toFixed(2) + " €";
-}
-function añadirMaterial() { presState.materiales.push({ descripcion: "Nuevo material", cantidad: 1, precio_unitario: 0 }); renderTablasMateriales(); actualizarTotales(); }
-function eliminarMaterial(i) { presState.materiales.splice(i, 1); renderTablasMateriales(); actualizarTotales(); }
-function añadirManoObra() { presState.manoObra.push({ descripcion: "Nueva partida", tipo: "hora", cantidad: 1, precio: 0 }); renderTablasManoObra(); actualizarTotales(); }
-function eliminarManoObra(i) { presState.manoObra.splice(i, 1); renderTablasManoObra(); actualizarTotales(); }
-async function guardarPresupuesto() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const moConPrecio = presState.manoObra.map(l => ({ ...l, precio: l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0) }));
-  const r = await api("POST", `/faenas/${id}/presupuesto`, { tarifa_hora: tarifa, materiales: presState.materiales, mano_obra: moConPrecio });
-  if (r.ok) {
-    toast(`✓ Presupuesto guardado · Total: ${r.data.total.toFixed(2)} €`);
-    await cargarFaenas();
-    renderFaenas();
-  }
-  else toast(r.error, true);
-}
-async function abrirPresupuestoEnCursor() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
-  const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
-  const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
-}
-function abrirModalMateriales() {
-  state.consultaMatDestino = "calculadora";
-  const q = document.getElementById("q-consulta-mat");
-  if (q) q.value = "";
-  abrirListaMaterialesCargada();
-}
 async function abrirListaMaterialesPresupuesto() {
   state.consultaMatDestino = "faena";
   const q = document.getElementById("q-consulta-mat");
@@ -3470,23 +3393,15 @@ function aplicarMaterialAPartidaFaena(nombre, precio) {
   if (!cant.value) cant.value = 1;
 }
 async function usarPrecioEnPresupuesto(nombre, precio) {
-  if (state.consultaMatDestino === "faena" || document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
-    if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
-      const faenaId = document.getElementById("presupuesto-faena-id")?.value || state.detalleId || state.presupuestoParcial?.faenaId;
-      const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
-      if (!faenaId) { toast("Abre una faena primero", true); return; }
-      abrirPresupuestoItem(faenaId, null, bloque);
-    }
-    aplicarMaterialAPartidaFaena(nombre, precio);
-    cerrarModal("m-consulta-mat");
-    await guardarPresupuestoItem();
-    return;
+  if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
+    const faenaId = document.getElementById("presupuesto-faena-id")?.value || state.detalleId || state.presupuestoParcial?.faenaId;
+    const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
+    if (!faenaId) { toast("Abre una faena primero", true); return; }
+    abrirPresupuestoItem(faenaId, null, bloque);
   }
-  presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio });
-  renderTablasMateriales();
-  actualizarTotales();
+  aplicarMaterialAPartidaFaena(nombre, precio);
   cerrarModal("m-consulta-mat");
-  toast(`${nombre} añadido al presupuesto`);
+  await guardarPresupuestoItem();
 }
 
 function bloquesDePresupuesto(lista) {
@@ -3574,11 +3489,9 @@ function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
 }
 
 async function refrescarDetallePresupuesto(faenaId) {
-  await cargarFaenas();
-  renderFaenas();
   const parcialAbierto = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
   const st = state.presupuestoParcial;
-  await verDetalle(parseInt(faenaId, 10));
+  await verDetalle(parseInt(faenaId, 10), { soloConceptos: true });
   if (parcialAbierto && st) {
     state.presupuestoParcial = st;
     document.getElementById("presupuesto-parcial-faena-id").value = st.faenaId;
@@ -3639,9 +3552,7 @@ async function borrarBloquePresupuesto(faenaId, nombreDb) {
   const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", borrar: true });
   if (!r.ok) { toast(r.error || "No se pudo borrar", true); return; }
   cerrarPresupuestoParcial();
-  await cargarFaenas();
-  renderFaenas();
-  await verDetalle(faenaId);
+  await refrescarDetallePresupuesto(faenaId);
 }
 
 async function reabrirFaena(id) {
