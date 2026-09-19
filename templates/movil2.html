@@ -491,7 +491,7 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 }
 #m-presupuesto-parcial-mov { z-index: 210; }
 #m-gasto-presupuesto { z-index: 220; }
-#m-consulta-mat-mov { z-index: 230; }
+#m-consulta-mat-mov { z-index: 400; }
 
 /* ──────── DOCUMENTOS ──────── */
 .doc-item {
@@ -1294,16 +1294,6 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
-<!-- Modal: Lista de materiales para presupuesto -->
-<div class="overlay-modal" id="m-consulta-mat-mov">
-  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
-    <div class="form-title">Materiales</div>
-    <div class="field"><label>Buscar</label><input id="q-consulta-mat-mov" placeholder="Nombre o categoría" oninput="renderConsultaMatMovil()"></div>
-    <div id="consulta-mat-lista-mov"></div>
-    <button class="btn btn-s" onclick="cerrarModal('m-consulta-mat-mov')">Cerrar</button>
-  </div>
-</div>
-
 <!-- Modal: Presupuesto -->
 <div class="overlay-modal" id="m-gasto-presupuesto">
   <div class="modal-box">
@@ -1323,6 +1313,16 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="field"><label>Importe estimado a cobrar (€)</label><input id="gasto-precio" type="number" step="0.01" placeholder="0.00"></div>
     <button class="btn btn-p" onclick="guardarGastoPresupuesto()">💾 Guardar importe estimado</button>
     <button class="btn btn-s" onclick="cerrarModal('m-gasto-presupuesto')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: Lista de materiales para presupuesto -->
+<div class="overlay-modal" id="m-consulta-mat-mov">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title">Materiales</div>
+    <div class="field"><label>Buscar</label><input id="q-consulta-mat-mov" placeholder="Nombre o categoría" oninput="renderConsultaMatMovil()"></div>
+    <div id="consulta-mat-lista-mov"></div>
+    <button class="btn btn-s" onclick="cerrarModal('m-consulta-mat-mov')">Cerrar</button>
   </div>
 </div>
 
@@ -2309,11 +2309,11 @@ function cerrarPresupuestoParcialMovil() {
 }
 
 function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-  if (!f) return;
-  const presupuesto = (f.presupuesto && f.presupuesto.length)
-    ? f.presupuesto
-    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+  const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId));
+  const presupuesto = f
+    ? ((f.presupuesto && f.presupuesto.length) ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"))
+    : [];
   const gasto = presupuesto.find(g => String(g.id) === String(gastoId));
   document.getElementById("gasto-faena-id").value = faenaId;
   document.getElementById("gasto-id").value = gasto?.id || "";
@@ -2330,41 +2330,57 @@ function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
 function abrirListaMaterialesPresupuestoMovil() {
   const q = document.getElementById("q-consulta-mat-mov");
   if (q) q.value = "";
-  renderConsultaMatMovil();
+  const el = document.getElementById("consulta-mat-lista-mov");
+  if (el) el.innerHTML = '<div class="presup-empty">Cargando materiales…</div>';
   abrirModal("m-consulta-mat-mov");
+  Promise.resolve((!Array.isArray(state.materiales) || !state.materiales.length) ? cargarMateriales() : null).then(() => renderConsultaMatMovil());
 }
 
 function renderConsultaMatMovil() {
   const q = (document.getElementById("q-consulta-mat-mov")?.value || "").toLowerCase();
-  const lista = (state.materiales || []).filter(m => !q || String(m.nombre||"").toLowerCase().includes(q) || String(m.categoria||"").toLowerCase().includes(q));
+  const mats = Array.isArray(state.materiales) ? state.materiales : [];
+  const lista = mats.filter(m => !q || String(m.nombre||"").toLowerCase().includes(q) || String(m.categoria||"").toLowerCase().includes(q));
   const el = document.getElementById("consulta-mat-lista-mov");
   if (!el) return;
   if (!lista.length) {
-    el.innerHTML = `<div class="presup-empty">${(state.materiales||[]).length ? "Sin resultados" : "Sincroniza para ver materiales"}</div>`;
+    el.innerHTML = `<div class="presup-empty">${mats.length ? "Sin resultados" : "Sincroniza para ver materiales"}</div>`;
     return;
   }
-  el.innerHTML = lista.map(m => {
+  el.innerHTML = lista.map((m, idx) => {
     const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
-    const nomJs = JSON.stringify(m.nombre || "");
+    const precioBase = precios.length ? Number(precios[0].precio_unitario) || 0 : 0;
     const preciosHtml = precios.length
-      ? precios.map((p, i) => `<button class="btn ${i===0?"btn-p":"btn-s"} btn-inline" style="margin:4px 4px 0 0" onclick='usarMaterialEnPresupuestoMovil(${nomJs},${Number(p.precio_unitario)||0})'>${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
-      : `<button class="btn btn-s btn-inline" onclick='usarMaterialEnPresupuestoMovil(${nomJs},0)'>Usar sin precio</button>`;
-    return `<div class="presup-line" style="align-items:flex-start">
+      ? precios.map((p, i) => `<button type="button" class="btn ${i===0?"btn-p":"btn-s"} btn-inline" data-mat-idx="${idx}" data-mat-precio="${Number(p.precio_unitario)||0}" style="margin:4px 4px 0 0">${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
+      : `<button type="button" class="btn btn-p btn-inline" data-mat-idx="${idx}" data-mat-precio="0">Añadir</button>`;
+    return `<div class="presup-line" data-mat-idx="${idx}" data-mat-precio="${precioBase}" style="align-items:flex-start;cursor:pointer">
       <div class="presup-concepto">
         <strong>${escHtml(m.nombre)}</strong>
         <div style="font-size:0.72rem;color:#888;margin-top:3px">${escHtml(m.unidad||"ud")} · ${escHtml(m.categoria||"")}</div>
-        <div>${preciosHtml}</div>
+        <div onclick="event.stopPropagation()">${preciosHtml}</div>
       </div>
     </div>`;
   }).join("");
+  el.onclick = function (ev) {
+    const t = ev.target.closest("[data-mat-idx]");
+    if (!t || !el.contains(t)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const m = lista[Number(t.dataset.matIdx)];
+    if (!m) return;
+    usarMaterialEnPresupuestoMovil(m.nombre, Number(t.dataset.matPrecio) || 0);
+  };
 }
 
-function usarMaterialEnPresupuestoMovil(nombre, precio) {
+async function usarMaterialEnPresupuestoMovil(nombre, precio) {
   const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
   const bloque = document.getElementById("gasto-bloque-txt")?.value || state.presupuestoParcial?.nombreDb || "";
+  if (!faenaId) { toast("Abre una faena primero", true); return; }
   if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    if (!faenaId) { toast("Abre una faena primero", true); return; }
     abrirGastoPresupuesto(faenaId, "", bloque);
+  }
+  if (!document.getElementById("gasto-faena-id")?.value) {
+    toast("No se pudo abrir la partida", true);
+    return;
   }
   document.getElementById("gasto-desc").value = nombre;
   const bloq = document.getElementById("gasto-bloque-txt");
@@ -2374,7 +2390,7 @@ function usarMaterialEnPresupuestoMovil(nombre, precio) {
   const cant = document.getElementById("gasto-cant");
   if (!cant.value) cant.value = 1;
   cerrarModal("m-consulta-mat-mov");
-  toast(`${nombre} cargado en la partida`);
+  await guardarGastoPresupuesto();
 }
 
 async function guardarGastoPresupuesto() {
@@ -2385,8 +2401,9 @@ async function guardarGastoPresupuesto() {
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
   if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim()) { toast("El concepto es obligatorio", true); return; }
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-  if (!f) return;
+  const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId))
+    || { presupuesto: [], bloques: [] };
   try {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
