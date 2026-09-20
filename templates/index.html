@@ -1818,16 +1818,19 @@ function aplicarOpLocalPc(method, path, body, data) {
     if (String(state.detalleId) === String(m[1])) {
       state.detalleActual.presupuesto = state.detalleActual.presupuesto || [];
       state.detalleActual.presupuesto.push({ id: data.id, ...b, total: data.total });
+      refrescarImportePresupuestoPc(m[1]);
     }
     return;
   }
   if (method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
     const p = (state.detalleActual.presupuesto || []).find(x => String(x.id) === String(m[1]));
-    if (p) Object.assign(p, b, { total: data.total });
+    if (p) Object.assign(p, b, { total: data.total != null ? data.total : ((parseFloat(b.cantidad)||1)*(parseFloat(b.precio_unitario)||0)) });
+    if (state.detalleId) refrescarImportePresupuestoPc(state.detalleId);
     return;
   }
   if (method === "DELETE" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
     state.detalleActual.presupuesto = (state.detalleActual.presupuesto || []).filter(x => String(x.id) !== String(m[1]));
+    if (state.detalleId) refrescarImportePresupuestoPc(state.detalleId);
     return;
   }
   if (method === "PUT" && (m = path.match(/^\/faenas\/([^/]+)\/presupuesto\/bloque$/))) {
@@ -1842,8 +1845,32 @@ function aplicarOpLocalPc(method, path, body, data) {
         if (String(p.bloque || "").trim() === nom) p.incluido = inc;
       });
     }
+    refrescarImportePresupuestoPc(m[1]);
     return;
   }
+}
+
+function refrescarImportePresupuestoPc(faenaId) {
+  if (faenaId == null || faenaId === "") return;
+  let lista = [];
+  if (String(state.detalleId) === String(faenaId)) {
+    lista = state.detalleActual?.presupuesto || [];
+  } else {
+    // Reconstruir desde pending si no hay detalle abierto
+    const base = [];
+    const merged = aplicarPendingSobreListas(faenaId, [], [], base);
+    lista = merged.presupuesto || [];
+  }
+  const total = (typeof totalPresupuestoPc === "function")
+    ? totalPresupuestoPc(lista)
+    : lista.reduce((s, g) => s + (Number(g.incluido ?? 1) === 0 ? 0 : (parseFloat(g.total) || 0)), 0);
+  const f = state.faenas.find(x => String(x.id) === String(faenaId))
+    || (state.terminadas || []).find(x => String(x.id) === String(faenaId));
+  if (f) {
+    f.importe = total;
+    f.total_incluido = total;
+  }
+  try { renderFaenas(); } catch (e) {}
 }
 
 function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
@@ -1855,7 +1882,7 @@ function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
     const { method, path, body } = op;
     let m;
     if (method === "POST" && path === `/faenas/${fid}/anotaciones`) {
-      anots.unshift({ id: "pending_" + anots.length, tipo: body.tipo, contenido: body.contenido });
+      anots.unshift({ id: op._synthId || ("pending_" + anots.length), tipo: body.tipo, contenido: body.contenido });
     } else if (method === "PUT" && (m = path.match(/^\/anotaciones\/([^/]+)$/))) {
       const a = anots.find(x => String(x.id) === String(m[1]));
       if (a) Object.assign(a, body);
@@ -1863,7 +1890,7 @@ function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
       anots = anots.filter(x => String(x.id) !== String(m[1]));
     } else if (method === "POST" && path === `/faenas/${fid}/gastos`) {
       const total = (parseFloat(body.cantidad)||1)*(parseFloat(body.precio_unitario)||0);
-      gasts.push({ id: "pending_g_" + gasts.length, ...body, total });
+      gasts.push({ id: op._synthId || ("pending_g_" + gasts.length), ...body, total });
     } else if (method === "PUT" && (m = path.match(/^\/gastos\/([^/]+)$/))) {
       const g = gasts.find(x => String(x.id) === String(m[1]));
       if (g) {
@@ -1874,7 +1901,14 @@ function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
       gasts = gasts.filter(x => String(x.id) !== String(m[1]));
     } else if (method === "POST" && path === `/faenas/${fid}/presupuesto/item`) {
       const total = (parseFloat(body.cantidad)||1)*(parseFloat(body.precio_unitario)||0);
-      pres.push({ id: "pending_p_" + pres.length, ...body, total });
+      const id = op._synthId || ("pending_p_" + Date.now() + "_" + pres.length);
+      // Evitar duplicar si ya está (aplicarOpLocalPc lo pudo haber metido)
+      if (!pres.some(x => String(x.id) === String(id))) {
+        pres.push({ id, ...body, total });
+      } else {
+        const p = pres.find(x => String(x.id) === String(id));
+        if (p) Object.assign(p, body, { total });
+      }
     } else if (method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
       const p = pres.find(x => String(x.id) === String(m[1]));
       if (p) {
@@ -1903,26 +1937,42 @@ async function flushPendingPc() {
   _flushing = true;
   const ops = pendingOps.slice();
   const mapaIds = {};
+  const faenasPresup = new Set();
   try {
     for (const op of ops) {
       let path = op.path;
       for (const [tmp, real] of Object.entries(mapaIds)) {
-        path = path.split(tmp).join(String(real));
+        path = path.split(String(tmp)).join(String(real));
       }
       let body = op.body ? clonarJSON(op.body) : null;
-      if (body && body.cliente_id != null && mapaIds[body.cliente_id] != null) body.cliente_id = mapaIds[body.cliente_id];
+      if (body && body.cliente_id != null && mapaIds[body.cliente_id] != null) {
+        body.cliente_id = mapaIds[body.cliente_id];
+      }
+      // Si es DELETE de un tmp que nunca se creó en servidor (ya filtrado), saltar
+      if (op.method === "DELETE" && /\/presupuestos\//.test(path)) {
+        const pid = path.split("/").pop();
+        if (String(pid).startsWith("tmp_")) {
+          continue;
+        }
+      }
       const r = await api(op.method, path, body);
       if (!r.ok) throw new Error(r.error || "Error al actualizar");
       if (op.method === "POST" && r.data && r.data.id != null) {
         const synth = (op._synthId != null) ? op._synthId : null;
-        if (synth) mapaIds[synth] = r.data.id;
+        if (synth) mapaIds[String(synth)] = r.data.id;
       }
+      const mFaena = String(op.path || "").match(/^\/faenas\/([^/]+)\//);
+      if (mFaena) faenasPresup.add(mFaena[1]);
+      if (/\/presupuestos\//.test(op.path) && state.detalleId) faenasPresup.add(String(state.detalleId));
     }
     pendingOps = [];
     _flushing = false;
     await Promise.all([cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true), cargarMateriales(true), cargarCategorias(true)]);
     guardarSnapshotSesionPc();
     renderFaenas(); renderClientes(); renderInter(); renderMateriales(); poblarSelects();
+    if (state.detalleId) {
+      try { await verDetalle(parseInt(state.detalleId, 10) || state.detalleId); } catch (e) {}
+    }
     return true;
   } catch (e) {
     _flushing = false;
@@ -2111,6 +2161,44 @@ async function parsearRespuesta(r) {
 async function api(method, path, body) {
   try {
     if (!_flushing && !_apiInmediato && pathEscrituraDiferida(method, path)) {
+      let mDel;
+      // Editar línea temporal: actualizar el POST pendiente (como móvil)
+      if (method === "PUT" && (mDel = path.match(/^\/presupuestos\/([^/]+)$/))) {
+        const id = String(mDel[1]);
+        if (id.startsWith("tmp_")) {
+          const crear = pendingOps.find(op =>
+            op.method === "POST" && String(op._synthId) === id && /\/presupuesto\/item$/.test(op.path || "")
+          );
+          if (crear) {
+            crear.body = { ...(crear.body || {}), ...(body || {}) };
+            const total = (parseFloat(crear.body.cantidad) || 1) * (parseFloat(crear.body.precio_unitario) || 0);
+            marcarSesionSuciaPc();
+            aplicarOpLocalPc(method, path, body, { id, total, ...crear.body });
+            return { ok: true, _diferido: true, data: { id, total, ...crear.body } };
+          }
+        }
+      }
+      // Borrar línea temporal: quitar crear/editar de la cola
+      if (method === "DELETE" && (mDel = path.match(/^\/presupuestos\/([^/]+)$/))) {
+        const id = String(mDel[1]);
+        if (id.startsWith("tmp_")) {
+          pendingOps = pendingOps.filter(op =>
+            !(String(op._synthId) === id) &&
+            !(op.path === `/presupuestos/${id}`)
+          );
+          marcarSesionSuciaPc();
+          aplicarOpLocalPc(method, path, body || {}, {});
+          return { ok: true, _diferido: true, data: {} };
+        }
+      }
+      // Toggle bloque: dejar solo el último
+      if (method === "PUT" && /\/presupuesto\/bloque$/.test(path) && body && !body.borrar && "incluido" in body) {
+        const nom = String(body.nombre || "");
+        pendingOps = pendingOps.filter(op =>
+          !(op.method === "PUT" && op.path === path && op.body && !op.body.borrar && "incluido" in op.body && String(op.body.nombre || "") === nom)
+        );
+      }
+
       const synth = sintetizarRespuestaPc(method, path, body);
       pendingOps.push({
         method,
@@ -2119,7 +2207,7 @@ async function api(method, path, body) {
         _synthId: synth.data && synth.data.id
       });
       marcarSesionSuciaPc();
-      aplicarOpLocalPc(method, path, body, synth.data);
+      aplicarOpLocalPc(method, path, body, synth.data || {});
       return synth;
     }
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) };
@@ -2599,6 +2687,13 @@ async function verDetalle(id) {
   const bloquesP = bloquesDePresupuestoPc(presupuesto);
   const totalPresupuesto = bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
+  // Refleja el temporal también en el listado de faenas
+  const fList = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
+  if (fList) {
+    fList.importe = totalPresupuesto;
+    fList.total_incluido = totalPresupuesto;
+  }
+  try { renderFaenas(); } catch (e) {}
   const esDirecto = f.intermediario_id === 0;
   function formatBytes(b) {
     if (b < 1024) return b + " B";
