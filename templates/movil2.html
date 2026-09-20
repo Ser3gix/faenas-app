@@ -68,6 +68,32 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   display: none;
 }
 .offline-indicator.show { display: block; }
+.btn-terminar-sesion {
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-terminar-sesion.sucia { background: #c45c26; border-color: #c45c26; }
+#sesion-badge {
+  display: none;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  color: #c45c26;
+  font-size: 0.7rem;
+  font-weight: 700;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
 
 /* ──────── MAIN CAROUSEL ──────── */
 #main-carousel {
@@ -973,6 +999,8 @@ textarea { resize: vertical; min-height: 80px; }
   <span style="font-size:1.3rem">🪵</span>
   <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
+  <span id="sesion-badge">0</span>
+  <button type="button" class="btn-terminar-sesion" id="btn-terminar-sesion" onclick="abrirTerminarSesion()">Terminar</button>
 </header>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
@@ -1361,10 +1389,11 @@ textarea { resize: vertical; min-height: 80px; }
 <!-- Modal: actualizar al salir -->
 <div class="overlay-modal" id="m-salida-sync">
   <div class="modal-box">
-    <div class="form-title">¿Actualizar cambios?</div>
-    <p style="font-size:0.9rem;color:#555;margin-bottom:14px;line-height:1.45">Hay cambios de esta sesión sin subir al servidor. Si no actualizas, se descartarán.</p>
-    <button class="btn btn-p" onclick="aceptarSalidaSync()">Actualizar</button>
-    <button class="btn btn-s" onclick="rechazarSalidaSync()">Descartar y salir</button>
+    <div class="form-title">¿Terminar y subir cambios?</div>
+    <p style="font-size:0.9rem;color:#555;margin-bottom:14px;line-height:1.45">Todos los cambios de esta sesión (presupuestos, faenas, gastos, fotos…) están solo en el móvil hasta que pulses Actualizar.</p>
+    <button class="btn btn-p" onclick="aceptarSalidaSync()">Actualizar y sincronizar</button>
+    <button class="btn btn-s" onclick="rechazarSalidaSync()">Descartar cambios</button>
+    <button class="btn btn-s" onclick="cerrarModalSalidaSync()">Seguir editando</button>
   </div>
 </div>
 
@@ -1420,7 +1449,8 @@ function cargarCola() {
     bookEliminar:           JSON.parse(localStorage.getItem("cola_bookEliminar")|| "[]"),
     bookPendiente:           JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]"),
     faenasEliminar:         JSON.parse(localStorage.getItem("cola_faenasEliminar")|| "[]"),
-    tiempos:                JSON.parse(localStorage.getItem("cola_tiempos") || "[]")
+    tiempos:                JSON.parse(localStorage.getItem("cola_tiempos") || "[]"),
+    presupuestos:           JSON.parse(localStorage.getItem("cola_presupuestos") || "[]")
   };
 }
 
@@ -1439,6 +1469,7 @@ function guardarCola(c, opts) {
   localStorage.setItem("cola_bookEliminar",            JSON.stringify(c.bookEliminar || []));
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
   localStorage.setItem("cola_tiempos",                 JSON.stringify(c.tiempos || []));
+  localStorage.setItem("cola_presupuestos",            JSON.stringify(c.presupuestos || []));
   const eliminar = c.faenasEliminar !== undefined
     ? (c.faenasEliminar || [])
     : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
@@ -2446,7 +2477,6 @@ async function guardarGastoPresupuesto() {
   const faenaId = document.getElementById("gasto-faena-id").value;
   const gastoId = document.getElementById("gasto-id").value;
   const descripcion = document.getElementById("gasto-desc").value.trim();
-  const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
   if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim() && !state.presupuestoParcial) {
@@ -2455,66 +2485,85 @@ async function guardarGastoPresupuesto() {
   }
   if (!descripcion) { toast("El detalle de la línea es obligatorio", true); return; }
   const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
-    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId))
-    || { presupuesto: [], bloques: [] };
-  try {
-    const base = getServerUrl();
-    const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
-    const method = gastoId ? "PUT" : "POST";
-    // Si estamos dentro de una partida (parcial), el material/línea NO cambia de partida.
-    let bloque;
-    if (state.presupuestoParcial) {
-      bloque = String(state.presupuestoParcial.nombreDb || "");
-    } else {
-      bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
-    }
-    const descFinal = descripcion || bloque;
-    const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil((f.presupuesto || []).length ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"));
-    const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
-    const body = {
-      descripcion: descFinal,
-      tipo: document.getElementById("gasto-tipo").value.trim() || "material",
-      cantidad,
-      precio_unitario,
-      bloque,
-      incluido: bAct ? (bAct.incluido ? 1 : 0) : 1
-    };
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(25000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") || !!state.presupuestoParcial;
-    await recargarPresupuestoFaena(faenaId);
-    cerrarModal("m-gasto-presupuesto");
-    if (!seguirParcial) cerrarPresupuestoParcialMovil();
-    else if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast(gastoId ? "Línea actualizada" : "Línea añadida a la partida");
-  } catch (e) {
-    console.error(e);
-    const msg = String(e && e.name === "TimeoutError" ? "Tardó demasiado (red lenta)" : (e && e.message) || e).slice(0, 80);
-    toast("No se pudo guardar: " + msg, true);
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) { toast("Faena no encontrada", true); return; }
+  let bloque;
+  if (state.presupuestoParcial) {
+    bloque = String(state.presupuestoParcial.nombreDb || "");
+  } else {
+    bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
   }
+  const descFinal = descripcion || bloque;
+  const tipo = document.getElementById("gasto-tipo").value.trim() || "material";
+  if (!f.presupuesto) f.presupuesto = [];
+  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(f.presupuesto);
+  const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
+  const body = {
+    descripcion: descFinal,
+    tipo,
+    cantidad,
+    precio_unitario,
+    bloque,
+    incluido: bAct ? (bAct.incluido ? 1 : 0) : 1
+  };
+  const total = cantidad * precio_unitario;
+  const cola = cargarCola();
+  cola.presupuestos = cola.presupuestos || [];
+  if (gastoId) {
+    const linea = f.presupuesto.find(x => String(x.id) === String(gastoId));
+    if (linea) Object.assign(linea, body, { total });
+    cola.presupuestos.push({ tipo: "item_editar", faena_id: faenaId, id: gastoId, body });
+  } else {
+    const tempId = "TEMP-P-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+    f.presupuesto.push({ id: tempId, faena_id: faenaId, ...body, total });
+    cola.presupuestos.push({ tipo: "item_crear", faena_id: faenaId, temp_id: tempId, body });
+  }
+  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
+  f.total_incluido = f.bloques.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  guardarCola(cola);
+  renderPanelPresupuesto(f);
+  renderFaenas();
+  const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") || !!state.presupuestoParcial;
+  cerrarModal("m-gasto-presupuesto");
+  if (!seguirParcial) cerrarPresupuestoParcialMovil();
+  else if (state.presupuestoParcial) renderPresupuestoParcialMovil();
+  toast(gastoId ? "Línea guardada (pendiente de sincronizar)" : "Línea añadida (pendiente de sincronizar)");
 }
 
 async function eliminarGastoPresupuesto(faenaId, gastoId) {
   if (!confirm("¿Eliminar esta línea de la partida?")) return;
-  try {
-    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    await recargarPresupuestoFaena(faenaId);
-    if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast("✓ Línea eliminada");
-  } catch (e) {
-    console.error(e);
-    toast("No se pudo eliminar la línea", true);
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  f.presupuesto = (f.presupuesto || []).filter(x => String(x.id) !== String(gastoId));
+  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  const cola = cargarCola();
+  cola.presupuestos = cola.presupuestos || [];
+  if (String(gastoId).startsWith("TEMP-P-")) {
+    cola.presupuestos = cola.presupuestos.filter(op => !(op.tipo === "item_crear" && String(op.temp_id) === String(gastoId)));
+  } else {
+    cola.presupuestos.push({ tipo: "item_eliminar", faena_id: faenaId, id: gastoId });
   }
+  guardarCola(cola);
+  renderPanelPresupuesto(f);
+  if (state.presupuestoParcial) renderPresupuestoParcialMovil();
+  toast("Línea eliminada (pendiente de sincronizar)");
 }
 
 async function recargarPresupuestoFaena(faenaId) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
+  // Con cambios temporales no pisamos con el servidor.
+  if ((cargarCola().presupuestos || []).some(op => String(op.faena_id) === String(faenaId))) {
+    f.bloques = bloquesDePresupuestoMovil(f.presupuesto || []);
+    renderPanelPresupuesto(f);
+    renderFaenas();
+    if (document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") && state.presupuestoParcial) {
+      renderPresupuestoParcialMovil();
+    }
+    return;
+  }
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error();
@@ -2542,38 +2591,40 @@ function nuevoBloquePresupuestoMovil(faenaId) {
 }
 
 async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: nombreDb || "", incluido }),
-      signal: faenasAbortTimeout(25000)
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    await recargarPresupuestoFaena(faenaId);
-  } catch (e) {
-    toast("No se pudo cambiar", true);
-  }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  (f.presupuesto || []).forEach(p => {
+    if (String(p.bloque || "").trim() === String(nombreDb || "").trim()) p.incluido = incluido ? 1 : 0;
+  });
+  f.bloques = bloquesDePresupuestoMovil(f.presupuesto || []);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  const cola = cargarCola();
+  cola.presupuestos = cola.presupuestos || [];
+  cola.presupuestos.push({ tipo: "bloque_toggle", faena_id: faenaId, body: { nombre: nombreDb || "", incluido } });
+  guardarCola(cola);
+  renderPanelPresupuesto(f);
 }
 
 async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
   if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: nombreDb || "", borrar: true }),
-      signal: faenasAbortTimeout(25000)
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    cerrarPresupuestoParcialMovil();
-    await recargarPresupuestoFaena(faenaId);
-    toast("Partida eliminada");
-  } catch (e) {
-    toast("No se pudo eliminar la partida", true);
-  }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  const nom = String(nombreDb || "").trim();
+  f.presupuesto = (f.presupuesto || []).filter(p => String(p.bloque || "").trim() !== nom);
+  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  const cola = cargarCola();
+  cola.presupuestos = cola.presupuestos || [];
+  cola.presupuestos = cola.presupuestos.filter(op => {
+    if (String(op.faena_id) !== String(faenaId)) return true;
+    if (op.tipo === "item_crear" && String(op.body?.bloque || "").trim() === nom) return false;
+    return true;
+  });
+  cola.presupuestos.push({ tipo: "bloque_borrar", faena_id: faenaId, body: { nombre: nombreDb || "", borrar: true } });
+  guardarCola(cola);
+  cerrarPresupuestoParcialMovil();
+  renderPanelPresupuesto(f);
+  toast("Partida eliminada (pendiente de sincronizar)");
 }
 
 async function rescatarFaenaZipMovil(input) {
@@ -5242,7 +5293,8 @@ function contarPendientesCola() {
     (c.definicionesPendientes||[]).length + (c.faenasEditar||[]).length +
     (c.gastos||[]).length + (c.tiempos||[]).length +
     (c.bookPendiente||[]).length + (c.bookEliminar||[]).length +
-    (c.faenasEliminar||[]).length + (c.tickets||[]).length;
+    (c.faenasEliminar||[]).length + (c.tickets||[]).length +
+    (c.presupuestos||[]).length;
 }
 
 function hayCambiosSesion() {
@@ -5253,8 +5305,23 @@ function colaVacia() {
   return {
     clientes: [], faenas: [], anotaciones: [], anotacionesEditar: [], anotacionesEliminar: [],
     fotos: [], ticketFotos: [], tickets: [], faenasEditar: [], definicionesPendientes: [],
-    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: []
+    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: [], presupuestos: []
   };
+}
+
+function actualizarIndicadorSesion() {
+  const n = contarPendientesCola();
+  const badge = document.getElementById("sesion-badge");
+  const btn = document.getElementById("btn-terminar-sesion");
+  if (badge) {
+    if (n > 0 || state._sesionSucia) {
+      badge.style.display = "inline-flex";
+      badge.textContent = String(n || "!");
+    } else {
+      badge.style.display = "none";
+    }
+  }
+  if (btn) btn.classList.toggle("sucia", !!(n > 0 || state._sesionSucia));
 }
 
 function marcarSesionSucia() {
@@ -5262,6 +5329,7 @@ function marcarSesionSucia() {
     state._sesionSucia = true;
     _salidaTrasSync = false;
   }
+  actualizarIndicadorSesion();
 }
 
 function guardarSnapshotSesion() {
@@ -5312,16 +5380,29 @@ let _salidaTrasSync = false;
 function preguntarSalidaSiPendiente() {
   if (_modalSalidaAbierto || _salidaTrasSync || state._syncEnCurso) return;
   if (!hayCambiosSesion()) return;
+  abrirTerminarSesion(true);
+}
+
+function abrirTerminarSesion(auto) {
+  actualizarIndicadorSesion();
+  if (!hayCambiosSesion()) {
+    if (!auto) toast("No hay cambios pendientes de subir");
+    return;
+  }
   const modal = document.getElementById("m-salida-sync");
   if (!modal) return;
   _modalSalidaAbierto = true;
   modal.classList.add("open");
 }
 
-async function aceptarSalidaSync() {
+function cerrarModalSalidaSync() {
   const modal = document.getElementById("m-salida-sync");
   if (modal) modal.classList.remove("open");
   _modalSalidaAbierto = false;
+}
+
+async function aceptarSalidaSync() {
+  cerrarModalSalidaSync();
   _salidaTrasSync = true;
   try {
     const ok = await sincronizar();
@@ -5332,6 +5413,7 @@ async function aceptarSalidaSync() {
     }
     state._sesionSucia = false;
     guardarSnapshotSesion();
+    actualizarIndicadorSesion();
   } catch (e) {
     _salidaTrasSync = false;
     toast("No se pudo actualizar. Los cambios siguen en el móvil", true);
@@ -5339,11 +5421,10 @@ async function aceptarSalidaSync() {
 }
 
 function rechazarSalidaSync() {
-  const modal = document.getElementById("m-salida-sync");
-  if (modal) modal.classList.remove("open");
-  _modalSalidaAbierto = false;
+  cerrarModalSalidaSync();
   _salidaTrasSync = true;
   descartarCambiosSesion();
+  actualizarIndicadorSesion();
   setTimeout(() => { _salidaTrasSync = false; }, 800);
 }
 
@@ -5365,6 +5446,7 @@ function actualizarPendientesInfo() {
   if (c.ticketFotos.length) lineas.push(`${c.ticketFotos.length} foto${c.ticketFotos.length>1?"s":""} de ticket`);
   if (tkt) lineas.push(`${tkt} artículo${tkt>1?"s":""} de ticket`);
   if ((c.tiempos||[]).length) lineas.push(`${c.tiempos.length} tiempo${c.tiempos.length>1?"s":""}`);
+  if ((c.presupuestos||[]).length) lineas.push(`${c.presupuestos.length} cambio${c.presupuestos.length>1?"s":""} de presupuesto`);
   el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>· ${lineas.join("<br>· ")}</div>`;
 }
 
@@ -5416,6 +5498,43 @@ async function sincronizar() {
     // Faenas editadas
     for (const ed of (cola.faenasEditar||[])) {
       try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:faenasAbortTimeout(6000)}); } catch(e) {}
+    }
+
+    // Presupuestos (partidas / líneas / bloques)
+    const mapaPresup = {};
+    if ((cola.presupuestos||[]).length) {
+      estado.textContent = `✓ Subiendo ${cola.presupuestos.length} cambio${cola.presupuestos.length>1?"s":""} de presupuesto...`;
+      for (const op of cola.presupuestos) {
+        try {
+          const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
+          if (op.tipo === "item_crear") {
+            const r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
+            });
+            if (r.ok) {
+              const d = await r.json();
+              if (d.ok && d.data && op.temp_id) mapaPresup[op.temp_id] = d.data.id;
+            }
+          } else if (op.tipo === "item_editar") {
+            const id = mapaPresup[op.id] || op.id;
+            if (String(id).startsWith("TEMP-P-")) continue;
+            await fetch(`${API}/presupuestos/${id}`, {
+              method: "PUT", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
+            });
+          } else if (op.tipo === "item_eliminar") {
+            const id = mapaPresup[op.id] || op.id;
+            if (String(id).startsWith("TEMP-P-")) continue;
+            await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+          } else if (op.tipo === "bloque_toggle" || op.tipo === "bloque_borrar") {
+            await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
+              method: "PUT", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
+            });
+          }
+        } catch (e) {}
+      }
     }
 
     // Anotaciones
@@ -5562,8 +5681,9 @@ async function sincronizar() {
       bookEliminar:[],
       bookPendiente:[],
       tiempos: cola.tiempos || [],
-      faenasEliminar: colaFinal.faenasEliminar || []
-    });
+      faenasEliminar: colaFinal.faenasEliminar || [],
+      presupuestos: []
+    }, { silencioso: true });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
     document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
@@ -5571,6 +5691,7 @@ async function sincronizar() {
     renderFaenas();
     renderMateriales();
     actualizarPendientesInfo();
+    actualizarIndicadorSesion();
 
     // Si hay un overlay abierto, refrescar los paneles
     if (state.faenaActualId) {
@@ -5774,7 +5895,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=42", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=43", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
@@ -5793,11 +5914,13 @@ async function init() {
     refrescarPantallaActual();
     actualizarPendientesInfo();
     if (contarPendientesCola() > 0) state._sesionSucia = true;
+    actualizarIndicadorSesion();
   } catch (e) {
     state._cargando = false;
     console.warn("Carga inicial:", e);
     guardarSnapshotSesion();
     incorporarFaenasPendientes();
+    actualizarIndicadorSesion();
   }
 }
 
