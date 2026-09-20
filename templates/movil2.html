@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1555,7 +1555,7 @@ async function enviarFaenasPendientes() {
           email: c.email || "",
           intermediario_id: 0
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: faenasAbortTimeout(8000)
       });
       const d = await r.json();
       if (d.ok && d.data && d.data.id) {
@@ -1586,7 +1586,7 @@ async function enviarFaenasPendientes() {
           fase: f.fase || "medicion",
           fecha_inicio: f.fecha_inicio || new Date().toISOString().slice(0, 10)
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: faenasAbortTimeout(8000)
       });
       const d = await r.json();
       if (d.ok && d.data && d.data.id) {
@@ -1706,6 +1706,17 @@ function construirContextoConsultaIA() {
     contexto.materiales = materialesBase;
   }
   return { contexto, faenaId, scope, tipo };
+}
+
+function faenasAbortTimeout(ms) {
+  try {
+    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+      return AbortSignal.timeout(ms);
+    }
+  } catch (e) {}
+  const c = new AbortController();
+  setTimeout(() => { try { c.abort(); } catch (e2) {} }, ms);
+  return c.signal;
 }
 
 function getServerUrl() {
@@ -1858,7 +1869,7 @@ function abrirFaena(id) {
 async function cargarAnotacionesFaena(f) {
   if (!f || !f.id || String(f.id).startsWith("temp")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: faenasAbortTimeout(8000) });
     const d = await r.json();
     if (d.ok && Array.isArray(d.data)) {
       f.anotaciones = d.data;
@@ -1874,7 +1885,7 @@ async function cargarAnotacionesFaena(f) {
 async function cargarFotosFaena(f) {
   if (!f || !f.id || String(f.id).startsWith("temp")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/fotos`, { signal: AbortSignal.timeout(15000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/fotos`, { signal: faenasAbortTimeout(15000) });
     const d = await r.json();
     if (d.ok) {
       f.fotos = d.data || [];
@@ -2008,7 +2019,7 @@ async function refrescarTiemposFaena(f, opts) {
   const totMap = minutosColaFaena(id);
   if (f && !esIdFaenaTemporal(id) && !(opts && opts.sinRed)) {
     try {
-      const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: AbortSignal.timeout(8000) });
+      const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: faenasAbortTimeout(8000) });
       const d = await r.json();
       if (d.ok && d.data) {
         for (const t of (d.data.totales || [])) {
@@ -2071,7 +2082,7 @@ async function guardarSesionTiempo(sesion) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sesiones: [sesion] }),
-      signal: AbortSignal.timeout(8000)
+      signal: faenasAbortTimeout(8000)
     });
     const d = await r.json();
     if (d.ok) return true;
@@ -2423,7 +2434,7 @@ async function guardarGastoPresupuesto() {
       bloque,
       incluido: bAct ? (bAct.incluido ? 1 : 0) : 1
     };
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -2442,7 +2453,7 @@ async function guardarGastoPresupuesto() {
 async function eliminarGastoPresupuesto(faenaId, gastoId) {
   if (!confirm("¿Borrar este concepto?")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(25000) });
+    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -2458,7 +2469,7 @@ async function recargarPresupuestoFaena(faenaId) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: AbortSignal.timeout(25000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error();
     const d = await r.json();
     if (d.ok) {
@@ -2489,7 +2500,7 @@ async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: nombreDb || "", incluido }),
-      signal: AbortSignal.timeout(6000)
+      signal: faenasAbortTimeout(6000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -2506,7 +2517,7 @@ async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: nombreDb || "", borrar: true }),
-      signal: AbortSignal.timeout(6000)
+      signal: faenasAbortTimeout(6000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -2526,7 +2537,7 @@ async function rescatarFaenaZipMovil(input) {
   try {
     const fd = new FormData();
     fd.append("archivo", file, file.name || "faena.zip");
-    const r = await fetch(`${getServerUrl()}/faenas/desde-zip`, { method: "POST", body: fd, signal: AbortSignal.timeout(120000) });
+    const r = await fetch(`${getServerUrl()}/faenas/desde-zip`, { method: "POST", body: fd, signal: faenasAbortTimeout(120000) });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo rescatar", true); return; }
     toast("Faena rescatada: " + ((d.data && d.data.numero) || ""));
@@ -2544,7 +2555,7 @@ async function reabrirFaenaMovil(event, id) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fase: "medicion" }),
-      signal: AbortSignal.timeout(8000)
+      signal: faenasAbortTimeout(8000)
     });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo reabrir", true); return; }
@@ -2558,7 +2569,7 @@ async function reabrirFaenaMovil(event, id) {
 
 async function cargarPresupuestoPC(faenaId) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: AbortSignal.timeout(5000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: faenasAbortTimeout(5000) });
     if (!r.ok) throw new Error();
     const d = await r.json();
     if (d.ok && d.data.contenido) {
@@ -2642,7 +2653,7 @@ function renderNotaLibreta(a, faenaId) {
 
 async function cargarDocumentosPC(faenaId) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: AbortSignal.timeout(6000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: faenasAbortTimeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
@@ -2689,7 +2700,7 @@ async function analizarDocumentoPC(faenaId, ruta, nombre) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ruta, nombre, faena_id: faenaId || null, prompt: localStorage.getItem("ticket_prompt_temp") || "" }),
-      signal: AbortSignal.timeout(45000)
+      signal: faenasAbortTimeout(45000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error al analizar el documento");
@@ -2998,7 +3009,7 @@ async function confirmarDestinoFoto(tipo) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ faena_id: faenaId || 0, titulo: "Foto", data: foto.data }),
-          signal: AbortSignal.timeout(30000)
+          signal: faenasAbortTimeout(30000)
         });
         const d = await r.json();
         if (!d.ok) toast(d.error || "No se pudo guardar en el book", true);
@@ -3021,7 +3032,7 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ faena_id: faenaId, nombre, data }),
-      signal: AbortSignal.timeout(30000)
+      signal: faenasAbortTimeout(30000)
     });
     const d = await r.json();
     if (d.omitida || r.status === 404 || /no encontrada/i.test(d.error || "")) {
@@ -3095,7 +3106,7 @@ async function eliminarFotoSincronizada(faenaId, idx) {
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/fotos/${encodeURIComponent(nombre)}`, {
       method: "DELETE",
-      signal: AbortSignal.timeout(10000)
+      signal: faenasAbortTimeout(10000)
     });
     const d = await r.json();
     if (!d.ok) {
@@ -3182,7 +3193,7 @@ async function procesarGastoFotoTicket(faenaId, file) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imagen, faena_id: faenaId, guardar: false }),
-      signal: AbortSignal.timeout(50000)
+      signal: faenasAbortTimeout(50000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error al procesar el ticket");
@@ -3203,7 +3214,7 @@ async function procesarPdfViaColaMovil(file, faenaId, onEstado) {
   fd.append("archivo", file, file.name || "documento.pdf");
   fd.append("nombre", file.name || "documento.pdf");
   if (faenaId) fd.append("faena_id", String(faenaId));
-  const r = await fetch(`${getServerUrl()}/ocr/trabajos`, { method: "POST", body: fd, signal: AbortSignal.timeout(60000) });
+  const r = await fetch(`${getServerUrl()}/ocr/trabajos`, { method: "POST", body: fd, signal: faenasAbortTimeout(60000) });
   const job = await r.json();
   if (!job.ok) throw new Error(job.error || "No se pudo enviar el PDF");
   const id = job.id || (job.trabajo && job.trabajo.id);
@@ -3252,7 +3263,7 @@ async function procesarGastoDocumento(faenaId, file) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archivo_base64, nombre: file.name || "documento", mime_type: file.type || "", faena_id: faenaId, guardar: false }),
-        signal: AbortSignal.timeout(50000)
+        signal: faenasAbortTimeout(50000)
       });
       d = await r.json();
     }
@@ -3373,7 +3384,7 @@ async function guardarGastoFabricacion() {
     const base = getServerUrl();
     const url = gastoId ? `${base}/gastos/${gastoId}` : `${base}/faenas/${faenaId}/gastos`;
     const method = gastoId ? "PUT" : "POST";
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3435,7 +3446,7 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
   }
 
   try {
-    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(6000) });
+    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3475,7 +3486,7 @@ async function sincronizarGastosFaena(faenaId) {
   const ops = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
   if (!ops.length) { toast("No hay gastos pendientes", true); return; }
   try {
-    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: AbortSignal.timeout(10000) });
+    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: faenasAbortTimeout(10000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3665,7 +3676,7 @@ async function cambiarFaseMovil(event, id, fase) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fase }),
-      signal: AbortSignal.timeout(8000)
+      signal: faenasAbortTimeout(8000)
     });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo cambiar la fase", true); renderFaenas(); return; }
@@ -3798,7 +3809,7 @@ async function enviarFaenasEliminadas() {
     try {
       const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
         method: "DELETE",
-        signal: AbortSignal.timeout(15000)
+        signal: faenasAbortTimeout(15000)
       });
       if (r.ok || r.status === 404) okIds.push(id);
     } catch (e) {}
@@ -4013,7 +4024,7 @@ async function guardarEditarFaena() {
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos), signal: AbortSignal.timeout(6000)
+      body: JSON.stringify(datos), signal: faenasAbortTimeout(6000)
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
@@ -4031,7 +4042,7 @@ async function guardarEditarFaena() {
             intermediario_id: 0,
             notas: state.clientes.find(c => String(c.id) === String(clienteId))?.notas || ""
           }),
-          signal: AbortSignal.timeout(6000)
+          signal: faenasAbortTimeout(6000)
         });
       }
       aplicar();
@@ -4102,7 +4113,7 @@ async function eliminarAnotacionMovil(id, faenaId) {
   }
   const API = getServerUrl();
   try {
-    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: AbortSignal.timeout(4000) });
+    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: faenasAbortTimeout(4000) });
     if (r.ok) {
       const d = await r.json();
       if (d.ok) {
@@ -4141,7 +4152,7 @@ async function guardarAnotacion() {
       toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
     }
     try {
-      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: AbortSignal.timeout(4000) });
+      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: faenasAbortTimeout(4000) });
       if (r.ok) {
         const d = await r.json();
         if (d.ok) {
@@ -4169,7 +4180,7 @@ async function guardarAnotacion() {
   const esFaenaTemp = faena?._offline;
   if (!esFaenaTemp) {
     try {
-      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: AbortSignal.timeout(4000) });
+      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: faenasAbortTimeout(4000) });
       if (r.ok) {
         const d = await r.json();
         if (d.ok) {
@@ -4651,7 +4662,7 @@ async function procesarTicketConIA() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imagen: ticketFotoBase64, guardar: false }),
-      signal: AbortSignal.timeout(50000)
+      signal: faenasAbortTimeout(50000)
     });
     const data = await r.json();
     if (data.ok && data.data) {
@@ -4708,7 +4719,7 @@ async function mostrarCruceTicket(articulos) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ articulos }),
-      signal: AbortSignal.timeout(15000)
+      signal: faenasAbortTimeout(15000)
     });
     const d = await r.json();
     if (!d.ok) { notas.textContent = ""; return; }
@@ -4953,7 +4964,7 @@ async function guardarCorreccionJimmi() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto: nota, modo }),
-      signal: AbortSignal.timeout(15000)
+      signal: faenasAbortTimeout(15000)
     });
     const data = await r.json();
     if (!data.ok) { toast(data.error || "No se pudo guardar", true); return; }
@@ -5115,7 +5126,7 @@ async function quitarDelBook(idx, silencioso) {
   if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
   if (f.id) {
     try {
-      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: AbortSignal.timeout(15000) });
+      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: faenasAbortTimeout(15000) });
     } catch (e) {
       const cola = cargarCola();
       cola.bookEliminar = cola.bookEliminar || [];
@@ -5142,17 +5153,17 @@ async function sincronizarBook(API) {
   try {
     const cola = cargarCola();
     for (const id of (cola.bookEliminar || [])) {
-      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: AbortSignal.timeout(10000) }); } catch (e) {}
+      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: faenasAbortTimeout(10000) }); } catch (e) {}
     }
     cola.bookEliminar = [];
     for (const foto of (cola.bookPendiente||[])) {
       try {
-        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(30000) });
+        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: faenasAbortTimeout(30000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch(e) { console.error("Error subiendo foto book:", e); }
     }
     cola.bookPendiente = []; guardarCola(cola);
-    const r = await fetch(`${API}/sync/book`, {signal: AbortSignal.timeout(60000)});
+    const r = await fetch(`${API}/sync/book`, {signal: faenasAbortTimeout(60000)});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (d.ok && Array.isArray(d.data)) {
@@ -5211,7 +5222,7 @@ async function sincronizar() {
   const cola = cargarCola();
   try {
     await enviarFaenasEliminadas();
-    let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
+    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(5000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
     }
@@ -5221,7 +5232,7 @@ async function sincronizar() {
     const mapaClientes = {};
     for (const c of cola.clientes) {
       try {
-        const r = await fetch(`${API}/clientes`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:c.nombre, telefono:c.telefono, direccion:c.direccion || "", email:c.email, intermediario_id:0}), signal:AbortSignal.timeout(8000)});
+        const r = await fetch(`${API}/clientes`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:c.nombre, telefono:c.telefono, direccion:c.direccion || "", email:c.email, intermediario_id:0}), signal:faenasAbortTimeout(8000)});
         if (r.ok) { const d = await r.json(); if (d.ok) mapaClientes[c._tempId] = d.data.id; }
       } catch(e) {}
     }
@@ -5233,7 +5244,7 @@ async function sincronizar() {
         const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id;
         const clienteBase = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(f._clienteTempId || f.cliente_id));
         const direccionFaena = f.direccion || clienteBase?.direccion || "";
-        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:AbortSignal.timeout(8000)});
+        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:faenasAbortTimeout(8000)});
         if (r.ok) { const d = await r.json(); if (d.ok) mapaFaenas[f._tempId] = {id:d.data.id, numero:d.data.numero}; }
       } catch(e) {}
     }
@@ -5241,7 +5252,7 @@ async function sincronizar() {
 
     // Faenas editadas
     for (const ed of (cola.faenasEditar||[])) {
-      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:AbortSignal.timeout(6000)}); } catch(e) {}
+      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:faenasAbortTimeout(6000)}); } catch(e) {}
     }
 
     // Anotaciones
@@ -5251,20 +5262,20 @@ async function sincronizar() {
           const f = state.faenas.find(x => String(x.id || x._tempId) === String(a.faena_id));
           return {...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id, numero: a.numero || f?.numero || ""};
         });
-        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:AbortSignal.timeout(10000)});
+        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:faenasAbortTimeout(10000)});
         estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
       } catch(e) {}
     }
     if ((cola.anotacionesEditar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
+      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
     }
     if ((cola.anotacionesEliminar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
+      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
     }
 
     if ((cola.gastos||[]).length) {
       try {
-        const r = await fetch(`${API}/sync/gastos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({operaciones: cola.gastos}), signal:AbortSignal.timeout(10000)});
+        const r = await fetch(`${API}/sync/gastos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({operaciones: cola.gastos}), signal:faenasAbortTimeout(10000)});
         if (r.ok) {
           const d = await r.json();
           if (d.ok) {
@@ -5291,7 +5302,7 @@ async function sincronizar() {
     if ((cola.tiempos||[]).length) {
       try {
         const sesiones = cola.tiempos.map(t => ({...t, faena_id: mapaFaenas[t.faena_id]?.id || t.faena_id}));
-        const r = await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:AbortSignal.timeout(10000)});
+        const r = await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:faenasAbortTimeout(10000)});
         const d = await r.json();
         if (d.ok) cola.tiempos = [];
       } catch(e) {}
@@ -5300,7 +5311,7 @@ async function sincronizar() {
     // Tickets JSON (materiales)
     if ((cola.tickets||[]).length) {
       try {
-        const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:AbortSignal.timeout(30000)});
+        const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:faenasAbortTimeout(30000)});
         if (r.ok) { const d = await r.json(); if (d.ok) estado.textContent = `✓ ${d.data.procesados} artículo${d.data.procesados!==1?"s":""} de ticket subido${d.data.procesados!==1?"s":""}...`; }
       } catch(e) {}
     }
@@ -5313,7 +5324,7 @@ async function sincronizar() {
       for (const foto of cola.fotos) {
         try {
           const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
-          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
+          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:faenasAbortTimeout(30000)});
           if (r.ok) {
             const d = await r.json();
             if (d.omitida || /no encontrada/i.test(d.error || "")) {
@@ -5337,7 +5348,7 @@ async function sincronizar() {
       for (const tkt of cola.ticketFotos) {
         try {
           const faenaId = mapaFaenas[tkt.faena_id]?.id || tkt.faena_id;
-          const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:AbortSignal.timeout(30000)});
+          const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:faenasAbortTimeout(30000)});
           if (r.ok) { const d = await r.json(); if (d.ok) ticketsEnviados++; }
         } catch(e) { console.error("Error subiendo ticket-foto:", e); }
       }
@@ -5346,15 +5357,15 @@ async function sincronizar() {
 
     // Definiciones de material
     for (const def of (cola.definicionesPendientes||[])) {
-      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:AbortSignal.timeout(6000)}); } catch(e) {}
+      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:faenasAbortTimeout(6000)}); } catch(e) {}
     }
 
     // Descargar faenas + materiales + clientes
     estado.textContent = "✓ Descargando datos del PC...";
     const [rFaenas, rMat, rCli] = await Promise.all([
-      fetch(`${API}/sync/datos`, {signal:AbortSignal.timeout(15000)}),
-      fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
-      fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
+      fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(15000)}),
+      fetch(`${API}/materiales`, {signal:faenasAbortTimeout(10000)}),
+      fetch(`${API}/clientes`, {signal:faenasAbortTimeout(10000)})
     ]);
     if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
     if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
@@ -5364,7 +5375,7 @@ async function sincronizar() {
     estado.textContent = "✓ Descargando fotos...";
     for (const faena of state.faenas) {
       try {
-        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:AbortSignal.timeout(15000)});
+        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:faenasAbortTimeout(15000)});
         if (r.ok) { const d = await r.json(); if (d.ok) faena.fotos = d.data; }
       } catch(e) {}
     }
@@ -5430,7 +5441,7 @@ async function cargarDatosIniciales(silencioso) {
   const optsTimeout = (ms) => {
     try {
       if (window.AbortSignal && typeof AbortSignal.timeout === "function") {
-        return { signal: AbortSignal.timeout(ms) };
+        return { signal: faenasAbortTimeout(ms) };
       }
     } catch (e) {}
     return {};
@@ -5590,7 +5601,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=34", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=35", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
