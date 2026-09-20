@@ -4526,43 +4526,56 @@ def sync_datos():
         ORDER BY f.id DESC
     """).fetchall()
     resultado = []
+    ids = [f["id"] for f in faenas]
+    anots_por = {}
+    presup_por = {}
+    gastos_por = {}
+    fotos_por = {}
+    if ids:
+        placeholders = ",".join(["?"] * len(ids))
+        for fila in filas_a_lista(conn.execute(
+            f"SELECT * FROM anotaciones WHERE faena_id IN ({placeholders}) ORDER BY fecha DESC, id DESC",
+            ids,
+        ).fetchall()):
+            anots_por.setdefault(fila.get("faena_id"), []).append(fila)
+        for fila in filas_a_lista(conn.execute(
+            f"SELECT * FROM presupuestos_faena WHERE faena_id IN ({placeholders}) ORDER BY fecha DESC, id ASC",
+            ids,
+        ).fetchall()):
+            presup_por.setdefault(fila.get("faena_id"), []).append(fila)
+        try:
+            for fila in filas_a_lista(conn.execute(
+                f"SELECT * FROM gastos_faena WHERE faena_id IN ({placeholders}) AND LOWER(COALESCE(tipo,''))<>'presupuesto' ORDER BY fecha DESC, id DESC",
+                ids,
+            ).fetchall()):
+                gastos_por.setdefault(fila.get("faena_id"), []).append(fila)
+        except Exception:
+            pass
+        for fila in filas_a_lista(conn.execute(
+            f"SELECT id, faena_id, nombre, ruta_foto FROM fotos_faena WHERE faena_id IN ({placeholders}) ORDER BY id ASC",
+            ids,
+        ).fetchall()):
+            # Metadatos ligeros: sin base64 en la sync (las fotos se cargan al abrir la faena).
+            fotos_por.setdefault(fila.get("faena_id"), []).append({
+                "id": fila.get("id"),
+                "nombre": fila.get("nombre"),
+                "ruta": (fila.get("ruta_foto") or "").strip(),
+                "data": _url_desde_ruta(fila.get("ruta_foto") or ""),
+            })
     for f in faenas:
         faena = fila_a_dict(f)
-        anotaciones = conn.execute(
-            "SELECT * FROM anotaciones WHERE faena_id=? ORDER BY fecha DESC",
-            (f["id"],)
-        ).fetchall()
-        faena["anotaciones"] = filas_a_lista(anotaciones)
-        presupuesto_lista = asegurar_presupuesto_editable(conn, f["id"], f["carpeta"])
+        fid = f["id"]
+        presupuesto_lista = presup_por.get(fid, [])
         bloques, total_inc = agrupar_bloques_presupuesto(presupuesto_lista)
         faena["bloques"] = bloques
         faena["total_incluido"] = total_inc
         if presupuesto_lista:
             faena["importe"] = total_inc
-        try:
-            gastos = conn.execute(
-                "SELECT * FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))<>'presupuesto' ORDER BY fecha DESC, id DESC",
-                (f["id"],)
-            ).fetchall()
-            gastos_lista = filas_a_lista(gastos)
-        except Exception:
-            gastos_lista = []
+        faena["anotaciones"] = anots_por.get(fid, [])
         faena["presupuesto"] = presupuesto_lista
-        faena["gastos"] = gastos_lista
-        faena["fotos"] = []
+        faena["gastos"] = gastos_por.get(fid, [])
+        faena["fotos"] = fotos_por.get(fid, [])
         resultado.append(faena)
-    if resultado:
-        ids = [f["id"] for f in resultado]
-        placeholders = ",".join(["?"] * len(ids))
-        filas_fotos = conn.execute(
-            f"SELECT * FROM fotos_faena WHERE faena_id IN ({placeholders}) ORDER BY id ASC",
-            ids,
-        ).fetchall()
-        por_faena = {}
-        for fila in filas_a_lista(filas_fotos):
-            por_faena.setdefault(fila.get("faena_id"), []).append(_payload_foto(fila))
-        for faena in resultado:
-            faena["fotos"] = por_faena.get(faena["id"], [])
     terminadas = []
     try:
         filas_t = conn.execute("""
