@@ -2292,9 +2292,9 @@ function renderPresupuestoParcialMovil() {
       </div>
     </div>
     <div class="presup-actions" style="margin:0 0 12px 0;flex-wrap:wrap">
-      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Partida</button>
-      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
-      ${b ? `<button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar</button>` : ""}
+      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Línea</button>
+      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">+ Material</button>
+      <button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar partida</button>
     </div>
     ${partidas.length ? partidas.map(g => `
       <div class="presup-line">
@@ -2307,10 +2307,10 @@ function renderPresupuestoParcialMovil() {
           <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
           <div class="presup-actions" style="justify-content:flex-end">
             <button class="btn btn-s" onclick="abrirGastoPresupuesto(${fid},'${g.id}',${nom})">Editar</button>
-            <button class="btn btn-d" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Borrar</button>
+            <button class="btn btn-d" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Eliminar</button>
           </div>
         </div>
-      </div>`).join("") : '<div class="presup-empty">Sin partidas</div>'}
+      </div>`).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
   `;
 }
 
@@ -2339,6 +2339,21 @@ function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
 }
 
 function abrirListaMaterialesPresupuestoMovil() {
+  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    toast("Abre una partida primero para añadir el material dentro", true);
+    return;
+  }
+  // Asegura el concepto/partida actual en el formulario oculto
+  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
+  const bloque = state.presupuestoParcial
+    ? String(state.presupuestoParcial.nombreDb || "")
+    : (document.getElementById("gasto-bloque-txt")?.value || "");
+  if (faenaId && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    abrirGastoPresupuesto(faenaId, "", bloque);
+    cerrarModal("m-gasto-presupuesto"); // deja campos rellenados sin tapar la lista
+  } else if (document.getElementById("gasto-bloque-txt") && state.presupuestoParcial) {
+    document.getElementById("gasto-bloque-txt").value = String(state.presupuestoParcial.nombreDb || "");
+  }
   const q = document.getElementById("q-consulta-mat-mov");
   if (q) q.value = "";
   const el = document.getElementById("consulta-mat-lista-mov");
@@ -2387,8 +2402,15 @@ function renderConsultaMatMovil() {
 
 async function usarMaterialEnPresupuestoMovil(nombre, precio) {
   const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
-  const bloque = document.getElementById("gasto-bloque-txt")?.value || state.presupuestoParcial?.nombreDb || "";
   if (!faenaId) { toast("Abre una faena primero", true); return; }
+  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    toast("Abre una partida para meter el material dentro", true);
+    return;
+  }
+  // El material es una LÍNEA dentro de la partida abierta; nunca crea otra partida/concepto.
+  const bloque = state.presupuestoParcial
+    ? String(state.presupuestoParcial.nombreDb || "")
+    : String(document.getElementById("gasto-bloque-txt")?.value || "").trim();
   if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
     abrirGastoPresupuesto(faenaId, "", bloque);
   }
@@ -2396,9 +2418,11 @@ async function usarMaterialEnPresupuestoMovil(nombre, precio) {
     toast("No se pudo abrir la partida", true);
     return;
   }
+  document.getElementById("gasto-id").value = ""; // siempre nueva línea, no editar otra
+  document.getElementById("gasto-title").textContent = "Nueva línea";
   document.getElementById("gasto-desc").value = nombre;
   const bloq = document.getElementById("gasto-bloque-txt");
-  if (bloq && !String(bloq.value || "").trim()) bloq.value = nombre;
+  if (bloq) bloq.value = bloque;
   document.getElementById("gasto-tipo").value = "material";
   document.getElementById("gasto-precio").value = Number(precio || 0);
   const cant = document.getElementById("gasto-cant");
@@ -2414,7 +2438,11 @@ async function guardarGastoPresupuesto() {
   const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
-  if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim()) { toast("El concepto es obligatorio", true); return; }
+  if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim() && !state.presupuestoParcial) {
+    toast("El concepto es obligatorio", true);
+    return;
+  }
+  if (!descripcion) { toast("El detalle de la línea es obligatorio", true); return; }
   const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || { presupuesto: [], bloques: [] };
@@ -2422,7 +2450,13 @@ async function guardarGastoPresupuesto() {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
     const method = gastoId ? "PUT" : "POST";
-    const bloque = (document.getElementById("gasto-bloque-txt").value || "").trim() || descripcion;
+    // Si estamos dentro de una partida (parcial), el material/línea NO cambia de partida.
+    let bloque;
+    if (state.presupuestoParcial) {
+      bloque = String(state.presupuestoParcial.nombreDb || "");
+    } else {
+      bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
+    }
     const descFinal = descripcion || bloque;
     const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil((f.presupuesto || []).length ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"));
     const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
@@ -2438,11 +2472,12 @@ async function guardarGastoPresupuesto() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
-    const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open");
+    const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") || !!state.presupuestoParcial;
     await recargarPresupuestoFaena(faenaId);
     cerrarModal("m-gasto-presupuesto");
     if (!seguirParcial) cerrarPresupuestoParcialMovil();
-    toast(gastoId ? "Concepto actualizado" : "Concepto añadido");
+    else if (state.presupuestoParcial) renderPresupuestoParcialMovil();
+    toast(gastoId ? "Línea actualizada" : "Línea añadida a la partida");
   } catch (e) {
     console.error(e);
     const msg = String(e && e.name === "TimeoutError" ? "Tardó demasiado (red lenta)" : (e && e.message) || e).slice(0, 80);
@@ -2451,17 +2486,18 @@ async function guardarGastoPresupuesto() {
 }
 
 async function eliminarGastoPresupuesto(faenaId, gastoId) {
-  if (!confirm("¿Borrar este concepto?")) return;
+  if (!confirm("¿Eliminar esta línea de la partida?")) return;
   try {
     const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
     await recargarPresupuestoFaena(faenaId);
-    toast("✓ Concepto borrado");
+    if (state.presupuestoParcial) renderPresupuestoParcialMovil();
+    toast("✓ Línea eliminada");
   } catch (e) {
     console.error(e);
-    toast("No se pudo borrar el concepto", true);
+    toast("No se pudo eliminar la línea", true);
   }
 }
 
@@ -2500,7 +2536,7 @@ async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: nombreDb || "", incluido }),
-      signal: faenasAbortTimeout(6000)
+      signal: faenasAbortTimeout(25000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -2511,21 +2547,21 @@ async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
 }
 
 async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
-  if (!confirm("¿Borrar este presupuesto y todas sus partidas?")) return;
+  if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: nombreDb || "", borrar: true }),
-      signal: faenasAbortTimeout(6000)
+      signal: faenasAbortTimeout(25000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
     cerrarPresupuestoParcialMovil();
     await recargarPresupuestoFaena(faenaId);
-    toast("Presupuesto borrado");
+    toast("Partida eliminada");
   } catch (e) {
-    toast("No se pudo borrar", true);
+    toast("No se pudo eliminar la partida", true);
   }
 }
 
@@ -5601,7 +5637,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=35", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=36", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
