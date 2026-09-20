@@ -1324,6 +1324,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     </div>
     <div class="btn-row">
       <button class="btn btn-p" onclick="guardarPresupuestoItem()">Guardar</button>
+      <button class="btn btn-d" id="presupuesto-btn-eliminar" style="display:none" onclick="eliminarPresupuestoItemDesdeModal()">Eliminar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-presupuesto-item')">Cancelar</button>
     </div>
   </div>
@@ -1815,20 +1816,25 @@ function aplicarOpLocalPc(method, path, body, data) {
     return;
   }
   if (method === "POST" && (m = path.match(/^\/faenas\/([^/]+)\/presupuesto\/item$/))) {
-    if (String(state.detalleId) === String(m[1])) {
+    const fid = m[1];
+    if (String(state.detalleId) === String(fid) || String(state.presupuestoParcialPc?.faenaId) === String(fid)) {
+      if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
       state.detalleActual.presupuesto = state.detalleActual.presupuesto || [];
       state.detalleActual.presupuesto.push({ id: data.id, ...b, total: data.total });
-      refrescarImportePresupuestoPc(m[1]);
+      if (!state.detalleId) state.detalleId = parseInt(fid, 10) || fid;
+      refrescarImportePresupuestoPc(fid);
     }
     return;
   }
   if (method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+    if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
     const p = (state.detalleActual.presupuesto || []).find(x => String(x.id) === String(m[1]));
     if (p) Object.assign(p, b, { total: data.total != null ? data.total : ((parseFloat(b.cantidad)||1)*(parseFloat(b.precio_unitario)||0)) });
     if (state.detalleId) refrescarImportePresupuestoPc(state.detalleId);
     return;
   }
   if (method === "DELETE" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+    if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
     state.detalleActual.presupuesto = (state.detalleActual.presupuesto || []).filter(x => String(x.id) !== String(m[1]));
     if (state.detalleId) refrescarImportePresupuestoPc(state.detalleId);
     return;
@@ -2464,18 +2470,16 @@ function renderFaenas() {
       const fase = faseDeFaena(f);
       const precio = parseFloat(f.importe) || 0;
       const acciones = fase !== "terminada" ? `
-          <select class="fase-sel" onchange="cambiarFase(${f.id}, this.value)">
+          <select class="fase-sel" onclick="event.stopPropagation()" onchange="cambiarFase(${f.id}, this.value)">
             <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
             <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
             <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
             <option value="terminada">Terminada</option>
           </select>
-          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
-          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
-          <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
-          <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
-      return `<tr>
+          <button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrirCarpetaDocumentos(${f.id})">Documentos</button>
+          <button class="btn btn-d btn-sm" onclick="event.stopPropagation();terminarFaena(${f.id})">Terminar</button>
+        ` : `<span style="font-size:0.75rem;color:#aaa">Terminada</span>`;
+      return `<tr style="cursor:pointer" onclick="verDetalle(${f.id})" title="Abrir faena">
         <td><span class="num-faena">${f.numero}</span></td>
         <td>
           <strong>${f.cliente_nombre || ""}</strong>
@@ -2485,7 +2489,7 @@ function renderFaenas() {
         <td>${direccionDeFaena(f) || "—"}</td>
         <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
         <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
-        <td class="acciones">${acciones}</td>
+        <td class="acciones" onclick="event.stopPropagation()">${acciones}</td>
       </tr>`;
     }).join("")}</tbody>
   </table></div>`;
@@ -2658,37 +2662,78 @@ async function eliminarMaterialDesdeModal() {
 }
 
 // ===== DETALLE FAENA =====
-async function verDetalle(id) {
-  let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
+state.detalleCache = null; // { anotaciones, docs, fotos, tiemposHtml }
+
+async function verDetalle(id, opts) {
+  const forzarRed = !(opts && opts.soloLocal);
+  let f = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
   if (!f) return;
-  const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
-    api("GET", `/faenas/${id}/anotaciones`),
-    api("GET", `/faenas/${id}/conceptos`),
-    api("GET", `/faenas/${id}/documentos`),
-    api("GET", `/faenas/${id}/fotos`),
-    api("GET", `/faenas/${id}/tiempos`)
-  ]);
-  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
-  const tel = telefonoDeFaena(f) || cliente?.telefono || "";
-  let anotaciones = rAnot.ok ? rAnot.data : [];
-  const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
-  let presupuesto = conceptos.presupuesto || [];
-  let gastos = conceptos.gastos || [];
-  if (pendingOps.length) {
-    const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
-    anotaciones = merged.anotaciones;
-    gastos = merged.gastos;
-    presupuesto = merged.presupuesto;
+
+  let anotaciones = [];
+  let presupuesto = state.detalleActual?.presupuesto || [];
+  let gastos = state.detalleActual?.gastos || [];
+  let docs = state.detalleCache?.docs || [];
+  let fotos = state.detalleCache?.fotos || [];
+  let tiemposHtml = state.detalleCache?.tiemposHtml || `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+
+  if (forzarRed || String(state.detalleId) !== String(id) || !state.detalleCache) {
+    const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
+      api("GET", `/faenas/${id}/anotaciones`),
+      api("GET", `/faenas/${id}/conceptos`),
+      api("GET", `/faenas/${id}/documentos`),
+      api("GET", `/faenas/${id}/fotos`),
+      api("GET", `/faenas/${id}/tiempos`)
+    ]);
+    anotaciones = rAnot.ok ? rAnot.data : [];
+    const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
+    presupuesto = conceptos.presupuesto || [];
+    gastos = conceptos.gastos || [];
+    if (pendingOps.length) {
+      const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
+      anotaciones = merged.anotaciones;
+      gastos = merged.gastos;
+      presupuesto = merged.presupuesto;
+    }
+    docs = rDocs.ok ? rDocs.data : [];
+    fotos = rFotos.ok ? rFotos.data : [];
+    const tot = (rTiempos.ok && rTiempos.data && rTiempos.data.totales) ? rTiempos.data.totales : [];
+    const labels = { medicion_diseno: "Medición y diseño", compras_gestion: "Compras y gestión", trabajo: "Trabajo" };
+    if (!tot.length) tiemposHtml = `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+    else {
+      const txt = tot.map(t => `${labels[t.categoria] || t.categoria}: ${((t.minutos||0)/60).toFixed(1)} h`).join(" · ");
+      tiemposHtml = `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">${txt}</span></div>`;
+    }
+    state.detalleCache = { anotaciones, docs, fotos, tiemposHtml, faenaId: id };
+  } else {
+    // Solo local: partir del estado actual + cola
+    anotaciones = state.detalleCache.anotaciones || [];
+    presupuesto = state.detalleActual?.presupuesto || [];
+    gastos = state.detalleActual?.gastos || [];
+    if (pendingOps.length) {
+      const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
+      // Para presupuesto/gastos ya están en detalleActual por aplicarOpLocalPc; no duplicar
+      anotaciones = merged.anotaciones;
+    }
+    docs = state.detalleCache.docs || [];
+    fotos = state.detalleCache.fotos || [];
+    tiemposHtml = state.detalleCache.tiemposHtml || tiemposHtml;
   }
+
   state.detalleId = id;
   state.detalleActual = { gastos, presupuesto };
-  const docs = rDocs.ok ? rDocs.data : [];
-  const fotos = rFotos.ok ? rFotos.data : [];
+  if (state.detalleCache) state.detalleCache.anotaciones = anotaciones;
+  pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+  abrirModal("m-detalle");
+}
+
+function pintarDetalleFaenaPc(f, data) {
+  const { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml } = data;
+  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
+  const tel = telefonoDeFaena(f) || cliente?.telefono || "";
   const bloquesP = bloquesDePresupuestoPc(presupuesto);
   const totalPresupuesto = bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
-  // Refleja el temporal también en el listado de faenas
-  const fList = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
+  const fList = state.faenas.find(x => String(x.id) === String(f.id)) || (state.terminadas || []).find(x => String(x.id) === String(f.id));
   if (fList) {
     fList.importe = totalPresupuesto;
     fList.total_incluido = totalPresupuesto;
@@ -2713,15 +2758,9 @@ async function verDetalle(id) {
     <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${f.tipo_trabajo || "—"}</span></div>
     <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre}${tel ? `<br><a href="tel:${tel}" style="color:var(--green);font-size:0.78rem">📞 ${tel}</a>` : ""}</span></div>
     <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${direccionDeFaena(f) || "—"}</span></div>
-    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
+    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600" id="detalle-importe-val">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
-    ${(() => {
-      const tot = (rTiempos.ok && rTiempos.data && rTiempos.data.totales) ? rTiempos.data.totales : [];
-      const labels = { medicion_diseno: "Medición y diseño", compras_gestion: "Compras y gestión", trabajo: "Trabajo" };
-      if (!tot.length) return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
-      const txt = tot.map(t => `${labels[t.categoria] || t.categoria}: ${((t.minutos||0)/60).toFixed(1)} h`).join(" · ");
-      return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">${txt}</span></div>`;
-    })()}
+    ${tiemposHtml}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">📷 Fotos (${fotos.length})</strong>
@@ -2761,36 +2800,9 @@ async function verDetalle(id) {
       </div>
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>'}
     <hr>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
-      <strong style="font-size:0.85rem">Presupuestos (${bloquesP.length})</strong>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-p btn-sm" onclick="nuevoBloquePresupuestoPc(${f.id})">+ Presupuesto</button>
-        <button class="btn btn-s btn-sm" onclick="abrirMaterialesPresupuestoPc(${f.id})">Materiales</button>
-        <span class="badge b-orange">Total ${totalPresupuesto.toFixed(2)} €</span>
-      </div>
+    <div id="detalle-presupuesto-wrap">
+    ${htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto)}
     </div>
-    ${bloquesP.length ? `
-      <table class="gastos-table">
-        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th><th></th></tr></thead>
-        <tbody>
-          ${bloquesP.map(b => {
-            const nom = JSON.stringify(b.nombre_db || "");
-            const sub = parseFloat(b.total || 0) || 0;
-            return `<tr style="cursor:pointer${b.incluido ? "" : ";opacity:0.55"}" onclick='abrirPresupuestoParcialPc(${f.id},${nom})'>
-              <td><strong>${esc(b.nombre || "General")}</strong><div style="font-size:0.7rem;color:#999">${(b.partidas||[]).length} línea${(b.partidas||[]).length===1?"":"s"}</div></td>
-              <td style="color:var(--green);font-weight:600">${sub.toFixed(2)} €</td>
-              <td onclick="event.stopPropagation()">
-                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoPc(${f.id},${nom},this.checked?1:0)' title="Incluir en total">
-              </td>
-              <td onclick="event.stopPropagation()">
-                <button class="btn btn-d btn-sm" onclick='borrarBloquePresupuestoPc(${f.id},${nom})'>×</button>
-              </td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos. Crea uno por cada trabajo (puertas, encimera…).</p>'}
-
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">Gastos de fabricación (${gastos.length})</strong>
@@ -2816,14 +2828,14 @@ async function verDetalle(id) {
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">Anotaciones (${anotaciones.length})</strong>
-      <button class="btn btn-s btn-sm" onclick="abrirAnotacion(${f.id})">+ Anotación</button>
+      <button class="btn btn-s btn-sm" onclick="nuevaAnotacion(${f.id})">+ Nota</button>
     </div>
     ${anotaciones.length ? anotaciones.map(a => `
       <div style="background:var(--paper-dark);border-radius:4px;padding:10px 12px;margin-bottom:8px;font-size:0.8rem;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1">
           <span class="badge b-gray" style="margin-bottom:4px">${a.tipo}</span>
           <div style="margin-top:4px;line-height:1.5">${a.contenido}</div>
-          <div style="font-size:0.68rem;color:#aaa;margin-top:4px">${a.fecha}</div>
+          <div style="font-size:0.68rem;color:#aaa;margin-top:4px">${a.fecha || ""}</div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button class="btn btn-s btn-sm" onclick='editarAnotacion(${a.id}, ${JSON.stringify(a.tipo)}, ${JSON.stringify(a.contenido)}, ${f.id})'>✏️</button>
@@ -2832,7 +2844,64 @@ async function verDetalle(id) {
       </div>
     `).join("") : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin anotaciones</p>'}
   `;
-  abrirModal("m-detalle");
+}
+
+function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <strong style="font-size:0.85rem">Presupuestos (${bloquesP.length})</strong>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-p btn-sm" onclick="nuevoBloquePresupuestoPc(${f.id})">+ Presupuesto</button>
+        <button class="btn btn-s btn-sm" onclick="abrirMaterialesPresupuestoPc(${f.id})">Materiales</button>
+        <span class="badge b-orange" id="detalle-presup-total">Total ${totalPresupuesto.toFixed(2)} €</span>
+      </div>
+    </div>
+    ${bloquesP.length ? `
+      <table class="gastos-table">
+        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th><th></th></tr></thead>
+        <tbody>
+          ${bloquesP.map(b => {
+            const nom = JSON.stringify(b.nombre_db || "");
+            const sub = parseFloat(b.total || 0) || 0;
+            return `<tr style="cursor:pointer${b.incluido ? "" : ";opacity:0.55"}" onclick='abrirPresupuestoParcialPc(${f.id},${nom})'>
+              <td><strong>${esc(b.nombre || "General")}</strong><div style="font-size:0.7rem;color:#999">${(b.partidas||[]).length} línea${(b.partidas||[]).length===1?"":"s"}</div></td>
+              <td style="color:var(--green);font-weight:600">${sub.toFixed(2)} €</td>
+              <td onclick="event.stopPropagation()">
+                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoPc(${f.id},${nom},this.checked?1:0)' title="Incluir en total">
+              </td>
+              <td onclick="event.stopPropagation()">
+                <button class="btn btn-d btn-sm" onclick='borrarBloquePresupuestoPc(${f.id},${nom})'>×</button>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos. Crea uno por cada trabajo (puertas, encimera…).</p>'}
+  `;
+}
+
+function refrescarUiPresupuestoPc(faenaId) {
+  const id = faenaId || state.detalleId;
+  if (!id) return;
+  const f = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
+  if (!f) return;
+  const presupuesto = state.detalleActual?.presupuesto || [];
+  const gastos = state.detalleActual?.gastos || [];
+  const anotaciones = state.detalleCache?.anotaciones || [];
+  const docs = state.detalleCache?.docs || [];
+  const fotos = state.detalleCache?.fotos || [];
+  const tiemposHtml = state.detalleCache?.tiemposHtml || `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+  const total = totalPresupuestoPc(presupuesto);
+  actualizarImporteFaenaLocalPc(id, total);
+  if (document.getElementById("m-detalle")?.classList.contains("open")) {
+    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+  }
+  if (state.presupuestoParcialPc) {
+    renderPresupuestoParcialPc();
+    if (!document.getElementById("m-presupuesto-parcial-pc")?.classList.contains("open")) {
+      abrirModal("m-presupuesto-parcial-pc");
+    }
+  }
 }
 
 // ===== FOTOS PC =====
@@ -4001,10 +4070,7 @@ async function toggleBloquePresupuestoPc(faenaId, nombreDb, incluido) {
     incluido: incluido ? 1 : 0
   });
   if (!r.ok) { toast(r.error || "No se pudo actualizar", true); return; }
-  const lista = state.detalleActual?.presupuesto || [];
-  const total = totalPresupuestoPc(lista);
-  actualizarImporteFaenaLocalPc(faenaId, total);
-  await verDetalle(parseInt(faenaId, 10));
+  refrescarUiPresupuestoPc(faenaId);
 }
 
 async function borrarBloquePresupuestoPc(faenaId, nombreDb) {
@@ -4015,10 +4081,8 @@ async function borrarBloquePresupuestoPc(faenaId, nombreDb) {
   });
   if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
   cerrarPresupuestoParcialPc();
-  const lista = state.detalleActual?.presupuesto || [];
-  actualizarImporteFaenaLocalPc(faenaId, totalPresupuestoPc(lista));
   toast("Partida eliminada (pendiente de sincronizar)");
-  await verDetalle(parseInt(faenaId, 10));
+  refrescarUiPresupuestoPc(faenaId);
 }
 
 function abrirMaterialesPresupuestoPc(faenaId) {
@@ -4073,12 +4137,17 @@ function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
   document.getElementById("presupuesto-bloque").value = bloq;
   const campoBloque = document.getElementById("presupuesto-bloque-field");
   if (campoBloque) campoBloque.style.display = state.presupuestoParcialPc ? "none" : "";
+  const btnElim = document.getElementById("presupuesto-btn-eliminar");
+  if (btnElim) btnElim.style.display = item ? "" : "none";
   abrirModal("m-presupuesto-item");
 }
 
 async function guardarPresupuestoItem() {
   const faenaId = document.getElementById("presupuesto-faena-id").value;
   const itemId = document.getElementById("presupuesto-item-id").value;
+  if (!state.detalleId) state.detalleId = parseInt(faenaId, 10) || faenaId;
+  if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
+  if (!state.detalleActual.presupuesto) state.detalleActual.presupuesto = [];
   let bloque;
   if (state.presupuestoParcialPc) {
     bloque = String(state.presupuestoParcialPc.nombreDb || "");
@@ -4105,33 +4174,31 @@ async function guardarPresupuestoItem() {
   if (r.ok) {
     toast(itemId ? `✓ Línea actualizada: ${parseFloat(r.data.total || 0).toFixed(2)} €` : `✓ Línea añadida: ${parseFloat(r.data.total || 0).toFixed(2)} €`);
     cerrarModal("m-presupuesto-item");
-    // Si era un presupuesto nuevo, abrir el parcial de ese concepto
     if (!itemId && !state.presupuestoParcialPc && bloque) {
       state.presupuestoParcialPc = { faenaId: parseInt(faenaId, 10) || faenaId, nombreDb: bloque };
     }
-    const total = totalPresupuestoPc(state.detalleActual?.presupuesto || []);
-    actualizarImporteFaenaLocalPc(faenaId, total);
-    await verDetalle(parseInt(faenaId, 10));
-    if (state.presupuestoParcialPc) {
-      renderPresupuestoParcialPc();
-      abrirModal("m-presupuesto-parcial-pc");
-    }
+    refrescarUiPresupuestoPc(faenaId);
   } else toast(r.error, true);
 }
 
 async function eliminarPresupuestoItem(itemId, faenaId) {
-  if (!confirm("¿Eliminar esta línea de la partida?")) return;
+  if (!confirm("¿Eliminar esta línea de la partida?")) return false;
   const r = await api("DELETE", `/presupuestos/${itemId}`);
   if (r.ok) {
-    const total = totalPresupuestoPc(state.detalleActual?.presupuesto || []);
-    actualizarImporteFaenaLocalPc(faenaId, total);
     toast("Línea eliminada (pendiente de sincronizar)");
-    await verDetalle(parseInt(faenaId, 10));
-    if (state.presupuestoParcialPc) {
-      renderPresupuestoParcialPc();
-      abrirModal("m-presupuesto-parcial-pc");
-    }
-  } else toast(r.error, true);
+    cerrarModal("m-presupuesto-item");
+    refrescarUiPresupuestoPc(faenaId);
+    return true;
+  }
+  toast(r.error, true);
+  return false;
+}
+
+async function eliminarPresupuestoItemDesdeModal() {
+  const faenaId = document.getElementById("presupuesto-faena-id").value;
+  const itemId = document.getElementById("presupuesto-item-id").value;
+  if (!itemId) { toast("No hay línea para eliminar", true); return; }
+  await eliminarPresupuestoItem(itemId, faenaId);
 }
 
 // ===== BOOK DE FOTOS =====
