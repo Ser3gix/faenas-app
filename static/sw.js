@@ -1,10 +1,10 @@
-﻿// ============================================================
-// sw.js â€” Service Worker para funcionamiento offline
-// GestiÃ³n de Faenas â€” App mÃ³vil
-// VersiÃ³n 2 â€” cachea la app completa en la instalaciÃ³n
+// ============================================================
+// sw.js — Service Worker para funcionamiento offline
+// Gestión de Faenas — App móvil
+// Versión 2 — cachea la app completa en la instalación
 // ============================================================
 
-const CACHE = "faenas-v40";
+const CACHE = "faenas-v41";
 const ARCHIVOS_CACHE = [
   "/movil2",
   "/static/manifest.json",

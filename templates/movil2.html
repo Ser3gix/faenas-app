@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -9,6 +9,43 @@
 <meta name="theme-color" content="#8F4F2A">
 <link rel="manifest" href="/static/manifest.json">
 <script>window.FAENAS_API_BASE = {{ faenas_api_base|tojson }};</script>
+<script>
+// #region agent log
+window.__agentDbg = function(hypothesisId, location, message, data) {
+  var payload = {
+    sessionId: '5d25d7',
+    hypothesisId: hypothesisId,
+    location: location,
+    message: message,
+    data: data || {},
+    timestamp: Date.now(),
+    runId: 'movil2-check'
+  };
+  fetch('http://127.0.0.1:7619/ingest/c0c9228e-ad85-49b6-b82f-413e3067b4be', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5d25d7' },
+    body: JSON.stringify(payload)
+  }).catch(function() {});
+  try {
+    var api = String(window.FAENAS_API_BASE || '').trim().replace(/\/$/, '');
+    var originApi = (location.origin && location.origin !== 'null') ? (location.origin + '/api') : '';
+    var dest = originApi || (api ? (api.endsWith('/api') ? api : api + '/api') : '');
+    if (dest) {
+      fetch(dest + '/debug/agent-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(function() {});
+    }
+  } catch (e) {}
+};
+window.__agentDbg('M1', 'movil2.html:boot', 'FAENAS_API_BASE al cargar', {
+  faenasApiBase: String(window.FAENAS_API_BASE || ''),
+  origin: String(location.origin || ''),
+  href: String(location.href || '').slice(0, 120)
+});
+// #endregion
+</script>
 <title>Faenas</title>
 <style>
 :root {
@@ -441,57 +478,6 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .presup-empty { font-size: 0.95rem; color: var(--muted); text-align: center; padding: 20px 0; }
 .presup-actions { display: flex; gap: 6px; margin-top: 6px; }
 .presup-actions .btn { padding: 6px 10px; font-size: 0.72rem; }
-.presup-tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.presup-tabla th { text-align: left; font-size: 0.7rem; color: var(--muted); padding: 8px 6px; border-bottom: 2px solid var(--sawdust); font-weight: 600; }
-.presup-tabla td { padding: 12px 6px; border-bottom: 1px solid var(--sawdust); vertical-align: middle; }
-.presup-tabla tbody tr { cursor: pointer; }
-.presup-tabla tbody tr.excluido { opacity: 0.55; }
-.presup-tabla th:last-child, .presup-tabla td:last-child { width: 72px; text-align: center; }
-.presup-incluir {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  position: relative;
-  cursor: pointer;
-}
-.presup-incluir input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  width: 28px;
-  height: 28px;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-}
-.presup-check {
-  width: 22px;
-  height: 22px;
-  border: 2px solid var(--accent);
-  border-radius: 4px;
-  background: #fff;
-  display: block;
-  box-sizing: border-box;
-}
-.presup-incluir input:checked + .presup-check {
-  background: var(--accent);
-}
-.presup-incluir input:checked + .presup-check::after {
-  content: "";
-  display: block;
-  width: 6px;
-  height: 11px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-  margin: 1px 0 0 6px;
-}
-#m-presupuesto-parcial-mov { z-index: 210; }
-#m-gasto-presupuesto { z-index: 220; }
-#m-consulta-mat-mov { z-index: 400; }
 
 /* ──────── DOCUMENTOS ──────── */
 .doc-item {
@@ -791,19 +777,6 @@ input, select, textarea {
   background: #fff; color: var(--ink);
   appearance: none; -webkit-appearance: none;
 }
-input[type="checkbox"] {
-  appearance: auto;
-  -webkit-appearance: checkbox;
-  width: 22px;
-  height: 22px;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  accent-color: var(--accent);
-}
-.presup-tabla th:last-child, .presup-tabla td:last-child { width: 72px; text-align: center; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(143,79,42,0.18); }
 textarea { resize: vertical; min-height: 80px; }
 
@@ -817,8 +790,6 @@ textarea { resize: vertical; min-height: 80px; }
   background: #fff; border: 1px solid var(--sawdust);
   border-radius: 18px; padding: 18px; width: 100%; max-width: 420px;
   box-shadow: var(--shadow);
-  max-height: 90vh;
-  overflow-y: auto;
 }
 
 .toast {
@@ -982,8 +953,6 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="slide" id="sl-faenas">
     <div class="lista-toolbar">
       <button class="btn btn-p btn-nueva" onclick="abrirNuevaFaena()">+ Nueva faena</button>
-      <button class="btn btn-s btn-nueva" onclick="document.getElementById('zip-rescatar-mov').click()">Rescatar ZIP</button>
-      <input id="zip-rescatar-mov" type="file" accept=".zip,application/zip" style="display:none" onchange="rescatarFaenaZipMovil(this)">
     </div>
     <div class="fase-tabs-mov" id="fase-tabs-mov">
       <button class="fase-tab-mov" data-fase="medicion" onclick="seleccionarFaseMovil('medicion')">Medición</button>
@@ -1285,44 +1254,18 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
-<!-- Modal: Presupuesto parcial -->
-<div class="overlay-modal" id="m-presupuesto-parcial-mov">
-  <div class="modal-box">
-    <div class="form-title" id="presupuesto-parcial-mov-title">Presupuesto</div>
-    <div id="presupuesto-parcial-mov-contenido"></div>
-    <button class="btn btn-s" onclick="cerrarPresupuestoParcialMovil()">Cerrar</button>
-  </div>
-</div>
-
 <!-- Modal: Presupuesto -->
 <div class="overlay-modal" id="m-gasto-presupuesto">
   <div class="modal-box">
     <div class="form-title" id="gasto-title">💶 Nuevo presupuesto</div>
     <input type="hidden" id="gasto-faena-id">
     <input type="hidden" id="gasto-id">
-    <input type="hidden" id="gasto-bloque">
-    <div class="field"><label>Concepto</label><input id="gasto-bloque-txt" placeholder="Puertas de paso, encimera, bisagras..."></div>
-    <div class="field"><label>Detalle</label>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="gasto-desc" placeholder="Partida o material..." style="flex:1;margin:0">
-        <button type="button" class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
-      </div>
-    </div>
+    <div class="field"><label>Concepto</label><input id="gasto-desc" placeholder="4 puertas, rodapié..."></div>
     <div class="field"><label>Tipo</label><input id="gasto-tipo" placeholder="mano de obra, material..." value="presupuesto"></div>
     <div class="field"><label>Cantidad</label><input id="gasto-cant" type="number" step="0.01" value="1"></div>
     <div class="field"><label>Importe estimado a cobrar (€)</label><input id="gasto-precio" type="number" step="0.01" placeholder="0.00"></div>
     <button class="btn btn-p" onclick="guardarGastoPresupuesto()">💾 Guardar importe estimado</button>
     <button class="btn btn-s" onclick="cerrarModal('m-gasto-presupuesto')">Cancelar</button>
-  </div>
-</div>
-
-<!-- Modal: Lista de materiales para presupuesto -->
-<div class="overlay-modal" id="m-consulta-mat-mov">
-  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
-    <div class="form-title">Materiales</div>
-    <div class="field"><label>Buscar</label><input id="q-consulta-mat-mov" placeholder="Nombre o categoría" oninput="renderConsultaMatMovil()"></div>
-    <div id="consulta-mat-lista-mov"></div>
-    <button class="btn btn-s" onclick="cerrarModal('m-consulta-mat-mov')">Cerrar</button>
   </div>
 </div>
 
@@ -1355,6 +1298,16 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="field"><label>Respuesta correcta *</label><textarea id="cj-correcta" rows="4" placeholder="Las faenas terminadas son…"></textarea></div>
     <button class="btn btn-p" onclick="guardarCorreccionJimmi()">Guardar para Jimmi</button>
     <button class="btn btn-s" onclick="cerrarModal('m-corregir-jimmi')">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal: actualizar al salir -->
+<div class="overlay-modal" id="m-salida-sync">
+  <div class="modal-box">
+    <div class="form-title">¿Actualizar cambios?</div>
+    <p style="font-size:0.9rem;color:#555;margin-bottom:14px;line-height:1.45">Hay cambios de esta sesión sin subir al servidor. Si no actualizas, se descartarán.</p>
+    <button class="btn btn-p" onclick="aceptarSalidaSync()">Actualizar</button>
+    <button class="btn btn-s" onclick="rechazarSalidaSync()">Descartar y salir</button>
   </div>
 </div>
 
@@ -1414,7 +1367,7 @@ function cargarCola() {
   };
 }
 
-function guardarCola(c) {
+function guardarCola(c, opts) {
   localStorage.setItem("cola_clientes",                JSON.stringify(c.clientes || []));
   localStorage.setItem("cola_faenas",                  JSON.stringify(c.faenas || []));
   localStorage.setItem("cola_anotaciones",             JSON.stringify(c.anotaciones || []));
@@ -1433,6 +1386,7 @@ function guardarCola(c) {
     ? (c.faenasEliminar || [])
     : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
   localStorage.setItem("cola_faenasEliminar", JSON.stringify(eliminar));
+  if (!(opts && opts.silencioso) && typeof marcarSesionSucia === "function") marcarSesionSucia();
 }
 
 function esIdFaenaTemporal(id) {
@@ -1555,7 +1509,7 @@ async function enviarFaenasPendientes() {
           email: c.email || "",
           intermediario_id: 0
         }),
-        signal: faenasAbortTimeout(8000)
+        signal: AbortSignal.timeout(8000)
       });
       const d = await r.json();
       if (d.ok && d.data && d.data.id) {
@@ -1586,7 +1540,7 @@ async function enviarFaenasPendientes() {
           fase: f.fase || "medicion",
           fecha_inicio: f.fecha_inicio || new Date().toISOString().slice(0, 10)
         }),
-        signal: faenasAbortTimeout(8000)
+        signal: AbortSignal.timeout(8000)
       });
       const d = await r.json();
       if (d.ok && d.data && d.data.id) {
@@ -1617,8 +1571,7 @@ const state = {
   materiales:    [],
   faenaActualId: null,
   panelActual:   0,
-  faseVista:     "en_proceso",
-  presupuestoParcial: null
+  faseVista:     "en_proceso"
 };
 
 function actualizarSelectorFaenasIA() {
@@ -1708,22 +1661,21 @@ function construirContextoConsultaIA() {
   return { contexto, faenaId, scope, tipo };
 }
 
-function faenasAbortTimeout(ms) {
-  try {
-    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-      return AbortSignal.timeout(ms);
-    }
-  } catch (e) {}
-  const c = new AbortController();
-  setTimeout(() => { try { c.abort(); } catch (e2) {} }, ms);
-  return c.signal;
-}
-
 function getServerUrl() {
   const inyectada = String(window.FAENAS_API_BASE || "").trim().replace(/\/$/, "");
-  if (inyectada) return inyectada.endsWith("/api") ? inyectada : `${inyectada}/api`;
+  if (inyectada) {
+    const url = inyectada.endsWith("/api") ? inyectada : `${inyectada}/api`;
+    // #region agent log
+    window.__agentDbg && window.__agentDbg('M1', 'movil2.html:getServerUrl', 'usando API inyectada', { url: url.slice(0, 120), origin: location.origin });
+    // #endregion
+    return url;
+  }
   if (/^https?:$/i.test(window.location.protocol) && window.location.origin && window.location.origin !== "null") {
-    return `${window.location.origin}/api`;
+    const url = `${window.location.origin}/api`;
+    // #region agent log
+    window.__agentDbg && window.__agentDbg('M2', 'movil2.html:getServerUrl', 'usando origin', { url: url.slice(0, 120) });
+    // #endregion
+    return url;
   }
   return "/api";
 }
@@ -1869,7 +1821,7 @@ function abrirFaena(id) {
 async function cargarAnotacionesFaena(f) {
   if (!f || !f.id || String(f.id).startsWith("temp")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: faenasAbortTimeout(8000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/anotaciones`, { signal: AbortSignal.timeout(8000) });
     const d = await r.json();
     if (d.ok && Array.isArray(d.data)) {
       f.anotaciones = d.data;
@@ -1885,7 +1837,7 @@ async function cargarAnotacionesFaena(f) {
 async function cargarFotosFaena(f) {
   if (!f || !f.id || String(f.id).startsWith("temp")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/fotos`, { signal: faenasAbortTimeout(15000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${f.id}/fotos`, { signal: AbortSignal.timeout(15000) });
     const d = await r.json();
     if (d.ok) {
       f.fotos = d.data || [];
@@ -2019,7 +1971,7 @@ async function refrescarTiemposFaena(f, opts) {
   const totMap = minutosColaFaena(id);
   if (f && !esIdFaenaTemporal(id) && !(opts && opts.sinRed)) {
     try {
-      const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: faenasAbortTimeout(8000) });
+      const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: AbortSignal.timeout(8000) });
       const d = await r.json();
       if (d.ok && d.data) {
         for (const t of (d.data.totales || [])) {
@@ -2082,7 +2034,7 @@ async function guardarSesionTiempo(sesion) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sesiones: [sesion] }),
-      signal: faenasAbortTimeout(8000)
+      signal: AbortSignal.timeout(8000)
     });
     const d = await r.json();
     if (d.ok) return true;
@@ -2182,121 +2134,12 @@ function renderPanelPresupuesto(f) {
   const gastosReales = (f.gastos_reales && f.gastos_reales.length)
     ? f.gastos_reales
     : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
-  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(presupuesto);
-  const totalPresupuesto = typeof f.total_incluido === "number"
-    ? f.total_incluido
-    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
   const totalGastos = gastosReales.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
 
-  const fid = f.id || f._tempId;
   let lineas = "";
-  if (bloquesP.length) {
-    lineas = `<table class="presup-tabla">
-      <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th></tr></thead>
-      <tbody>
-        ${bloquesP.map(b => {
-          const nom = b.nombre_db || "";
-          const sub = parseFloat(b.total || 0) || 0;
-          return `<tr class="${b.incluido ? "" : "excluido"}" onclick='abrirPresupuestoParcialMovil(${JSON.stringify(String(fid))},${JSON.stringify(nom)})'>
-            <td><strong>${escHtml(b.nombre || "General")}</strong></td>
-            <td class="presup-precio">${sub.toFixed(2)} €</td>
-            <td onclick="event.stopPropagation()">
-              <label class="presup-incluir">
-                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoMovil(${JSON.stringify(String(fid))},${JSON.stringify(nom)},this.checked?1:0)'>
-                <span class="presup-check"></span>
-              </label>
-            </td>
-          </tr>`;
-        }).join("")}
-      </tbody>
-    </table>`;
-  } else {
-    lineas = `<div class="presup-empty">Sin presupuestos.<br><small>Crea uno por cada trabajo (puertas, encimera…).</small></div>`;
-  }
-
-  const totalEstimado = totalPresupuesto;
-
-  document.getElementById("p-presupuesto-content").innerHTML = `
-    <div class="presup-total">
-      <div>
-        <div class="presup-total-label">Total conjunto</div>
-        <div class="presup-total-val">${totalEstimado > 0 ? totalEstimado.toFixed(2) + " €" : "—"}</div>
-      </div>
-      ${bloquesP.length ? `<div style="text-align:right">
-        <div class="presup-total-label">Gastos</div>
-        <div style="font-size:1.2rem;font-family:var(--font-serif);color:#f0b080">${totalGastos.toFixed(2)} €</div>
-      </div>` : ""}
-    </div>
-    <div class="datos-section-title" style="margin-bottom:10px">
-      Presupuestos
-      <span style="font-size:0.75rem;color:#aaa">${bloquesP.length}</span>
-    </div>
-    ${lineas}
-    <div class="presup-actions">
-      <button class="btn btn-p" onclick="nuevoBloquePresupuestoMovil('${f.id || f._tempId}')">+ Presupuesto</button>
-      <button class="btn btn-s" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
-    </div>
-    <div style="height:14px"></div>
-    <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
-      Cargar presupuesto del PC
-    </button>
-    <div id="presup-txt-${f.id||f._tempId}" style="display:none;margin-top:10px;background:var(--ink);color:var(--wood-light);border-radius:6px;padding:14px;font-size:0.78rem;line-height:1.6;white-space:pre-wrap;overflow-x:auto"></div>
-  `;
-}
-
-function bloquesDePresupuestoMovil(lista) {
-  const map = new Map();
-  for (const p of lista || []) {
-    const db = String(p.bloque || "").trim();
-    const n = db || "General";
-    if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
-    const g = map.get(n);
-    g.partidas.push(p);
-    const tot = parseFloat(p.total) || 0;
-    g.total += tot;
-    if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
-  }
-  for (const g of map.values()) {
-    g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
-  }
-  return [...map.values()];
-}
-
-function abrirPresupuestoParcialMovil(faenaId, nombreDb) {
-  state.presupuestoParcial = { faenaId, nombreDb: nombreDb || "" };
-  renderPresupuestoParcialMovil();
-  abrirModal("m-presupuesto-parcial-mov");
-}
-
-function renderPresupuestoParcialMovil() {
-  const st = state.presupuestoParcial;
-  if (!st) return;
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(st.faenaId));
-  if (!f) return;
-  const presupuesto = (f.presupuesto && f.presupuesto.length)
-    ? f.presupuesto
-    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
-  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(presupuesto);
-  const b = bloquesP.find(x => String(x.nombre_db || "") === String(st.nombreDb || ""));
-  const partidas = b ? (b.partidas || []) : [];
-  const nombre = b ? (b.nombre || "General") : (st.nombreDb || "General");
-  const total = b ? (parseFloat(b.total) || 0) : 0;
-  const fid = JSON.stringify(String(st.faenaId));
-  const nom = JSON.stringify(st.nombreDb || "");
-  document.getElementById("presupuesto-parcial-mov-title").textContent = nombre;
-  document.getElementById("presupuesto-parcial-mov-contenido").innerHTML = `
-    <div class="presup-total" style="margin-bottom:12px">
-      <div>
-        <div class="presup-total-label">Cantidad</div>
-        <div class="presup-total-val" style="font-size:1.3rem">${total.toFixed(2)} €</div>
-      </div>
-    </div>
-    <div class="presup-actions" style="margin:0 0 12px 0;flex-wrap:wrap">
-      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Línea</button>
-      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">+ Material</button>
-      <button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar partida</button>
-    </div>
-    ${partidas.length ? partidas.map(g => `
+  if (presupuesto.length) {
+    lineas = presupuesto.map(g => `
       <div class="presup-line">
         <div class="presup-concepto">
           ${escHtml(g.descripcion || "—")}
@@ -2306,129 +2149,59 @@ function renderPresupuestoParcialMovil() {
         <div style="text-align:right">
           <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
           <div class="presup-actions" style="justify-content:flex-end">
-            <button class="btn btn-s" onclick="abrirGastoPresupuesto(${fid},'${g.id}',${nom})">Editar</button>
-            <button class="btn btn-d" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Eliminar</button>
+            <button class="btn btn-s" onclick="abrirGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Editar</button>
+            <button class="btn btn-d" onclick="eliminarGastoPresupuesto('${f.id || f._tempId}','${g.id}')">Borrar</button>
           </div>
         </div>
-      </div>`).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
+      </div>
+    `).join("");
+  } else {
+    lineas = `<div class="presup-empty">Sin conceptos de presupuesto.<br><small>Añade aquí lo que vas a cobrar al cliente.</small></div>`;
+  }
+
+  const totalEstimado = totalPresupuesto;
+
+  document.getElementById("p-presupuesto-content").innerHTML = `
+    <div class="presup-total">
+      <div>
+        <div class="presup-total-val">${totalEstimado > 0 ? totalEstimado.toFixed(2) + " €" : "—"}</div>
+      </div>
+      ${presupuesto.length ? `<div style="text-align:right">
+        <div class="presup-total-label">Gastos</div>
+        <div style="font-size:1.2rem;font-family:var(--font-serif);color:#f0b080">${totalGastos.toFixed(2)} €</div>
+      </div>` : ""}
+    </div>
+    <div class="datos-section-title" style="margin-bottom:10px">
+      💶 Presupuesto
+      <span style="font-size:0.75rem;color:#aaa">${presupuesto.length} concepto${presupuesto.length!==1?"s":""}</span>
+    </div>
+    ${lineas}
+    <div class="presup-actions">
+      <button class="btn btn-p" onclick="abrirGastoPresupuesto('${f.id || f._tempId}')">+ Añadir presupuesto</button>
+    </div>
+    <div style="height:14px"></div>
+    <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
+      📄 Cargar presupuesto del PC
+    </button>
+    <div id="presup-txt-${f.id||f._tempId}" style="display:none;margin-top:10px;background:var(--ink);color:var(--wood-light);border-radius:6px;padding:14px;font-size:0.78rem;line-height:1.6;white-space:pre-wrap;overflow-x:auto"></div>
   `;
 }
 
-function cerrarPresupuestoParcialMovil() {
-  state.presupuestoParcial = null;
-  cerrarModal("m-presupuesto-parcial-mov");
-}
-
-function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
-  const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
-    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId));
-  const presupuesto = f
-    ? ((f.presupuesto && f.presupuesto.length) ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"))
-    : [];
+function abrirGastoPresupuesto(faenaId, gastoId = "") {
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
+  const presupuesto = (f.presupuesto && f.presupuesto.length)
+    ? f.presupuesto
+    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
   const gasto = presupuesto.find(g => String(g.id) === String(gastoId));
   document.getElementById("gasto-faena-id").value = faenaId;
   document.getElementById("gasto-id").value = gasto?.id || "";
-  document.getElementById("gasto-title").textContent = gasto ? "Editar partida" : "Nueva partida";
+  document.getElementById("gasto-title").textContent = gasto ? "💶 Editar importe estimado" : "💶 Nuevo importe estimado";
   document.getElementById("gasto-desc").value = gasto?.descripcion || "";
   document.getElementById("gasto-tipo").value = gasto?.tipo || "material";
   document.getElementById("gasto-cant").value = gasto?.cantidad ?? 1;
   document.getElementById("gasto-precio").value = gasto?.precio_unitario ?? "";
-  const bloq = gasto ? String(gasto.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
-  document.getElementById("gasto-bloque-txt").value = bloq;
   abrirModal("m-gasto-presupuesto");
-}
-
-function abrirListaMaterialesPresupuestoMovil() {
-  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    toast("Abre una partida primero para añadir el material dentro", true);
-    return;
-  }
-  // Asegura el concepto/partida actual en el formulario oculto
-  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
-  const bloque = state.presupuestoParcial
-    ? String(state.presupuestoParcial.nombreDb || "")
-    : (document.getElementById("gasto-bloque-txt")?.value || "");
-  if (faenaId && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    abrirGastoPresupuesto(faenaId, "", bloque);
-    cerrarModal("m-gasto-presupuesto"); // deja campos rellenados sin tapar la lista
-  } else if (document.getElementById("gasto-bloque-txt") && state.presupuestoParcial) {
-    document.getElementById("gasto-bloque-txt").value = String(state.presupuestoParcial.nombreDb || "");
-  }
-  const q = document.getElementById("q-consulta-mat-mov");
-  if (q) q.value = "";
-  const el = document.getElementById("consulta-mat-lista-mov");
-  if (el) el.innerHTML = '<div class="presup-empty">Cargando materiales…</div>';
-  abrirModal("m-consulta-mat-mov");
-  Promise.resolve((!Array.isArray(state.materiales) || !state.materiales.length) ? cargarMateriales() : null).then(() => renderConsultaMatMovil());
-}
-
-function renderConsultaMatMovil() {
-  const q = (document.getElementById("q-consulta-mat-mov")?.value || "").toLowerCase();
-  const mats = Array.isArray(state.materiales) ? state.materiales : [];
-  const lista = mats.filter(m => !q || String(m.nombre||"").toLowerCase().includes(q) || String(m.categoria||"").toLowerCase().includes(q));
-  const el = document.getElementById("consulta-mat-lista-mov");
-  if (!el) return;
-  if (!lista.length) {
-    el.innerHTML = `<div class="presup-empty">${mats.length ? "Sin resultados" : "Sincroniza para ver materiales"}</div>`;
-    return;
-  }
-  el.innerHTML = lista.map((m, idx) => {
-    const precios = [...(m.precios || [])].sort((a,b) => Number(a.precio_unitario) - Number(b.precio_unitario));
-    const precioBase = precios.length ? Number(precios[0].precio_unitario) || 0 : 0;
-    const preciosHtml = precios.length
-      ? precios.map((p) => `<button type="button" class="btn btn-s btn-inline" data-mat-pick="${idx}" data-mat-precio="${Number(p.precio_unitario)||0}" style="margin:4px 4px 0 0">${escHtml(p.proveedor)} ${Number(p.precio_unitario||0).toFixed(2)} €</button>`).join("")
-      : "";
-    return `<div class="presup-line" style="align-items:flex-start;flex-wrap:wrap">
-      <div class="presup-concepto">
-        <strong>${escHtml(m.nombre)}</strong>
-        <div style="font-size:0.72rem;color:#888;margin-top:3px">${escHtml(m.unidad||"ud")} · ${escHtml(m.categoria||"")}</div>
-        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-          ${preciosHtml}
-          <button type="button" class="btn btn-p btn-inline" data-mat-pick="${idx}" data-mat-precio="${precioBase}">Añadir a la partida</button>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-  el.querySelectorAll("[data-mat-pick]").forEach(btn => {
-    btn.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const m = lista[Number(this.getAttribute("data-mat-pick"))];
-      if (!m) return;
-      usarMaterialEnPresupuestoMovil(m.nombre, Number(this.getAttribute("data-mat-precio")) || 0);
-    });
-  });
-}
-
-async function usarMaterialEnPresupuestoMovil(nombre, precio) {
-  const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
-  if (!faenaId) { toast("Abre una faena primero", true); return; }
-  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    toast("Abre una partida para meter el material dentro", true);
-    return;
-  }
-  // El material es una LÍNEA dentro de la partida abierta; nunca crea otra partida/concepto.
-  const bloque = state.presupuestoParcial
-    ? String(state.presupuestoParcial.nombreDb || "")
-    : String(document.getElementById("gasto-bloque-txt")?.value || "").trim();
-  if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    abrirGastoPresupuesto(faenaId, "", bloque);
-  }
-  if (!document.getElementById("gasto-faena-id")?.value) {
-    toast("No se pudo abrir la partida", true);
-    return;
-  }
-  document.getElementById("gasto-id").value = ""; // siempre nueva línea, no editar otra
-  document.getElementById("gasto-title").textContent = "Nueva línea";
-  document.getElementById("gasto-desc").value = nombre;
-  const bloq = document.getElementById("gasto-bloque-txt");
-  if (bloq) bloq.value = bloque;
-  document.getElementById("gasto-tipo").value = "material";
-  document.getElementById("gasto-precio").value = Number(precio || 0);
-  const cant = document.getElementById("gasto-cant");
-  if (!cant.value) cant.value = 1;
-  cerrarModal("m-consulta-mat-mov");
-  await guardarGastoPresupuesto();
 }
 
 async function guardarGastoPresupuesto() {
@@ -2438,66 +2211,39 @@ async function guardarGastoPresupuesto() {
   const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
-  if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim() && !state.presupuestoParcial) {
-    toast("El concepto es obligatorio", true);
-    return;
-  }
-  if (!descripcion) { toast("El detalle de la línea es obligatorio", true); return; }
-  const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
-    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId))
-    || { presupuesto: [], bloques: [] };
+  if (!descripcion) { toast("El concepto es obligatorio", true); return; }
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (!f) return;
   try {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
     const method = gastoId ? "PUT" : "POST";
-    // Si estamos dentro de una partida (parcial), el material/línea NO cambia de partida.
-    let bloque;
-    if (state.presupuestoParcial) {
-      bloque = String(state.presupuestoParcial.nombreDb || "");
-    } else {
-      bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
-    }
-    const descFinal = descripcion || bloque;
-    const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil((f.presupuesto || []).length ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"));
-    const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
-    const body = {
-      descripcion: descFinal,
-      tipo: document.getElementById("gasto-tipo").value.trim() || "material",
-      cantidad,
-      precio_unitario,
-      bloque,
-      incluido: bAct ? (bAct.incluido ? 1 : 0) : 1
-    };
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(25000) });
+    const body = { descripcion, tipo: document.getElementById("gasto-tipo").value.trim() || "material", cantidad, precio_unitario };
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
-    const seguirParcial = document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") || !!state.presupuestoParcial;
     await recargarPresupuestoFaena(faenaId);
     cerrarModal("m-gasto-presupuesto");
-    if (!seguirParcial) cerrarPresupuestoParcialMovil();
-    else if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast(gastoId ? "Línea actualizada" : "Línea añadida a la partida");
+    toast(gastoId ? "✓ Concepto actualizado" : "✓ Concepto añadido");
   } catch (e) {
     console.error(e);
-    const msg = String(e && e.name === "TimeoutError" ? "Tardó demasiado (red lenta)" : (e && e.message) || e).slice(0, 80);
-    toast("No se pudo guardar: " + msg, true);
+    toast("No se pudo guardar el concepto", true);
   }
 }
 
 async function eliminarGastoPresupuesto(faenaId, gastoId) {
-  if (!confirm("¿Eliminar esta línea de la partida?")) return;
+  if (!confirm("¿Borrar este concepto?")) return;
   try {
-    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+    const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
     await recargarPresupuestoFaena(faenaId);
-    if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast("✓ Línea eliminada");
+    toast("✓ Concepto borrado");
   } catch (e) {
     console.error(e);
-    toast("No se pudo eliminar la línea", true);
+    toast("No se pudo borrar el concepto", true);
   }
 }
 
@@ -2505,107 +2251,24 @@ async function recargarPresupuestoFaena(faenaId) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: faenasAbortTimeout(25000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/conceptos`, { signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error();
     const d = await r.json();
     if (d.ok) {
       f.presupuesto = d.data?.presupuesto || [];
       f.gastos_reales = d.data?.gastos || [];
-      f.bloques = d.data?.bloques || [];
-      f.total_incluido = d.data?.total_incluido;
       localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
       renderPanelPresupuesto(f);
       renderFaenas();
-      if (document.getElementById("m-presupuesto-parcial-mov")?.classList.contains("open") && state.presupuestoParcial) {
-        renderPresupuestoParcialMovil();
-      }
     }
   } catch (e) {
     console.error(e);
   }
 }
 
-function nuevoBloquePresupuestoMovil(faenaId) {
-  cerrarPresupuestoParcialMovil();
-  abrirGastoPresupuesto(faenaId, "", "");
-}
-
-async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: nombreDb || "", incluido }),
-      signal: faenasAbortTimeout(25000)
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    await recargarPresupuestoFaena(faenaId);
-  } catch (e) {
-    toast("No se pudo cambiar", true);
-  }
-}
-
-async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
-  if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: nombreDb || "", borrar: true }),
-      signal: faenasAbortTimeout(25000)
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    cerrarPresupuestoParcialMovil();
-    await recargarPresupuestoFaena(faenaId);
-    toast("Partida eliminada");
-  } catch (e) {
-    toast("No se pudo eliminar la partida", true);
-  }
-}
-
-async function rescatarFaenaZipMovil(input) {
-  const file = input.files && input.files[0];
-  input.value = "";
-  if (!file) return;
-  toast("Rescatando faena…");
-  try {
-    const fd = new FormData();
-    fd.append("archivo", file, file.name || "faena.zip");
-    const r = await fetch(`${getServerUrl()}/faenas/desde-zip`, { method: "POST", body: fd, signal: faenasAbortTimeout(120000) });
-    const d = await r.json();
-    if (!d.ok) { toast(d.error || "No se pudo rescatar", true); return; }
-    toast("Faena rescatada: " + ((d.data && d.data.numero) || ""));
-    await cargarDatosIniciales(true);
-    seleccionarFaseMovil("medicion");
-  } catch (e) {
-    toast("No se pudo rescatar el ZIP", true);
-  }
-}
-
-async function reabrirFaenaMovil(event, id) {
-  if (event) { event.preventDefault(); event.stopPropagation(); }
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fase: "medicion" }),
-      signal: faenasAbortTimeout(8000)
-    });
-    const d = await r.json();
-    if (!d.ok) { toast(d.error || "No se pudo reabrir", true); return; }
-    toast("Faena reabierta en Medición");
-    await cargarDatosIniciales(true);
-    seleccionarFaseMovil("medicion");
-  } catch (e) {
-    toast("No se pudo reabrir", true);
-  }
-}
-
 async function cargarPresupuestoPC(faenaId) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: faenasAbortTimeout(5000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) throw new Error();
     const d = await r.json();
     if (d.ok && d.data.contenido) {
@@ -2689,7 +2352,7 @@ function renderNotaLibreta(a, faenaId) {
 
 async function cargarDocumentosPC(faenaId) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: faenasAbortTimeout(6000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
@@ -2736,7 +2399,7 @@ async function analizarDocumentoPC(faenaId, ruta, nombre) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ruta, nombre, faena_id: faenaId || null, prompt: localStorage.getItem("ticket_prompt_temp") || "" }),
-      signal: faenasAbortTimeout(45000)
+      signal: AbortSignal.timeout(45000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error al analizar el documento");
@@ -3045,7 +2708,7 @@ async function confirmarDestinoFoto(tipo) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ faena_id: faenaId || 0, titulo: "Foto", data: foto.data }),
-          signal: faenasAbortTimeout(30000)
+          signal: AbortSignal.timeout(30000)
         });
         const d = await r.json();
         if (!d.ok) toast(d.error || "No se pudo guardar en el book", true);
@@ -3068,7 +2731,7 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ faena_id: faenaId, nombre, data }),
-      signal: faenasAbortTimeout(30000)
+      signal: AbortSignal.timeout(30000)
     });
     const d = await r.json();
     if (d.omitida || r.status === 404 || /no encontrada/i.test(d.error || "")) {
@@ -3142,7 +2805,7 @@ async function eliminarFotoSincronizada(faenaId, idx) {
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/fotos/${encodeURIComponent(nombre)}`, {
       method: "DELETE",
-      signal: faenasAbortTimeout(10000)
+      signal: AbortSignal.timeout(10000)
     });
     const d = await r.json();
     if (!d.ok) {
@@ -3229,7 +2892,7 @@ async function procesarGastoFotoTicket(faenaId, file) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imagen, faena_id: faenaId, guardar: false }),
-      signal: faenasAbortTimeout(50000)
+      signal: AbortSignal.timeout(50000)
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error al procesar el ticket");
@@ -3250,7 +2913,7 @@ async function procesarPdfViaColaMovil(file, faenaId, onEstado) {
   fd.append("archivo", file, file.name || "documento.pdf");
   fd.append("nombre", file.name || "documento.pdf");
   if (faenaId) fd.append("faena_id", String(faenaId));
-  const r = await fetch(`${getServerUrl()}/ocr/trabajos`, { method: "POST", body: fd, signal: faenasAbortTimeout(60000) });
+  const r = await fetch(`${getServerUrl()}/ocr/trabajos`, { method: "POST", body: fd, signal: AbortSignal.timeout(60000) });
   const job = await r.json();
   if (!job.ok) throw new Error(job.error || "No se pudo enviar el PDF");
   const id = job.id || (job.trabajo && job.trabajo.id);
@@ -3299,7 +2962,7 @@ async function procesarGastoDocumento(faenaId, file) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archivo_base64, nombre: file.name || "documento", mime_type: file.type || "", faena_id: faenaId, guardar: false }),
-        signal: faenasAbortTimeout(50000)
+        signal: AbortSignal.timeout(50000)
       });
       d = await r.json();
     }
@@ -3420,7 +3083,7 @@ async function guardarGastoFabricacion() {
     const base = getServerUrl();
     const url = gastoId ? `${base}/gastos/${gastoId}` : `${base}/faenas/${faenaId}/gastos`;
     const method = gastoId ? "PUT" : "POST";
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(8000) });
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3482,7 +3145,7 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
   }
 
   try {
-    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(6000) });
+    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: AbortSignal.timeout(6000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3522,7 +3185,7 @@ async function sincronizarGastosFaena(faenaId) {
   const ops = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
   if (!ops.length) { toast("No hay gastos pendientes", true); return; }
   try {
-    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: faenasAbortTimeout(10000) });
+    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "Error");
@@ -3712,7 +3375,7 @@ async function cambiarFaseMovil(event, id, fase) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fase }),
-      signal: faenasAbortTimeout(8000)
+      signal: AbortSignal.timeout(8000)
     });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo cambiar la fase", true); renderFaenas(); return; }
@@ -3746,9 +3409,6 @@ function renderFaenas() {
         </div>
         <div class="fc-cliente">${escHtml(f.cliente_nombre || "—")}</div>
         <div class="fc-tipo">${escHtml(f.tipo_trabajo || "Sin descripción")}</div>
-        <div class="fc-footer">
-          <button class="btn btn-p btn-inline" onclick="reabrirFaenaMovil(event,'${f.id}')">Reabrir</button>
-        </div>
       </div>`;
     }).join("");
     return;
@@ -3845,7 +3505,7 @@ async function enviarFaenasEliminadas() {
     try {
       const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
         method: "DELETE",
-        signal: faenasAbortTimeout(15000)
+        signal: AbortSignal.timeout(15000)
       });
       if (r.ok || r.status === 404) okIds.push(id);
     } catch (e) {}
@@ -4060,7 +3720,7 @@ async function guardarEditarFaena() {
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos), signal: faenasAbortTimeout(6000)
+      body: JSON.stringify(datos), signal: AbortSignal.timeout(6000)
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
@@ -4078,7 +3738,7 @@ async function guardarEditarFaena() {
             intermediario_id: 0,
             notas: state.clientes.find(c => String(c.id) === String(clienteId))?.notas || ""
           }),
-          signal: faenasAbortTimeout(6000)
+          signal: AbortSignal.timeout(6000)
         });
       }
       aplicar();
@@ -4149,7 +3809,7 @@ async function eliminarAnotacionMovil(id, faenaId) {
   }
   const API = getServerUrl();
   try {
-    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: faenasAbortTimeout(4000) });
+    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: AbortSignal.timeout(4000) });
     if (r.ok) {
       const d = await r.json();
       if (d.ok) {
@@ -4188,7 +3848,7 @@ async function guardarAnotacion() {
       toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
     }
     try {
-      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: faenasAbortTimeout(4000) });
+      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: AbortSignal.timeout(4000) });
       if (r.ok) {
         const d = await r.json();
         if (d.ok) {
@@ -4216,7 +3876,7 @@ async function guardarAnotacion() {
   const esFaenaTemp = faena?._offline;
   if (!esFaenaTemp) {
     try {
-      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: faenasAbortTimeout(4000) });
+      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: AbortSignal.timeout(4000) });
       if (r.ok) {
         const d = await r.json();
         if (d.ok) {
@@ -4698,7 +4358,7 @@ async function procesarTicketConIA() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imagen: ticketFotoBase64, guardar: false }),
-      signal: faenasAbortTimeout(50000)
+      signal: AbortSignal.timeout(50000)
     });
     const data = await r.json();
     if (data.ok && data.data) {
@@ -4755,7 +4415,7 @@ async function mostrarCruceTicket(articulos) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ articulos }),
-      signal: faenasAbortTimeout(15000)
+      signal: AbortSignal.timeout(15000)
     });
     const d = await r.json();
     if (!d.ok) { notas.textContent = ""; return; }
@@ -5000,7 +4660,7 @@ async function guardarCorreccionJimmi() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto: nota, modo }),
-      signal: faenasAbortTimeout(15000)
+      signal: AbortSignal.timeout(15000)
     });
     const data = await r.json();
     if (!data.ok) { toast(data.error || "No se pudo guardar", true); return; }
@@ -5162,7 +4822,7 @@ async function quitarDelBook(idx, silencioso) {
   if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
   if (f.id) {
     try {
-      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: faenasAbortTimeout(15000) });
+      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: AbortSignal.timeout(15000) });
     } catch (e) {
       const cola = cargarCola();
       cola.bookEliminar = cola.bookEliminar || [];
@@ -5189,17 +4849,17 @@ async function sincronizarBook(API) {
   try {
     const cola = cargarCola();
     for (const id of (cola.bookEliminar || [])) {
-      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: faenasAbortTimeout(10000) }); } catch (e) {}
+      try { await fetch(`${API}/book/${id}`, { method: "DELETE", signal: AbortSignal.timeout(10000) }); } catch (e) {}
     }
     cola.bookEliminar = [];
     for (const foto of (cola.bookPendiente||[])) {
       try {
-        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: faenasAbortTimeout(30000) });
+        const r = await fetch(`${API}/book`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id: foto.faena_id || 0, titulo:foto.titulo, descripcion:"", data:foto.data}), signal: AbortSignal.timeout(30000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch(e) { console.error("Error subiendo foto book:", e); }
     }
     cola.bookPendiente = []; guardarCola(cola);
-    const r = await fetch(`${API}/sync/book`, {signal: faenasAbortTimeout(60000)});
+    const r = await fetch(`${API}/sync/book`, {signal: AbortSignal.timeout(60000)});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (d.ok && Array.isArray(d.data)) {
@@ -5222,12 +4882,85 @@ async function sincronizarBook(API) {
 // SYNC
 // ═══════════════════════════════════════════════════════════
 
+function contarPendientesCola() {
+  const c = cargarCola();
+  const tkt = (c.tickets||[]).reduce((s,t) => s+(t.articulos||[]).length, 0);
+  return c.clientes.length + c.faenas.length + c.anotaciones.length +
+    (c.anotacionesEditar||[]).length + (c.anotacionesEliminar||[]).length +
+    c.fotos.length + c.ticketFotos.length + tkt +
+    (c.definicionesPendientes||[]).length + (c.faenasEditar||[]).length +
+    (c.gastos||[]).length + (c.tiempos||[]).length +
+    (c.bookPendiente||[]).length + (c.bookEliminar||[]).length +
+    (c.faenasEliminar||[]).length + (c.tickets||[]).length;
+}
+
+function hayCambiosSesion() {
+  return !!(state._sesionSucia || contarPendientesCola() > 0);
+}
+
+function colaVacia() {
+  return {
+    clientes: [], faenas: [], anotaciones: [], anotacionesEditar: [], anotacionesEliminar: [],
+    fotos: [], ticketFotos: [], tickets: [], faenasEditar: [], definicionesPendientes: [],
+    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: []
+  };
+}
+
+function marcarSesionSucia() {
+  if (state._snapshotListo) {
+    state._sesionSucia = true;
+    _salidaTrasSync = false;
+  }
+}
+
+function guardarSnapshotSesion() {
+  try {
+    state._snapshot = {
+      faenas: JSON.parse(JSON.stringify(state.faenas || [])),
+      terminadas: JSON.parse(JSON.stringify(state.terminadas || [])),
+      clientes: JSON.parse(JSON.stringify(state.clientes || [])),
+      materiales: JSON.parse(JSON.stringify(state.materiales || [])),
+      book: JSON.parse(localStorage.getItem("book_cache") || "[]")
+    };
+    state._snapshotListo = true;
+    state._sesionSucia = false;
+  } catch (e) {
+    state._snapshot = null;
+    state._snapshotListo = false;
+  }
+}
+
+function descartarCambiosSesion() {
+  guardarCola(colaVacia(), { silencioso: true });
+  if (state._snapshot) {
+    state.faenas = JSON.parse(JSON.stringify(state._snapshot.faenas || []));
+    state.terminadas = JSON.parse(JSON.stringify(state._snapshot.terminadas || []));
+    state.clientes = JSON.parse(JSON.stringify(state._snapshot.clientes || []));
+    state.materiales = JSON.parse(JSON.stringify(state._snapshot.materiales || []));
+    try {
+      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+      localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
+      localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+      localStorage.setItem("book_cache", JSON.stringify(state._snapshot.book || []));
+    } catch (e) {}
+    try { bookCache = JSON.parse(JSON.stringify(state._snapshot.book || [])); } catch (e) {}
+  }
+  state._sesionSucia = false;
+  state.faenaActualId = null;
+  const overlay = document.getElementById("faena-overlay");
+  if (overlay) overlay.classList.remove("open");
+  refrescarPantallaActual();
+  actualizarPendientesInfo();
+  toast("Cambios descartados");
+}
+
 function actualizarPendientesInfo() {
   const c = cargarCola();
   const tkt = (c.tickets||[]).reduce((s,t) => s+(t.articulos||[]).length, 0);
-  const total = c.clientes.length + c.faenas.length + c.anotaciones.length + c.fotos.length +
-    c.ticketFotos.length + tkt + (c.definicionesPendientes||[]).length + (c.faenasEditar||[]).length + (c.gastos||[]).length + (c.tiempos||[]).length;
+  const total = contarPendientesCola();
   const el = document.getElementById("pendientes-info");
+  if (!el) return;
   if (total === 0) { el.innerHTML = ""; return; }
   const lineas = [];
   if (c.clientes.length) lineas.push(`${c.clientes.length} cliente${c.clientes.length>1?"s":""}`);
@@ -5242,6 +4975,47 @@ function actualizarPendientesInfo() {
   el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>· ${lineas.join("<br>· ")}</div>`;
 }
 
+let _modalSalidaAbierto = false;
+let _salidaTrasSync = false;
+
+function preguntarSalidaSiPendiente() {
+  if (_modalSalidaAbierto || _salidaTrasSync || state._syncEnCurso) return;
+  if (!hayCambiosSesion()) return;
+  const modal = document.getElementById("m-salida-sync");
+  if (!modal) return;
+  _modalSalidaAbierto = true;
+  modal.classList.add("open");
+}
+
+async function aceptarSalidaSync() {
+  const modal = document.getElementById("m-salida-sync");
+  if (modal) modal.classList.remove("open");
+  _modalSalidaAbierto = false;
+  _salidaTrasSync = true;
+  try {
+    const ok = await sincronizar();
+    if (ok === false) {
+      _salidaTrasSync = false;
+      toast("No se pudo actualizar. Los cambios siguen en el móvil", true);
+      return;
+    }
+    state._sesionSucia = false;
+    guardarSnapshotSesion();
+  } catch (e) {
+    _salidaTrasSync = false;
+    toast("No se pudo actualizar. Los cambios siguen en el móvil", true);
+  }
+}
+
+function rechazarSalidaSync() {
+  const modal = document.getElementById("m-salida-sync");
+  if (modal) modal.classList.remove("open");
+  _modalSalidaAbierto = false;
+  _salidaTrasSync = true;
+  descartarCambiosSesion();
+  setTimeout(() => { _salidaTrasSync = false; }, 800);
+}
+
 function limpiarCacheLocal() {
   if (!confirm("¿Borrar todos los datos del móvil?\n\nLos registros del servidor no se eliminan.")) return;
   localStorage.clear();
@@ -5252,13 +5026,14 @@ async function sincronizar() {
   const btn = document.getElementById("btn-sync");
   const estado = document.getElementById("sync-estado") || { textContent: "", className: "" };
   let API = getServerUrl();
+  state._syncEnCurso = true;
   if (btn) { btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...'; btn.disabled = true; }
   if (estado) { estado.textContent = ""; estado.className = "sync-estado"; }
 
   const cola = cargarCola();
   try {
     await enviarFaenasEliminadas();
-    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(5000)});
+    let comprobacion = await fetch(`${API}/sync/estado`, {signal: AbortSignal.timeout(5000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
     }
@@ -5268,7 +5043,7 @@ async function sincronizar() {
     const mapaClientes = {};
     for (const c of cola.clientes) {
       try {
-        const r = await fetch(`${API}/clientes`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:c.nombre, telefono:c.telefono, direccion:c.direccion || "", email:c.email, intermediario_id:0}), signal:faenasAbortTimeout(8000)});
+        const r = await fetch(`${API}/clientes`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:c.nombre, telefono:c.telefono, direccion:c.direccion || "", email:c.email, intermediario_id:0}), signal:AbortSignal.timeout(8000)});
         if (r.ok) { const d = await r.json(); if (d.ok) mapaClientes[c._tempId] = d.data.id; }
       } catch(e) {}
     }
@@ -5280,7 +5055,7 @@ async function sincronizar() {
         const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id;
         const clienteBase = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(f._clienteTempId || f.cliente_id));
         const direccionFaena = f.direccion || clienteBase?.direccion || "";
-        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:faenasAbortTimeout(8000)});
+        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:AbortSignal.timeout(8000)});
         if (r.ok) { const d = await r.json(); if (d.ok) mapaFaenas[f._tempId] = {id:d.data.id, numero:d.data.numero}; }
       } catch(e) {}
     }
@@ -5288,7 +5063,7 @@ async function sincronizar() {
 
     // Faenas editadas
     for (const ed of (cola.faenasEditar||[])) {
-      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:faenasAbortTimeout(6000)}); } catch(e) {}
+      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:AbortSignal.timeout(6000)}); } catch(e) {}
     }
 
     // Anotaciones
@@ -5298,20 +5073,20 @@ async function sincronizar() {
           const f = state.faenas.find(x => String(x.id || x._tempId) === String(a.faena_id));
           return {...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id, numero: a.numero || f?.numero || ""};
         });
-        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:faenasAbortTimeout(10000)});
+        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:AbortSignal.timeout(10000)});
         estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
       } catch(e) {}
     }
     if ((cola.anotacionesEditar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
+      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
     }
     if ((cola.anotacionesEliminar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
+      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:AbortSignal.timeout(8000)}); } catch(e) {}
     }
 
     if ((cola.gastos||[]).length) {
       try {
-        const r = await fetch(`${API}/sync/gastos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({operaciones: cola.gastos}), signal:faenasAbortTimeout(10000)});
+        const r = await fetch(`${API}/sync/gastos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({operaciones: cola.gastos}), signal:AbortSignal.timeout(10000)});
         if (r.ok) {
           const d = await r.json();
           if (d.ok) {
@@ -5329,7 +5104,7 @@ async function sincronizar() {
               }
             }
             cola.gastos = [];
-            guardarCola(cola);
+            guardarCola(cola, { silencioso: true });
           }
         }
       } catch(e) {}
@@ -5338,7 +5113,7 @@ async function sincronizar() {
     if ((cola.tiempos||[]).length) {
       try {
         const sesiones = cola.tiempos.map(t => ({...t, faena_id: mapaFaenas[t.faena_id]?.id || t.faena_id}));
-        const r = await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:faenasAbortTimeout(10000)});
+        const r = await fetch(`${API}/sync/tiempos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({sesiones}), signal:AbortSignal.timeout(10000)});
         const d = await r.json();
         if (d.ok) cola.tiempos = [];
       } catch(e) {}
@@ -5347,7 +5122,7 @@ async function sincronizar() {
     // Tickets JSON (materiales)
     if ((cola.tickets||[]).length) {
       try {
-        const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:faenasAbortTimeout(30000)});
+        const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:AbortSignal.timeout(30000)});
         if (r.ok) { const d = await r.json(); if (d.ok) estado.textContent = `✓ ${d.data.procesados} artículo${d.data.procesados!==1?"s":""} de ticket subido${d.data.procesados!==1?"s":""}...`; }
       } catch(e) {}
     }
@@ -5360,7 +5135,7 @@ async function sincronizar() {
       for (const foto of cola.fotos) {
         try {
           const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
-          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:faenasAbortTimeout(30000)});
+          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:AbortSignal.timeout(30000)});
           if (r.ok) {
             const d = await r.json();
             if (d.omitida || /no encontrada/i.test(d.error || "")) {
@@ -5384,7 +5159,7 @@ async function sincronizar() {
       for (const tkt of cola.ticketFotos) {
         try {
           const faenaId = mapaFaenas[tkt.faena_id]?.id || tkt.faena_id;
-          const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:faenasAbortTimeout(30000)});
+          const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:AbortSignal.timeout(30000)});
           if (r.ok) { const d = await r.json(); if (d.ok) ticketsEnviados++; }
         } catch(e) { console.error("Error subiendo ticket-foto:", e); }
       }
@@ -5393,15 +5168,15 @@ async function sincronizar() {
 
     // Definiciones de material
     for (const def of (cola.definicionesPendientes||[])) {
-      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:faenasAbortTimeout(6000)}); } catch(e) {}
+      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:AbortSignal.timeout(6000)}); } catch(e) {}
     }
 
     // Descargar faenas + materiales + clientes
     estado.textContent = "✓ Descargando datos del PC...";
     const [rFaenas, rMat, rCli] = await Promise.all([
-      fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(15000)}),
-      fetch(`${API}/materiales`, {signal:faenasAbortTimeout(10000)}),
-      fetch(`${API}/clientes`, {signal:faenasAbortTimeout(10000)})
+      fetch(`${API}/sync/datos`, {signal:AbortSignal.timeout(15000)}),
+      fetch(`${API}/materiales`, {signal:AbortSignal.timeout(10000)}),
+      fetch(`${API}/clientes`, {signal:AbortSignal.timeout(10000)})
     ]);
     if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
     if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
@@ -5411,7 +5186,7 @@ async function sincronizar() {
     estado.textContent = "✓ Descargando fotos...";
     for (const faena of state.faenas) {
       try {
-        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:faenasAbortTimeout(15000)});
+        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:AbortSignal.timeout(15000)});
         if (r.ok) { const d = await r.json(); if (d.ok) faena.fotos = d.data; }
       } catch(e) {}
     }
@@ -5435,8 +5210,9 @@ async function sincronizar() {
       bookEliminar:[],
       bookPendiente:[],
       tiempos: cola.tiempos || [],
-      faenasEliminar: colaFinal.faenasEliminar || []
-    });
+      faenasEliminar: colaFinal.faenasEliminar || [],
+      gastos: []
+    }, { silencioso: true });
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
     document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
@@ -5461,30 +5237,36 @@ async function sincronizar() {
     if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
     estado.textContent = partes.length ? `✓ Sincronizado · ${partes.join(" · ")}` : "✓ Sincronizado";
     estado.className = "sync-estado sync-ok";
+    state._sesionSucia = false;
+    guardarSnapshotSesion();
     toast("✓ Sincronización completada");
+    return true;
   } catch(e) {
     if (estado) {
       estado.textContent = `✗ Error: ${e.message}`;
       estado.className = "sync-estado sync-error";
     }
     toast("Error: " + e.message, true);
+    return false;
+  } finally {
+    state._syncEnCurso = false;
+    if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
   }
-  if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
 }
 
-async function cargarDatosIniciales(silencioso) {
+async function cargarDatosIniciales(silencioso, soloLectura) {
   const API = getServerUrl();
   const optsTimeout = (ms) => {
     try {
       if (window.AbortSignal && typeof AbortSignal.timeout === "function") {
-        return { signal: faenasAbortTimeout(ms) };
+        return { signal: AbortSignal.timeout(ms) };
       }
     } catch (e) {}
     return {};
   };
   let faenasCargadas = false;
 
-  await enviarFaenasEliminadas();
+  if (!soloLectura) await enviarFaenasEliminadas();
 
   try {
     const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
@@ -5551,21 +5333,23 @@ async function cargarDatosIniciales(silencioso) {
 
   if (!faenasCargadas) {
     if (!silencioso && !state.faenas.length) toast("No se pudo cargar faenas del servidor", true);
+  }
+  if (!soloLectura) {
     incorporarFaenasPendientes();
-  }
-  const subidas = await enviarFaenasPendientes();
-  if (subidas) {
-    try {
-      const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
-      if (rFaenas.ok) {
-        const d = await rFaenas.json();
-        if (d.ok && Array.isArray(d.data)) {
-          aplicarRespuestaFaenas(d);
+    const subidas = await enviarFaenasPendientes();
+    if (subidas) {
+      try {
+        const rFaenas = await fetch(`${API}/sync/datos`, optsTimeout(25000));
+        if (rFaenas.ok) {
+          const d = await rFaenas.json();
+          if (d.ok && Array.isArray(d.data)) {
+            aplicarRespuestaFaenas(d);
+          }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
+    await sincronizarBook(API);
   }
-  await sincronizarBook(API);
 }
 
 function leerJSONLocal(clave, fallback) {
@@ -5614,10 +5398,12 @@ async function actualizarEnSegundoPlano() {
   if (_fondoEnCurso) return;
   _fondoEnCurso = true;
   try {
-    await cargarDatosIniciales(true);
-    await enviarFotosPendientes();
+    await cargarDatosIniciales(true, true);
     state._cargando = false;
+    guardarSnapshotSesion();
+    incorporarFaenasPendientes();
     refrescarPantallaActual();
+    if (contarPendientesCola() > 0) state._sesionSucia = true;
   } catch (e) {
     console.warn("Actualización en segundo plano:", e);
     state._cargando = false;
@@ -5637,16 +5423,31 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=40", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=41", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
-    actualizarEnSegundoPlano();
   });
   window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
   if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
-  setInterval(actualizarEnSegundoPlano, 40000);
-  actualizarEnSegundoPlano();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") preguntarSalidaSiPendiente();
+  });
+  window.addEventListener("pagehide", () => preguntarSalidaSiPendiente());
+  try {
+    await cargarDatosIniciales(true, true);
+    state._cargando = false;
+    guardarSnapshotSesion();
+    incorporarFaenasPendientes();
+    refrescarPantallaActual();
+    actualizarPendientesInfo();
+    if (contarPendientesCola() > 0) state._sesionSucia = true;
+  } catch (e) {
+    state._cargando = false;
+    console.warn("Carga inicial:", e);
+    guardarSnapshotSesion();
+    incorporarFaenasPendientes();
+  }
 }
 
 init();

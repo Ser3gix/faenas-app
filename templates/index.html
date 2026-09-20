@@ -321,7 +321,6 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: #faf8f3; }
-.data-table tbody tr.fila-faena { cursor: pointer; }
 .data-table .acciones { white-space: nowrap; }
 .data-table .acciones .btn, .data-table .acciones .fase-sel { margin: 2px 4px 2px 0; }
 .table-wrap { overflow-x: auto; }
@@ -355,13 +354,7 @@ textarea { resize: vertical; min-height: 70px; }
 .gastos-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.8rem; }
 .gastos-table th { background: var(--paper-dark); padding: 7px 10px; text-align: left; font-size: 0.72rem; color: var(--muted); border-bottom: 2px solid var(--sawdust); }
 .gastos-table td { padding: 7px 10px; border-bottom: 1px solid var(--sawdust); }
-.gastos-table tbody tr.presup-fila { cursor: pointer; }
-.gastos-table tbody tr.presup-fila:hover { background: var(--paper-dark); }
-.gastos-table tbody tr.presup-fila.excluido { opacity: 0.55; }
 .gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
-#m-presupuesto-parcial { z-index: 210; }
-#m-presupuesto-item { z-index: 220; }
-#m-consulta-mat { z-index: 400; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 /* POLYBOARD */
@@ -588,6 +581,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <div id="r2-banner" style="margin-left:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer" onclick="abrirConfigR2()" title="Cloudflare R2">
       ☁ <span id="r2-valor">Cloudflare...</span>
     </div>
+    <span id="sesion-pendiente-ind" onclick="preguntarSalidaPc()" title="Hay cambios sin subir" style="display:none;margin-left:8px;background:#c45c26;border-radius:8px;padding:6px 12px;font-size:0.72rem;color:#fff;cursor:pointer">● Sin subir</span>
   </div>
   <nav>
     <button class="active" data-nav="faenas" onclick="nav('faenas')">Faenas</button>
@@ -595,6 +589,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <button data-nav="intermediarios" onclick="nav('intermediarios')">Intermediarios</button>
     <button data-nav="materiales" onclick="nav('materiales')">Materiales</button>
     <button data-nav="polyboard" onclick="nav('polyboard')">PolyBoard</button>
+    <button data-nav="presupuesto" onclick="nav('presupuesto')">Presupuesto</button>
     <button data-nav="book" onclick="nav('book')">Book</button>
     <button data-nav="asistente" onclick="nav('asistente')">Jimmi</button>
   </nav>
@@ -608,8 +603,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <h2>Faenas</h2>
     <div class="btn-row">
       <button class="btn btn-s btn-sm" onclick="sincronizarArchivosPC()">↻ Archivos del PC</button>
-      <button class="btn btn-s btn-sm" onclick="document.getElementById('zip-rescatar-pc').click()">Rescatar ZIP</button>
-      <input id="zip-rescatar-pc" type="file" accept=".zip,application/zip" style="display:none" onchange="rescatarFaenaZip(this)">
       <button class="btn btn-p btn-sm" onclick="abrirModal('m-faena')">+ Nueva faena</button>
     </div>
   </div>
@@ -818,6 +811,110 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       </div>
     </div>
     <div id="pb-tabla"></div>
+  </div>
+</div>
+
+<!-- ===== PRESUPUESTO ===== -->
+<div id="s-presupuesto" class="section">
+  <div class="sec-header">
+    <h2>Presupuesto</h2>
+  </div>
+
+  <!-- Selección de faena -->
+  <div class="form-box">
+    <div class="form-title">🔨 Seleccionar faena</div>
+    <div class="form-grid">
+      <div>
+        <label>Faena</label>
+        <select id="pres-faena-sel" onchange="cargarPresupuesto()"></select>
+      </div>
+      <div>
+        <label>Tarifa €/hora</label>
+        <input type="number" id="pres-tarifa" value="35" step="0.5" placeholder="35.00"
+               oninput="actualizarTotales()">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-box" style="border-color:var(--wood);background:linear-gradient(135deg,#faf6ee,#f5ede0)">
+    <div class="form-title">🤖 Asistente de materiales</div>
+    <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
+      La búsqueda automática con Ollama se ha quitado. Usa el prompt de Valencia o Copilot externo para revisar materiales.
+    </p>
+    <div class="btn-row">
+      <button class="btn btn-s btn-sm" onclick="generarPromptBusquedaValencia()">
+        🔍 Generar prompt para Copilot
+      </button>
+    </div>
+    <div id="pres-valencia-box" style="display:none;margin-top:12px">
+      <div style="font-size:0.78rem;font-weight:500;color:var(--accent);margin-bottom:6px">Prompt para Copilot:</div>
+      <div class="prompt-box" id="pres-valencia-txt" style="max-height:200px"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-g btn-sm" onclick="copiar('pres-valencia-txt')">📋 Copiar prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MATERIALES -->
+  <div class="form-box">
+    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
+      📦 Materiales
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s btn-sm" onclick="abrirModalMateriales()">🔍 Consultar precios</button>
+        <button class="btn btn-s btn-sm" onclick="añadirMaterial()">+ Añadir</button>
+      </div>
+    </div>
+    <table class="gastos-table" id="tabla-materiales-pres">
+      <thead>
+        <tr>
+          <th style="text-align:left">Descripción</th>
+          <th>Cantidad</th>
+          <th>Precio unit. (€)</th>
+          <th>Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody-materiales"></tbody>
+    </table>
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
+      Subtotal materiales: <strong id="subtotal-mat">0.00 €</strong>
+    </div>
+  </div>
+
+  <!-- MANO DE OBRA -->
+  <div class="form-box">
+    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
+      🔨 Mano de obra
+      <button class="btn btn-s btn-sm" onclick="añadirManoObra()">+ Añadir</button>
+    </div>
+    <table class="gastos-table" id="tabla-mo-pres">
+      <thead>
+        <tr>
+          <th style="text-align:left">Descripción</th>
+          <th>Tipo</th>
+          <th>Cantidad</th>
+          <th>Precio (€)</th>
+          <th>Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody-mo"></tbody>
+    </table>
+    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
+      Subtotal mano de obra: <strong id="subtotal-mo">0.00 €</strong>
+    </div>
+  </div>
+
+  <!-- TOTAL Y ACCIONES -->
+  <div class="form-box" style="border:2px solid var(--wood)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
+      <span style="font-weight:600;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
+    </div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-p" onclick="guardarPresupuesto()">💾 Guardar TXT en carpeta</button>
+      <button class="btn btn-s" onclick="abrirPresupuestoEnCursor()">📂 Abrir en Cursor</button>
+    </div>
   </div>
 </div>
 
@@ -1195,19 +1292,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 </div>
 
-<!-- Modal Presupuesto parcial -->
-<div class="overlay" id="m-presupuesto-parcial">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-title" id="presupuesto-parcial-title">Presupuesto</div>
-    <input type="hidden" id="presupuesto-parcial-faena-id">
-    <input type="hidden" id="presupuesto-parcial-bloque">
-    <div id="presupuesto-parcial-contenido"></div>
-    <div class="btn-row" style="margin-top:16px">
-      <button class="btn btn-s" onclick="cerrarPresupuestoParcial()">Cerrar</button>
-    </div>
-  </div>
-</div>
-
 <!-- Modal Partida de Presupuesto -->
 <div class="overlay" id="m-presupuesto-item">
   <div class="modal">
@@ -1215,15 +1299,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <input type="hidden" id="presupuesto-item-id">
     <input type="hidden" id="presupuesto-faena-id">
     <div class="form-grid g1">
-      <div><label>Concepto</label><input id="presupuesto-bloque" placeholder="Puertas de paso, encimera, bisagras..."></div>
-    </div>
-    <div class="form-grid g1">
-      <div><label>Detalle</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="presupuesto-desc" placeholder="Partida o material..." style="flex:1">
-          <button type="button" class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
-        </div>
-      </div>
+      <div><label>Descripción</label><input id="presupuesto-desc" placeholder="Bisagras, tableros, transporte..."></div>
     </div>
     <div class="form-grid">
       <div><label>Tipo</label>
@@ -1426,6 +1502,17 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<div class="overlay" id="m-salida-sync-pc">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">¿Actualizar cambios?</div>
+    <p style="font-size:0.9rem;color:#555;margin:8px 0 16px;line-height:1.45">Hay cambios de esta sesión sin subir al servidor. Si no actualizas, se descartarán.</p>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="aceptarSalidaSyncPc()">Actualizar</button>
+      <button class="btn btn-s" onclick="rechazarSalidaSyncPc()">Descartar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = (function () {
   const inyectada = String(window.FAENAS_API_BASE || "").trim().replace(/\/$/, "");
@@ -1522,56 +1609,331 @@ let state = {
   categorias: [], filtroCat: "",
   faseVista: "en_proceso",
   detalleId: null,
-  detalleActual: { gastos: [], presupuesto: [] },
-  detalleExtra: null,
-  presupuestoParcial: null,
-  consultaMatDestino: "faena"
+  detalleActual: { gastos: [], presupuesto: [] }
 };
 
-function leerJSONLocal(clave, fallback) {
-  try {
-    const v = JSON.parse(localStorage.getItem(clave) || "null");
-    return v == null ? fallback : v;
-  } catch (e) {
-    return fallback;
+// ===== SESIÓN TEMPORAL (PC) =====
+let pendingOps = [];
+let stateSnapshot = null;
+let sesionSucia = false;
+let _flushing = false;
+let _apiInmediato = false;
+let _modalSalidaPc = false;
+let _tmpSeq = 1;
+
+function clonarJSON(v) {
+  try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; }
+}
+
+function pathEscrituraDiferida(method, path) {
+  if (!method || method === "GET") return false;
+  const p = String(path || "");
+  const exempt = ["/config/", "/cursor/", "/secretario/", "/info/", "/polyboard/", "/faenas/sincronizar-pc"];
+  if (exempt.some(x => p.startsWith(x) || p === x)) return false;
+  if (/\/(documentos|fotos|archivo-zip|archivar|gastos\/importar-pdf)/.test(p)) return false;
+  return true;
+}
+
+function marcarSesionSuciaPc() {
+  if (!stateSnapshot) return;
+  sesionSucia = true;
+  const ind = document.getElementById("sesion-pendiente-ind");
+  if (ind) ind.style.display = "inline-block";
+}
+
+function limpiarIndicadorSesionPc() {
+  sesionSucia = false;
+  const ind = document.getElementById("sesion-pendiente-ind");
+  if (ind) ind.style.display = "none";
+}
+
+function guardarSnapshotSesionPc() {
+  stateSnapshot = {
+    faenas: clonarJSON(state.faenas),
+    terminadas: clonarJSON(state.terminadas),
+    clientes: clonarJSON(state.clientes),
+    intermediarios: clonarJSON(state.intermediarios),
+    materiales: clonarJSON(state.materiales),
+    categorias: clonarJSON(state.categorias),
+    detalleActual: clonarJSON(state.detalleActual),
+    detalleId: state.detalleId
+  };
+  pendingOps = [];
+  limpiarIndicadorSesionPc();
+}
+
+function hayCambiosSesionPc() {
+  return sesionSucia || pendingOps.length > 0;
+}
+
+function sintetizarRespuestaPc(method, path, body) {
+  const tid = "tmp_" + (_tmpSeq++) + "_" + Date.now();
+  const b = body || {};
+  const total = (parseFloat(b.cantidad) || 1) * (parseFloat(b.precio_unitario) || 0);
+  if (method === "POST" && path === "/faenas") {
+    return { ok: true, _diferido: true, data: { id: tid, numero: "TMP-" + String(_tmpSeq).padStart(3, "0") } };
+  }
+  if (method === "POST" && path === "/clientes") {
+    return { ok: true, _diferido: true, data: { id: tid, ...b } };
+  }
+  if (method === "POST" && path === "/intermediarios") {
+    return { ok: true, _diferido: true, data: { id: tid, ...b } };
+  }
+  if (method === "POST" && path === "/materiales") {
+    return { ok: true, _diferido: true, data: { id: tid, ...b, precios: [] } };
+  }
+  if (method === "POST" && path === "/categorias-material") {
+    return { ok: true, _diferido: true, data: { id: tid, nombre: b.nombre } };
+  }
+  if (method === "POST" && /\/gastos$/.test(path)) {
+    return { ok: true, _diferido: true, data: { id: tid, total, ...b } };
+  }
+  if (method === "POST" && /\/presupuesto\/item$/.test(path)) {
+    return { ok: true, _diferido: true, data: { id: tid, total, ...b } };
+  }
+  if (method === "POST" && /\/anotaciones$/.test(path)) {
+    return { ok: true, _diferido: true, data: { id: tid, ...b } };
+  }
+  if (method === "PUT" && (/\/gastos\//.test(path) || /\/presupuestos\//.test(path))) {
+    return { ok: true, _diferido: true, data: { id: path.split("/").pop(), total, ...b } };
+  }
+  if (method === "POST" && /\/presupuesto$/.test(path)) {
+    const mat = (b.materiales || []).reduce((s, m) => s + (parseFloat(m.cantidad)||0)*(parseFloat(m.precio_unitario)||0), 0);
+    const mo = (b.mano_obra || []).reduce((s, l) => s + (parseFloat(l.cantidad)||0)*(parseFloat(l.precio)||0), 0);
+    return { ok: true, _diferido: true, data: { total: mat + mo } };
+  }
+  return { ok: true, _diferido: true, data: { id: tid, total, ...b } };
+}
+
+function aplicarOpLocalPc(method, path, body, data) {
+  const b = body || {};
+  let m;
+  if (method === "POST" && path === "/faenas") {
+    const cliente = (state.clientes || []).find(c => String(c.id) === String(b.cliente_id));
+    const inter = (state.intermediarios || []).find(i => String(i.id) === String(b.intermediario_id));
+    state.faenas.unshift({
+      id: data.id, numero: data.numero, ...b,
+      cliente_nombre: cliente?.nombre || "",
+      intermediario_nombre: inter?.nombre || "",
+      fase: "medicion", archivada: 0
+    });
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/faenas\/([^/]+)$/))) {
+    const f = state.faenas.find(x => String(x.id) === String(m[1])) || (state.terminadas || []).find(x => String(x.id) === String(m[1]));
+    if (f) Object.assign(f, b);
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/faenas\/([^/]+)\/fase$/))) {
+    const f = state.faenas.find(x => String(x.id) === String(m[1]));
+    if (f) f.fase = b.fase;
+    return;
+  }
+  if (method === "POST" && path === "/clientes") {
+    state.clientes.push({ id: data.id, ...b });
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/clientes\/([^/]+)$/))) {
+    const c = state.clientes.find(x => String(x.id) === String(m[1]));
+    if (c) Object.assign(c, b);
+    return;
+  }
+  if (method === "POST" && path === "/intermediarios") {
+    state.intermediarios.push({ id: data.id, ...b });
+    return;
+  }
+  if (method === "POST" && path === "/materiales") {
+    state.materiales.push({ id: data.id, ...b, precios: [] });
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/materiales\/([^/]+)$/))) {
+    const mat = state.materiales.find(x => String(x.id) === String(m[1]));
+    if (mat) Object.assign(mat, b);
+    return;
+  }
+  if (method === "DELETE" && (m = path.match(/^\/materiales\/([^/]+)$/))) {
+    state.materiales = state.materiales.filter(x => String(x.id) !== String(m[1]));
+    return;
+  }
+  if (method === "POST" && (m = path.match(/^\/materiales\/([^/]+)\/precio$/))) {
+    const mat = state.materiales.find(x => String(x.id) === String(m[1]));
+    if (mat) {
+      if (!mat.precios) mat.precios = [];
+      mat.precios.push({ proveedor: b.proveedor, precio_unitario: b.precio_unitario });
+    }
+    return;
+  }
+  if (method === "POST" && path === "/categorias-material") {
+    state.categorias.push({ id: data.id, nombre: b.nombre });
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/categorias-material\/([^/]+)$/))) {
+    const c = state.categorias.find(x => String(x.id) === String(m[1]));
+    if (c) c.nombre = b.nombre;
+    return;
+  }
+  if (method === "DELETE" && (m = path.match(/^\/categorias-material\/([^/]+)$/))) {
+    state.categorias = state.categorias.filter(x => String(x.id) !== String(m[1]));
+    return;
+  }
+  if (method === "POST" && (m = path.match(/^\/faenas\/([^/]+)\/gastos$/))) {
+    if (String(state.detalleId) === String(m[1])) {
+      state.detalleActual.gastos = state.detalleActual.gastos || [];
+      state.detalleActual.gastos.push({ id: data.id, ...b, total: data.total });
+    }
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/gastos\/([^/]+)$/))) {
+    const g = (state.detalleActual.gastos || []).find(x => String(x.id) === String(m[1]));
+    if (g) Object.assign(g, b, { total: data.total });
+    return;
+  }
+  if (method === "DELETE" && (m = path.match(/^\/gastos\/([^/]+)$/))) {
+    state.detalleActual.gastos = (state.detalleActual.gastos || []).filter(x => String(x.id) !== String(m[1]));
+    return;
+  }
+  if (method === "POST" && (m = path.match(/^\/faenas\/([^/]+)\/presupuesto\/item$/))) {
+    if (String(state.detalleId) === String(m[1])) {
+      state.detalleActual.presupuesto = state.detalleActual.presupuesto || [];
+      state.detalleActual.presupuesto.push({ id: data.id, ...b, total: data.total });
+    }
+    return;
+  }
+  if (method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+    const p = (state.detalleActual.presupuesto || []).find(x => String(x.id) === String(m[1]));
+    if (p) Object.assign(p, b, { total: data.total });
+    return;
+  }
+  if (method === "DELETE" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+    state.detalleActual.presupuesto = (state.detalleActual.presupuesto || []).filter(x => String(x.id) !== String(m[1]));
+    return;
   }
 }
 
-function hidratarCachePC() {
-  const faenas = leerJSONLocal("faenas_cache", []);
-  const terminadas = leerJSONLocal("terminadas_cache", []);
-  const clientes = leerJSONLocal("clientes_cache", []);
-  const materiales = leerJSONLocal("materiales_cache", []);
-  if (Array.isArray(faenas)) state.faenas = faenas;
-  if (Array.isArray(terminadas)) state.terminadas = terminadas;
-  if (Array.isArray(clientes)) state.clientes = clientes;
-  if (Array.isArray(materiales)) state.materiales = materiales;
+function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
+  let anots = clonarJSON(anotaciones || []);
+  let gasts = clonarJSON(gastos || []);
+  let pres = clonarJSON(presupuesto || []);
+  const fid = String(faenaId);
+  for (const op of pendingOps) {
+    const { method, path, body } = op;
+    let m;
+    if (method === "POST" && path === `/faenas/${fid}/anotaciones`) {
+      anots.unshift({ id: "pending_" + anots.length, tipo: body.tipo, contenido: body.contenido });
+    } else if (method === "PUT" && (m = path.match(/^\/anotaciones\/([^/]+)$/))) {
+      const a = anots.find(x => String(x.id) === String(m[1]));
+      if (a) Object.assign(a, body);
+    } else if (method === "DELETE" && (m = path.match(/^\/anotaciones\/([^/]+)$/))) {
+      anots = anots.filter(x => String(x.id) !== String(m[1]));
+    } else if (method === "POST" && path === `/faenas/${fid}/gastos`) {
+      const total = (parseFloat(body.cantidad)||1)*(parseFloat(body.precio_unitario)||0);
+      gasts.push({ id: "pending_g_" + gasts.length, ...body, total });
+    } else if (method === "PUT" && (m = path.match(/^\/gastos\/([^/]+)$/))) {
+      const g = gasts.find(x => String(x.id) === String(m[1]));
+      if (g) {
+        Object.assign(g, body);
+        g.total = (parseFloat(g.cantidad)||1)*(parseFloat(g.precio_unitario)||0);
+      }
+    } else if (method === "DELETE" && (m = path.match(/^\/gastos\/([^/]+)$/))) {
+      gasts = gasts.filter(x => String(x.id) !== String(m[1]));
+    } else if (method === "POST" && path === `/faenas/${fid}/presupuesto/item`) {
+      const total = (parseFloat(body.cantidad)||1)*(parseFloat(body.precio_unitario)||0);
+      pres.push({ id: "pending_p_" + pres.length, ...body, total });
+    } else if (method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+      const p = pres.find(x => String(x.id) === String(m[1]));
+      if (p) {
+        Object.assign(p, body);
+        p.total = (parseFloat(p.cantidad)||1)*(parseFloat(p.precio_unitario)||0);
+      }
+    } else if (method === "DELETE" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+      pres = pres.filter(x => String(x.id) !== String(m[1]));
+    }
+  }
+  return { anotaciones: anots, gastos: gasts, presupuesto: pres };
 }
 
-function guardarCachePC() {
+async function flushPendingPc() {
+  if (!pendingOps.length) { limpiarIndicadorSesionPc(); return true; }
+  _flushing = true;
+  const ops = pendingOps.slice();
+  const mapaIds = {};
   try {
-    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas || []));
-    localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas || []));
-    localStorage.setItem("clientes_cache", JSON.stringify(state.clientes || []));
-    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales || []));
-  } catch (e) {}
+    for (const op of ops) {
+      let path = op.path;
+      for (const [tmp, real] of Object.entries(mapaIds)) {
+        path = path.split(tmp).join(String(real));
+      }
+      let body = op.body ? clonarJSON(op.body) : null;
+      if (body && body.cliente_id != null && mapaIds[body.cliente_id] != null) body.cliente_id = mapaIds[body.cliente_id];
+      const r = await api(op.method, path, body);
+      if (!r.ok) throw new Error(r.error || "Error al actualizar");
+      if (op.method === "POST" && r.data && r.data.id != null) {
+        const synth = (op._synthId != null) ? op._synthId : null;
+        if (synth) mapaIds[synth] = r.data.id;
+      }
+    }
+    pendingOps = [];
+    _flushing = false;
+    await Promise.all([cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true), cargarMateriales(true), cargarCategorias(true)]);
+    guardarSnapshotSesionPc();
+    renderFaenas(); renderClientes(); renderInter(); renderMateriales(); poblarSelects();
+    return true;
+  } catch (e) {
+    _flushing = false;
+    toast(e.message || "Error al actualizar", true);
+    return false;
+  }
+}
+
+function descartarCambiosSesionPc() {
+  if (!stateSnapshot) return;
+  state.faenas = clonarJSON(stateSnapshot.faenas);
+  state.terminadas = clonarJSON(stateSnapshot.terminadas);
+  state.clientes = clonarJSON(stateSnapshot.clientes);
+  state.intermediarios = clonarJSON(stateSnapshot.intermediarios);
+  state.materiales = clonarJSON(stateSnapshot.materiales);
+  state.categorias = clonarJSON(stateSnapshot.categorias);
+  state.detalleActual = clonarJSON(stateSnapshot.detalleActual);
+  state.detalleId = stateSnapshot.detalleId;
+  pendingOps = [];
+  limpiarIndicadorSesionPc();
+  renderFaenas(); renderClientes(); renderInter(); renderMateriales();
+  renderFiltroCats(); rellenarSelectsCategoria(); poblarSelects();
+  poblarSelectPresupuesto();
+  toast("Cambios descartados");
+}
+
+function preguntarSalidaPc() {
+  if (_modalSalidaPc || _flushing) return;
+  if (!hayCambiosSesionPc()) return;
+  const modal = document.getElementById("m-salida-sync-pc");
+  if (!modal) return;
+  _modalSalidaPc = true;
+  modal.classList.add("open");
+}
+
+async function aceptarSalidaSyncPc() {
+  const modal = document.getElementById("m-salida-sync-pc");
+  if (modal) modal.classList.remove("open");
+  _modalSalidaPc = false;
+  const ok = await flushPendingPc();
+  if (ok) toast("✓ Cambios actualizados");
+}
+
+function rechazarSalidaSyncPc() {
+  const modal = document.getElementById("m-salida-sync-pc");
+  if (modal) modal.classList.remove("open");
+  _modalSalidaPc = false;
+  descartarCambiosSesionPc();
 }
 
 // ===== ARRANQUE =====
 async function init() {
-  hidratarCachePC();
-  if (state.faenas.length || state.clientes.length || state.materiales.length) {
-    renderFaenas();
-    renderClientes();
-    renderMateriales();
-    poblarSelects();
-  }
   await cargarEstadoDb();
   await Promise.all([
-    cargarFaenas(), cargarClientes(),
-    cargarIntermediarios(), cargarMateriales(), cargarCategorias()
+    cargarFaenas(true), cargarClientes(true),
+    cargarIntermediarios(true), cargarMateriales(true), cargarCategorias(true)
   ]);
-  guardarCachePC();
   rellenarSelectsCategoria();
   renderFiltroCats();
   renderFaenas();
@@ -1580,9 +1942,19 @@ async function init() {
   renderMateriales();
   poblarSelects();
   poblarSelectPolyboard();
+  poblarSelectPresupuesto();
   cargarIP();
   cargarEstadoR2();
-  setInterval(sincronizarSilencioso, 40000);
+  guardarSnapshotSesionPc();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") preguntarSalidaPc();
+  });
+  window.addEventListener("pagehide", () => preguntarSalidaPc());
+  window.addEventListener("beforeunload", (e) => {
+    if (!hayCambiosSesionPc()) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
   if (esAppDelPc()) {
     try {
       const ocr = await fetch(API_OCR + "/info/ocr").then(r => r.json());
@@ -1692,6 +2064,18 @@ async function parsearRespuesta(r) {
 
 async function api(method, path, body) {
   try {
+    if (!_flushing && !_apiInmediato && pathEscrituraDiferida(method, path)) {
+      const synth = sintetizarRespuestaPc(method, path, body);
+      pendingOps.push({
+        method,
+        path,
+        body: body == null ? null : clonarJSON(body),
+        _synthId: synth.data && synth.data.id
+      });
+      marcarSesionSuciaPc();
+      aplicarOpLocalPc(method, path, body, synth.data);
+      return synth;
+    }
     const opts = { method, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
@@ -1716,40 +2100,21 @@ async function sincronizarArchivosPC() {
     } else {
       toast(`✓ ${n} archivo${n===1?"":"s"} del PC. ${omitidos ? omitidos + " ya estaban. " : ""}${err ? err + " con error." : ""}`);
     }
-    await cargarFaenas();
+    await cargarFaenas(true);
     renderFaenas();
   } catch (e) {
     toast("Error al actualizar archivos del PC", true);
   }
 }
 
-async function cargarFaenas() {
+async function cargarFaenas(forzar) {
+  if (sesionSucia && !forzar && !_flushing) return;
   const [rAct, rTer] = await Promise.all([
     api("GET", "/faenas"),
     api("GET", "/faenas/archivadas")
   ]);
   if (rAct.ok) state.faenas = rAct.data || [];
   if (rTer.ok) state.terminadas = rTer.data || [];
-  guardarCachePC();
-}
-
-let _syncSilencioso = false;
-async function sincronizarSilencioso() {
-  if (_syncSilencioso) return;
-  _syncSilencioso = true;
-  try {
-    await Promise.all([
-      cargarFaenas(), cargarClientes(), cargarMateriales(), cargarIntermediarios()
-    ]);
-    renderFaenas();
-    renderClientes();
-    renderMateriales();
-    poblarSelects();
-    if (state.detalleId && document.getElementById("m-detalle")?.classList.contains("open")) {
-      await verDetalle(state.detalleId, { soloConceptos: true });
-    }
-  } catch (e) {}
-  _syncSilencioso = false;
 }
 
 function faseDeFaena(f) {
@@ -1766,19 +2131,23 @@ function seleccionarFase(fase) {
   });
   renderFaenas();
 }
-async function cargarClientes() {
+async function cargarClientes(forzar) {
+  if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/clientes");
   if (r.ok) state.clientes = r.data;
 }
-async function cargarIntermediarios() {
+async function cargarIntermediarios(forzar) {
+  if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/intermediarios");
   if (r.ok) state.intermediarios = r.data;
 }
-async function cargarMateriales() {
+async function cargarMateriales(forzar) {
+  if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/materiales");
-  if (r.ok) state.materiales = Array.isArray(r.data) ? r.data : [];
+  if (r.ok) state.materiales = r.data;
 }
-async function cargarCategorias() {
+async function cargarCategorias(forzar) {
+  if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/categorias-material");
   if (r.ok) state.categorias = r.data || [];
 }
@@ -1872,6 +2241,7 @@ function nav(id) {
   else if (typeof event !== "undefined" && event && event.target && event.target.tagName === "BUTTON") event.target.classList.add("active");
   if (id === "materiales") rellenarFaenasTicketDestino();
   if (id === "polyboard") poblarSelectPolyboard();
+  if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
   if (id === "asistente") { poblarSelectAsistente(); cargarContextoJimmi(); }
 }
@@ -1932,16 +2302,8 @@ function poblarSelectsPrompts() {
 }
 
 // ===== RENDER FAENAS =====
-function firmaListaFaenas(lista, q) {
-  return state.faseVista + "|" + (q || "") + "|" + lista.map(f => [
-    f.id, f.numero, f.cliente_nombre, f.tipo_trabajo, direccionDeFaena(f),
-    f.importe, faseDeFaena(f), f.intermediario_id, f.intermediario_nombre
-  ].join("~")).join("||");
-}
-
 function renderFaenas() {
-  const qEl = document.getElementById("q-faena");
-  const q = qEl ? qEl.value.toLowerCase() : "";
+  const q = document.getElementById("q-faena").value.toLowerCase();
   const origen = state.faseVista === "terminada" ? (state.terminadas || []) : (state.faenas || []);
   const lista = origen.filter(f => {
     if (state.faseVista !== "terminada" && faseDeFaena(f) !== state.faseVista) return false;
@@ -1953,10 +2315,6 @@ function renderFaenas() {
            (f.cliente_direccion || "").toLowerCase().includes(q);
   });
   const el = document.getElementById("lista-faenas");
-  if (!el) return;
-  const firma = firmaListaFaenas(lista, q);
-  if (el.dataset.firma === firma) return;
-  el.dataset.firma = firma;
   const vacio = state.faseVista === "terminada" ? "No hay faenas terminadas" : "No hay faenas en esta fase";
   if (!lista.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${vacio}</div>`;
@@ -1978,10 +2336,12 @@ function renderFaenas() {
             <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
             <option value="terminada">Terminada</option>
           </select>
+          <button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>
+          <button class="btn btn-s btn-sm" onclick="abrirEditarFaena(${f.id})">Editar</button>
           <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Documentos</button>
           <button class="btn btn-d btn-sm" onclick="terminarFaena(${f.id})">Terminar</button>
-        ` : `<button class="btn btn-p btn-sm" onclick="reabrirFaena(${f.id})">Reabrir</button>`;
-      return `<tr class="fila-faena" onclick="verDetalle(${f.id})">
+        ` : `<button class="btn btn-s btn-sm" onclick="verDetalle(${f.id})">Detalle</button>`;
+      return `<tr>
         <td><span class="num-faena">${f.numero}</span></td>
         <td>
           <strong>${f.cliente_nombre || ""}</strong>
@@ -1991,7 +2351,7 @@ function renderFaenas() {
         <td>${direccionDeFaena(f) || "—"}</td>
         <td style="font-variant-numeric:tabular-nums;color:${precio > 0 ? "var(--green)" : "var(--muted)"}">${precio > 0 ? precio.toFixed(2) + " €" : "—"}</td>
         <td><span class="fase-chip ${fase}">${etiquetaFase[fase] || fase}</span></td>
-        <td class="acciones" onclick="event.stopPropagation()">${acciones}</td>
+        <td class="acciones">${acciones}</td>
       </tr>`;
     }).join("")}</tbody>
   </table></div>`;
@@ -2164,54 +2524,33 @@ async function eliminarMaterialDesdeModal() {
 }
 
 // ===== DETALLE FAENA =====
-async function verDetalle(id, opts) {
-  opts = opts || {};
+async function verDetalle(id) {
   let f = state.faenas.find(x => x.id === id) || (state.terminadas || []).find(x => x.id === id);
   if (!f) return;
-  const extraCache = state.detalleExtra && String(state.detalleId) === String(id) ? state.detalleExtra : null;
-  const usarCacheExtra = !!opts.soloConceptos && extraCache;
-  const peticiones = [api("GET", `/faenas/${id}/conceptos`)];
-  if (!usarCacheExtra) {
-    peticiones.push(
-      api("GET", `/faenas/${id}/anotaciones`),
-      api("GET", `/faenas/${id}/documentos`),
-      api("GET", `/faenas/${id}/fotos`),
-      api("GET", `/faenas/${id}/tiempos`)
-    );
-  }
-  const res = await Promise.all(peticiones);
-  const rConceptos = res[0];
-  let anotaciones, docs, fotos, rTiempos;
-  if (usarCacheExtra) {
-    anotaciones = extraCache.anotaciones || [];
-    docs = extraCache.docs || [];
-    fotos = extraCache.fotos || [];
-    rTiempos = extraCache.tiempos || { ok: false };
-  } else {
-    const rAnot = res[1];
-    const rDocs = res[2];
-    const rFotos = res[3];
-    rTiempos = res[4];
-    anotaciones = rAnot.ok ? rAnot.data : [];
-    docs = rDocs.ok ? rDocs.data : [];
-    fotos = rFotos.ok ? rFotos.data : [];
-    state.detalleExtra = { anotaciones, docs, fotos, tiempos: rTiempos };
-  }
+  const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
+    api("GET", `/faenas/${id}/anotaciones`),
+    api("GET", `/faenas/${id}/conceptos`),
+    api("GET", `/faenas/${id}/documentos`),
+    api("GET", `/faenas/${id}/fotos`),
+    api("GET", `/faenas/${id}/tiempos`)
+  ]);
   const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
   const tel = telefonoDeFaena(f) || cliente?.telefono || "";
+  let anotaciones = rAnot.ok ? rAnot.data : [];
   const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
-  const presupuesto = conceptos.presupuesto || [];
-  const gastos = conceptos.gastos || [];
-  const bloquesP = (conceptos.bloques && conceptos.bloques.length)
-    ? conceptos.bloques
-    : bloquesDePresupuesto(presupuesto);
-  const totalPresupuesto = typeof conceptos.total_incluido === "number"
-    ? conceptos.total_incluido
-    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  let presupuesto = conceptos.presupuesto || [];
+  let gastos = conceptos.gastos || [];
+  if (pendingOps.length) {
+    const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
+    anotaciones = merged.anotaciones;
+    gastos = merged.gastos;
+    presupuesto = merged.presupuesto;
+  }
   state.detalleId = id;
-  const campoFaenaPres = document.getElementById("presupuesto-faena-id");
-  if (campoFaenaPres) campoFaenaPres.value = id;
-  state.detalleActual = { gastos, presupuesto, bloques: bloquesP };
+  state.detalleActual = { gastos, presupuesto };
+  const docs = rDocs.ok ? rDocs.data : [];
+  const fotos = rFotos.ok ? rFotos.data : [];
+  const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
   const esDirecto = f.intermediario_id === 0;
   function formatBytes(b) {
@@ -2281,30 +2620,27 @@ async function verDetalle(id, opts) {
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>'}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">Presupuestos</strong>
+      <strong style="font-size:0.85rem">Presupuesto (${presupuesto.length})</strong>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-s btn-sm" onclick="nuevoBloquePresupuesto(${f.id})">+ Presupuesto</button>
-        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
-        <span class="badge b-orange">Total conjunto ${totalPresupuesto.toFixed(2)} €</span>
+        <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id})">+ Partida</button>
+        <span class="badge b-orange">Total ${totalPresupuesto.toFixed(2)} €</span>
       </div>
     </div>
-    ${bloquesP.length ? `
+    ${presupuesto.length ? `
       <table class="gastos-table">
-        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th></tr></thead>
+        <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
         <tbody>
-          ${bloquesP.map(b => {
-            const nomJs = JSON.stringify(b.nombre_db || "");
-            const sub = parseFloat(b.total || 0) || 0;
-            return `<tr class="presup-fila${b.incluido ? "" : " excluido"}" onclick='abrirPresupuestoParcial(${f.id}, ${nomJs})'>
-              <td><strong>${esc(b.nombre || "General")}</strong></td>
-              <td>${sub.toFixed(2)} €</td>
-              <td onclick="event.stopPropagation()">
-                <input type="checkbox" ${b.incluido ? "checked" : ""} title="Incluir en el presupuesto de la faena" onchange='toggleBloquePresupuesto(${f.id}, ${nomJs}, this.checked ? 1 : 0)'>
-              </td>
-            </tr>`;
-          }).join("")}
+          ${presupuesto.map(g => `<tr>
+            <td>${g.descripcion}</td>
+            <td><span class="badge b-orange">${g.tipo}</span></td>
+            <td>${g.cantidad ?? ""}</td>
+            <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
+            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
+            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end"><button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${f.id}, ${g.id})">✏️</button><button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${f.id})">×</button></div></td>
+          </tr>`).join("")}
         </tbody>
-      </table>` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos — crea uno por cada trabajo (puertas, encimera…)</p>'}
+       </table>
+    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin conceptos de presupuesto</p>'}
 
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2517,21 +2853,7 @@ async function guardarEditarFaena() {
     importe: parseFloat(document.getElementById("ef-importe").value) || 0,
     fecha_inicio: document.getElementById("ef-fecha").value
   });
-  if (r.ok) {
-    toast("✓ Faena actualizada");
-    cerrarModal("m-editar-faena");
-    const fid = parseInt(id, 10);
-    const f = state.faenas.find(x => x.id === fid) || (state.terminadas || []).find(x => x.id === fid);
-    if (f) {
-      f.direccion = document.getElementById("ef-dir").value;
-      f.tipo_trabajo = document.getElementById("ef-tipo").value;
-      f.importe = parseFloat(document.getElementById("ef-importe").value) || 0;
-      f.fecha_inicio = document.getElementById("ef-fecha").value;
-    }
-    guardarCachePC();
-    renderFaenas();
-    await verDetalle(fid, { soloConceptos: true });
-  }
+  if (r.ok) { toast("✓ Faena actualizada"); cerrarModal("m-editar-faena"); await cargarFaenas(); renderFaenas(); verDetalle(parseInt(id)); }
   else toast(r.error, true);
 }
 
@@ -2592,7 +2914,7 @@ async function terminarFaena(id) {
     cerrarModal("m-detalle");
     state.detalleId = null;
   }
-  await cargarFaenas();
+  await cargarFaenas(true);
   state.faseVista = "terminada";
   document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
     b.classList.toggle("active", b.dataset.fase === "terminada");
@@ -3326,263 +3648,125 @@ async function generarPdfPedido() {
   } catch(e) { toast("Error de conexión", true); }
 }
 
-async function abrirListaMaterialesPresupuesto() {
-  state.consultaMatDestino = "faena";
-  const q = document.getElementById("q-consulta-mat");
-  if (q) q.value = "";
-  await abrirListaMaterialesCargada();
+function generarPromptBusquedaValencia() {
+  const descripcion = document.getElementById("pres-ollama-input").value.trim();
+  const prompt = `Necesito encontrar los siguientes materiales de carpintería en tiendas o proveedores de Valencia (España):\n\n${descripcion || "[Describe aquí los materiales que necesitas]"}\n\nPor favor:\n1. Sugiere tiendas o distribuidores de carpintería en Valencia donde pueda encontrar estos materiales\n2. Indica el nombre comercial exacto de cada producto para buscarlo\n3. Si conoces precios aproximados orientativos, inclúyelos\n4. Incluye también opciones de compra online con envío a Valencia\n\nBusca especialmente en:\n- Tiendas de herrajes para carpintería en Valencia\n- Distribuidores de materiales para ebanistería\n- Ferreterías industriales de Valencia`;
+  document.getElementById("pres-valencia-txt").textContent = prompt; document.getElementById("pres-valencia-box").style.display = "block"; document.getElementById("pres-valencia-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
-async function abrirListaMaterialesCargada() {
-  const el = document.getElementById("consulta-mat-lista");
-  if (el) el.innerHTML = '<div class="empty" style="padding:20px">Cargando materiales…</div>';
-  abrirModal("m-consulta-mat");
-  if (!Array.isArray(state.materiales) || !state.materiales.length) {
-    await cargarMateriales();
+let presState = { materiales: [], manoObra: [] };
+function poblarSelectPresupuesto() {
+  const sel = document.getElementById("pres-faena-sel");
+  if (sel) sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+}
+async function cargarPresupuesto() {
+  const id = document.getElementById("pres-faena-sel").value; if (!id) return;
+  const r = await api("GET", `/faenas/${id}/presupuesto`);
+  if (r.ok && r.data.contenido) parsearTxtPresupuesto(r.data.contenido);
+  else { presState.materiales = []; presState.manoObra = []; renderTablasManoObra(); renderTablasMateriales(); actualizarTotales(); }
+}
+function parsearTxtPresupuesto(txt) {
+  presState.materiales = []; presState.manoObra = []; const lineas = txt.split("\n"); let seccion = null;
+  for (const linea of lineas) {
+    if (linea.startsWith("MATERIALES")) { seccion = "mat"; continue; }
+    if (linea.startsWith("MANO DE OBRA")) { seccion = "mo"; continue; }
+    if (linea.startsWith("=") || linea.startsWith("-") || linea.startsWith("Subtotal") || linea.startsWith("Total") || linea.startsWith("Tarifa") || linea.trim() === "") continue;
+    if (seccion === "mat") { const match = linea.match(/^(.+?)\s+([\d.]+)\s+€\s*$/); if (match) presState.materiales.push({ descripcion: match[1].trim(), cantidad: 1, precio_unitario: parseFloat(match[2]) }); }
+    if (seccion === "mo") { const match = linea.match(/^(.+?)\s*\((\d+\.?\d*)(h|ud)\)\s*.+?([\d.]+)\s+€\s*$/); if (match) presState.manoObra.push({ descripcion: match[1].trim(), tipo: match[3] === "h" ? "hora" : "unidad", cantidad: parseFloat(match[2]), precio: 0 }); }
   }
-  renderConsultaMat();
+  renderTablasMateriales(); renderTablasManoObra(); actualizarTotales();
 }
+function renderTablasMateriales() {
+  const tbody = document.getElementById("tbody-materiales");
+  if (!presState.materiales.length) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin materiales — pulsa + Añadir</td></tr>`; return; }
+  tbody.innerHTML = presState.materiales.map((m, i) => { const total = (parseFloat(m.cantidad) || 0) * (parseFloat(m.precio_unitario) || 0); return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${m.descripcion}" onchange="presState.materiales[${i}].descripcion=this.value"></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${m.cantidad}" step="0.01" onchange="presState.materiales[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td><input type="number" style="border:none;background:transparent;width:80px;text-align:center;font-size:0.8rem" value="${m.precio_unitario}" step="0.01" onchange="presState.materiales[${i}].precio_unitario=parseFloat(this.value)||0;actualizarTotales()"></td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarMaterial(${i})">×</button></td></tr>`; }).join("");
+}
+function renderTablasManoObra() {
+  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
+  const tbody = document.getElementById("tbody-mo");
+  if (!presState.manoObra.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin mano de obra — pulsa + Añadir</td></tr>`; return; }
+  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:inherit" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
+}
+function actualizarTotales() {
+  renderTablasMateriales(); renderTablasManoObra();
+  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
+  const totalMat = presState.materiales.reduce((s, m) => s + (parseFloat(m.cantidad)||0) * (parseFloat(m.precio_unitario)||0), 0);
+  const totalMO = presState.manoObra.reduce((s, l) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio)||0); return s + (parseFloat(l.cantidad)||0) * precio; }, 0);
+  document.getElementById("subtotal-mat").textContent = totalMat.toFixed(2) + " €";
+  document.getElementById("subtotal-mo").textContent  = totalMO.toFixed(2) + " €";
+  document.getElementById("total-faena").textContent  = (totalMat + totalMO).toFixed(2) + " €";
+}
+function añadirMaterial() { presState.materiales.push({ descripcion: "Nuevo material", cantidad: 1, precio_unitario: 0 }); renderTablasMateriales(); actualizarTotales(); }
+function eliminarMaterial(i) { presState.materiales.splice(i, 1); renderTablasMateriales(); actualizarTotales(); }
+function añadirManoObra() { presState.manoObra.push({ descripcion: "Nueva partida", tipo: "hora", cantidad: 1, precio: 0 }); renderTablasManoObra(); actualizarTotales(); }
+function eliminarManoObra(i) { presState.manoObra.splice(i, 1); renderTablasManoObra(); actualizarTotales(); }
+async function guardarPresupuesto() {
+  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
+  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
+  const moConPrecio = presState.manoObra.map(l => ({ ...l, precio: l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0) }));
+  const r = await api("POST", `/faenas/${id}/presupuesto`, { tarifa_hora: tarifa, materiales: presState.materiales, mano_obra: moConPrecio });
+  if (r.ok) {
+    toast(`✓ Presupuesto guardado · Total: ${r.data.total.toFixed(2)} €`);
+    await cargarFaenas();
+    renderFaenas();
+  }
+  else toast(r.error, true);
+}
+async function abrirPresupuestoEnCursor() {
+  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
+  const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
+  const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
+}
+function abrirModalMateriales() { renderConsultaMat(); abrirModal("m-consulta-mat"); }
 function renderConsultaMat() {
   const q = (document.getElementById("q-consulta-mat")?.value || "").toLowerCase();
-  const mats = Array.isArray(state.materiales) ? state.materiales : [];
-  const lista = mats.filter(m => !q || String(m.nombre || "").toLowerCase().includes(q) || String(m.categoria || "").toLowerCase().includes(q));
+  const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
   const el = document.getElementById("consulta-mat-lista");
-  if (!el) return;
-  if (!lista.length) {
-    el.innerHTML = `<div class="empty" style="padding:20px">${mats.length ? "Sin resultados" : "No hay materiales cargados"}</div>`;
-    return;
-  }
-  el.innerHTML = lista.map((m, idx) => {
-    const precios = [...(m.precios || [])].sort((a, b) => Number(a.precio_unitario) - Number(b.precio_unitario));
-    const precioBase = precios.length ? Number(precios[0].precio_unitario) || 0 : 0;
-    const preciosHtml = precios.length
-      ? precios.map((p) => `<button type="button" class="btn btn-s btn-sm" data-mat-pick="${idx}" data-mat-precio="${Number(p.precio_unitario) || 0}" style="padding:6px 10px">${esc(p.proveedor)}: ${parseFloat(p.precio_unitario).toFixed(2)} €</button>`).join(" ")
-      : "";
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <strong style="font-size:0.85rem">${esc(m.nombre)}</strong>
-        <span style="font-size:0.72rem;color:#aaa">${esc(m.unidad)} · ${esc(m.categoria)}</span>
-      </div>
-      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-        ${preciosHtml}
-        <button type="button" class="btn btn-p btn-sm" data-mat-pick="${idx}" data-mat-precio="${precioBase}">Añadir a la partida</button>
-      </div>
-    </div>`;
-  }).join("");
-  enlazarClicMaterial(el, lista, usarPrecioEnPresupuesto);
+  if (!lista.length) { el.innerHTML = '<div class="empty" style="padding:20px">Sin resultados</div>'; return; }
+  el.innerHTML = lista.map(m => { const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario); return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:0.85rem">${m.nombre}</strong><span style="font-size:0.72rem;color:#aaa">${m.unidad} · ${m.categoria}</span></div><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${precios.map((p, i) => `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${p.proveedor}: ${parseFloat(p.precio_unitario).toFixed(2)}€<button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick="usarPrecioEnPresupuesto('${m.nombre.replace(/'/g,"\\'")}',${p.precio_unitario})">Usar</button></span>`).join("")}</div></div>`; }).join("");
 }
-function enlazarClicMaterial(el, lista, onPick) {
-  el.querySelectorAll("[data-mat-pick]").forEach(btn => {
-    btn.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const m = lista[Number(this.getAttribute("data-mat-pick"))];
-      if (!m) return;
-      onPick(m.nombre, Number(this.getAttribute("data-mat-precio")) || 0);
-    });
-  });
-}
-function aplicarMaterialAPartidaFaena(nombre, precio) {
-  const desc = document.getElementById("presupuesto-desc");
-  if (!desc) return;
-  desc.value = nombre;
-  const bloq = document.getElementById("presupuesto-bloque");
-  if (bloq && !String(bloq.value || "").trim()) bloq.value = nombre;
-  document.getElementById("presupuesto-tipo").value = "material";
-  document.getElementById("presupuesto-precio").value = Number(precio || 0);
-  const cant = document.getElementById("presupuesto-cant");
-  if (!cant.value) cant.value = 1;
-}
-async function usarPrecioEnPresupuesto(nombre, precio) {
-  if (!document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
-    const faenaId = document.getElementById("presupuesto-faena-id")?.value || state.detalleId || state.presupuestoParcial?.faenaId;
-    const bloque = document.getElementById("presupuesto-parcial-bloque")?.value || state.presupuestoParcial?.nombreDb || "";
-    if (!faenaId) { toast("Abre una faena primero", true); return; }
-    abrirPresupuestoItem(faenaId, null, bloque);
-  }
-  aplicarMaterialAPartidaFaena(nombre, precio);
-  cerrarModal("m-consulta-mat");
-  await guardarPresupuestoItem();
-}
+function usarPrecioEnPresupuesto(nombre, precio) { presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio }); renderTablasMateriales(); actualizarTotales(); cerrarModal("m-consulta-mat"); toast(`✓ ${nombre} añadido al presupuesto`); }
 
-function bloquesDePresupuesto(lista) {
-  const map = new Map();
-  for (const p of lista || []) {
-    const db = String(p.bloque || "").trim();
-    const n = db || "General";
-    if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
-    const g = map.get(n);
-    g.partidas.push(p);
-    const tot = parseFloat(p.total) || 0;
-    g.total += tot;
-    if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
-  }
-  for (const g of map.values()) {
-    g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
-  }
-  return [...map.values()];
-}
-
-function abrirPresupuestoParcial(faenaId, nombreDb) {
-  state.presupuestoParcial = { faenaId, nombreDb: nombreDb || "" };
-  document.getElementById("presupuesto-parcial-faena-id").value = faenaId;
-  document.getElementById("presupuesto-parcial-bloque").value = nombreDb || "";
-  renderPresupuestoParcial();
-  abrirModal("m-presupuesto-parcial");
-}
-
-function renderPresupuestoParcial() {
-  const st = state.presupuestoParcial;
-  if (!st) return;
-  const bloques = state.detalleActual.bloques || [];
-  const b = bloques.find(x => String(x.nombre_db || "") === String(st.nombreDb || ""));
-  const partidas = b ? (b.partidas || []) : [];
-  const nombre = b ? (b.nombre || "General") : (st.nombreDb || "General");
-  const total = b ? (parseFloat(b.total) || 0) : 0;
-  const nomJs = JSON.stringify(st.nombreDb || "");
-  document.getElementById("presupuesto-parcial-title").textContent = nombre;
-  document.getElementById("presupuesto-parcial-contenido").innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <span class="badge b-orange">${total.toFixed(2)} €</span>
-      <div class="btn-row" style="margin:0;gap:6px">
-        <button class="btn btn-s btn-sm" onclick='abrirPresupuestoItem(${st.faenaId}, null, ${nomJs})'>+ Partida</button>
-        <button class="btn btn-s btn-sm" onclick="abrirListaMaterialesPresupuesto()">Materiales</button>
-        ${b ? `<button class="btn btn-d btn-sm" onclick='borrarBloquePresupuesto(${st.faenaId}, ${nomJs})'>Eliminar presupuesto</button>` : ""}
-      </div>
-    </div>
-    ${partidas.length ? `
-      <table class="gastos-table">
-        <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
-        <tbody>
-          ${partidas.map(g => `<tr>
-            <td>${esc(g.descripcion)}</td>
-            <td><span class="badge b-orange">${esc(g.tipo)}</span></td>
-            <td>${g.cantidad ?? ""}</td>
-            <td>${g.precio_unitario != null ? parseFloat(g.precio_unitario).toFixed(2) + " €" : ""}</td>
-            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
-            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end">
-              <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${st.faenaId}, ${g.id})">Editar</button>
-              <button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${g.id}, ${st.faenaId})">×</button>
-            </div></td>
-          </tr>`).join("")}
-        </tbody>
-      </table>` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin partidas — añade una para este presupuesto</p>'}
-  `;
-}
-
-function cerrarPresupuestoParcial() {
-  state.presupuestoParcial = null;
-  cerrarModal("m-presupuesto-parcial");
-}
-
-function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
+function abrirPresupuestoItem(faenaId, itemId = null) {
   document.getElementById("presupuesto-faena-id").value = faenaId;
   document.getElementById("presupuesto-item-id").value = itemId || "";
   const item = itemId ? (state.detalleActual.presupuesto || []).find(p => String(p.id) === String(itemId)) : null;
-  document.getElementById("presupuesto-item-title").textContent = item ? "Editar partida" : "Nueva partida";
+  document.getElementById("presupuesto-item-title").textContent = item ? "✏️ Editar Partida de Presupuesto" : "📋 Nueva Partida de Presupuesto";
   document.getElementById("presupuesto-desc").value = item?.descripcion || "";
   document.getElementById("presupuesto-tipo").value = item?.tipo || "material";
   document.getElementById("presupuesto-cant").value = item?.cantidad ?? 1;
   document.getElementById("presupuesto-precio").value = item?.precio_unitario ?? 0;
-  const bloq = item ? String(item.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
-  document.getElementById("presupuesto-bloque").value = bloq;
+  cerrarModal("m-detalle");
   abrirModal("m-presupuesto-item");
 }
-
-async function refrescarDetallePresupuesto(faenaId) {
-  const parcialAbierto = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
-  const st = state.presupuestoParcial;
-  await verDetalle(parseInt(faenaId, 10), { soloConceptos: true });
-  if (parcialAbierto && st) {
-    state.presupuestoParcial = st;
-    document.getElementById("presupuesto-parcial-faena-id").value = st.faenaId;
-    document.getElementById("presupuesto-parcial-bloque").value = st.nombreDb || "";
-    renderPresupuestoParcial();
-    abrirModal("m-presupuesto-parcial");
-  }
-}
-
 async function guardarPresupuestoItem() {
   const faenaId = document.getElementById("presupuesto-faena-id").value;
   const itemId = document.getElementById("presupuesto-item-id").value;
-  const desc = (document.getElementById("presupuesto-desc").value || "").trim();
-  const bloque = (document.getElementById("presupuesto-bloque").value || "").trim() || desc;
-  if (!bloque) { toast("El concepto es obligatorio", true); return; }
-  const bloques = state.detalleActual.bloques || [];
-  const b = bloques.find(x => String(x.nombre_db || "") === String(bloque));
   const payload = {
     tipo: document.getElementById("presupuesto-tipo").value,
-    descripcion: desc || bloque,
+    descripcion: document.getElementById("presupuesto-desc").value,
     cantidad: parseFloat(document.getElementById("presupuesto-cant").value) || 1,
-    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0,
-    bloque,
-    incluido: b ? (b.incluido ? 1 : 0) : 1
+    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0
   };
   const r = itemId
     ? await api("PUT", `/presupuestos/${itemId}`, payload)
     : await api("POST", `/faenas/${faenaId}/presupuesto/item`, payload);
   if (r.ok) {
-    toast(itemId ? `Partida actualizada: ${r.data.total.toFixed(2)} €` : `Partida añadida: ${r.data.total.toFixed(2)} €`);
+    toast(itemId ? `✓ Partida actualizada: ${r.data.total.toFixed(2)} €` : `✓ Partida añadida: ${r.data.total.toFixed(2)} €`);
     cerrarModal("m-presupuesto-item");
-    const seguirParcial = document.getElementById("m-presupuesto-parcial")?.classList.contains("open");
-    if (!seguirParcial) state.presupuestoParcial = null;
-    await refrescarDetallePresupuesto(faenaId);
+    await cargarFaenas();
+    renderFaenas();
+    await verDetalle(parseInt(faenaId));
   } else toast(r.error, true);
 }
 async function eliminarPresupuestoItem(itemId, faenaId) {
   if (!confirm("¿Eliminar esta partida de presupuesto?")) return;
   const r = await api("DELETE", `/presupuestos/${itemId}`);
-  if (r.ok) await refrescarDetallePresupuesto(faenaId);
+  if (r.ok) {
+    await cargarFaenas();
+    renderFaenas();
+    verDetalle(faenaId);
+  }
   else toast(r.error, true);
-}
-
-async function nuevoBloquePresupuesto(faenaId) {
-  state.presupuestoParcial = null;
-  cerrarModal("m-presupuesto-parcial");
-  abrirPresupuestoItem(faenaId, null, "");
-}
-
-async function toggleBloquePresupuesto(faenaId, nombreDb, incluido) {
-  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", incluido });
-  if (!r.ok) { toast(r.error || "No se pudo cambiar", true); return; }
-  await refrescarDetallePresupuesto(faenaId);
-}
-
-async function borrarBloquePresupuesto(faenaId, nombreDb) {
-  if (!confirm("¿Borrar este presupuesto y todas sus partidas?")) return;
-  const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, { nombre: nombreDb || "", borrar: true });
-  if (!r.ok) { toast(r.error || "No se pudo borrar", true); return; }
-  cerrarPresupuestoParcial();
-  await refrescarDetallePresupuesto(faenaId);
-}
-
-async function reabrirFaena(id) {
-  const r = await api("PUT", `/faenas/${id}/fase`, { fase: "medicion" });
-  if (!r.ok) { toast(r.error || "No se pudo reabrir", true); return; }
-  toast("Faena reabierta en Medición");
-  await cargarFaenas();
-  state.faseVista = "medicion";
-  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
-    b.classList.toggle("active", b.dataset.fase === "medicion");
-  });
-  renderFaenas();
-}
-
-async function rescatarFaenaZip(input) {
-  const file = input.files && input.files[0];
-  input.value = "";
-  if (!file) return;
-  toast("Rescatando faena…");
-  const fd = new FormData();
-  fd.append("archivo", file, file.name || "faena.zip");
-  const r = await apiForm("POST", "/faenas/desde-zip", fd, 120000, API);
-  if (!r.ok) { toast(r.error || "No se pudo rescatar el ZIP", true); return; }
-  toast("Faena rescatada: " + ((r.data && r.data.numero) || ""));
-  await cargarFaenas();
-  state.faseVista = "medicion";
-  document.querySelectorAll("#fase-tabs .fase-tab").forEach(b => {
-    b.classList.toggle("active", b.dataset.fase === "medicion");
-  });
-  renderFaenas();
 }
 
 // ===== BOOK DE FOTOS =====
