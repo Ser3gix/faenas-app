@@ -1838,6 +1838,7 @@ function getServerUrl() {
   return "/api";
 }
 
+
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -1902,10 +1903,13 @@ async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.7
   try {
     const img = new Image();
     img.src = dataUrl;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
+    await Promise.race([
+      new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      }),
+      new Promise((_, reject) => { setTimeout(() => reject(new Error("timeout_img")), 8000); })
+    ]);
     const ratio = Math.min(1, maxWidth / Math.max(img.width, 1));
     const width = Math.max(1, Math.round(img.width * ratio));
     const height = Math.max(1, Math.round(img.height * ratio));
@@ -3139,6 +3143,8 @@ async function guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena) {
 
 let fotoFaenaId = null;
 let camaraStream = null;
+let camaraDestinoTicket = false;
+let _capturaTicketActiva = false;
 
 function cerrarCamara() {
   const overlay = document.getElementById("camara-overlay");
@@ -3149,9 +3155,12 @@ function cerrarCamara() {
   }
   const video = document.getElementById("camara-video");
   if (video) video.srcObject = null;
+  camaraDestinoTicket = false;
+  _capturaTicketActiva = false;
 }
 
 async function añadirFoto(faenaId) {
+  camaraDestinoTicket = false;
   fotoFaenaId = String(faenaId);
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     toast("Este navegador no abre la cámara aquí. Usa Galería o Chrome.", true);
@@ -3197,10 +3206,16 @@ async function dispararCamara() {
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
+  const paraTicket = camaraDestinoTicket;
   cerrarCamara();
   const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
   if (!blob) { toast("No se pudo hacer la foto", true); return; }
   const file = new File([blob], "camara.jpg", { type: "image/jpeg" });
+  if (paraTicket) {
+    navTo(1);
+    await _leerFotoTicket(file);
+    return;
+  }
   await procesarListaFotos([file]);
 }
 
@@ -4837,22 +4852,42 @@ function _leerTablaAnalisisTicket(containerId = "ticket-tabla-wrap", datosRefere
   };
 }
 
-function tomarFotoDirecta() {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  input.onchange = e => {
-    if (e.target.files[0]) _leerFotoTicket(e.target.files[0]);
-    input.remove();
-  };
-  input.click();
+async function tomarFotoDirecta() {
+  camaraDestinoTicket = true;
+  _capturaTicketActiva = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    _capturaTicketActiva = false;
+    toast("Este navegador no abre la cámara aquí. Usa Galería.", true);
+    document.getElementById("ticket-foto-movil")?.click();
+    return;
+  }
+  try {
+    camaraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById("camara-video");
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+    video.controls = false;
+    video.muted = true;
+    video.disablePictureInPicture = true;
+    video.srcObject = camaraStream;
+    try { await video.play(); } catch (e) {}
+    document.getElementById("camara-overlay").classList.add("open");
+  } catch (e) {
+    camaraDestinoTicket = false;
+    _capturaTicketActiva = false;
+    toast("Activa el permiso de cámara o usa Galería", true);
+    document.getElementById("ticket-foto-movil")?.click();
+  }
 }
 
 function ticketPreview(event) {
   const file = event.target.files[0];
   if (!file) return;
-  _leerFotoTicket(file);
+  _capturaTicketActiva = true;
+  _leerFotoTicket(file).finally(() => { _capturaTicketActiva = false; });
 }
 
 async function ticketDocumentoPreview(event) {
@@ -4883,28 +4918,45 @@ async function _leerFotoTicket(file) {
   const url = URL.createObjectURL(file);
   document.getElementById("ticket-img-movil").src = url;
   document.getElementById("ticket-preview-movil").style.display = "block";
+  // Mostrar Paso 2 al instante (no esperar a comprimir) para que Jimmi siempre esté disponible
+  document.getElementById("ticket-paso2").style.display = "block";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
   const info = document.getElementById("ticket-doc-info");
   if (info) info.style.display = "none";
   ticketDocumentoBase64 = null;
   ticketDocumentoNombre = "";
   ticketDocumentoMime = "";
-  document.getElementById("ticket-doc-movil").value = "";
+  try {
+    const docInput = document.getElementById("ticket-doc-movil");
+    if (docInput) docInput.value = "";
+  } catch (errDoc) {}
   const reader = new FileReader();
   reader.onload = async e => {
     try {
       const original = e.target.result;
-      ticketFotoBase64 = await comprimirImagenParaTicket(original, 1900, 0.82);
-      localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+      ticketFotoBase64 = original;
+      const comprimida = await comprimirImagenParaTicket(original, 1900, 0.82);
+      ticketFotoBase64 = comprimida || original;
+      try {
+        localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
+      } catch (lsErr) {}
+      document.getElementById("ticket-img-movil").src = ticketFotoBase64;
       URL.revokeObjectURL(url);
       document.getElementById("ticket-paso2").style.display = "block";
-      document.getElementById("ticket-paso3").style.display = "none";
       document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
     } catch (err) {
       ticketFotoBase64 = e.target.result;
-      localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
-      URL.revokeObjectURL(url);
+      try { localStorage.setItem("ticket_foto_temp", ticketFotoBase64); } catch (e2) {}
+      try { document.getElementById("ticket-img-movil").src = ticketFotoBase64; } catch (e3) {}
+      try { URL.revokeObjectURL(url); } catch (e4) {}
+      document.getElementById("ticket-paso2").style.display = "block";
+      document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
       toast("La imagen se ha enviado con compresión mínima por seguridad", true);
     }
+  };
+  reader.onerror = () => {
+    toast("No se pudo leer la imagen", true);
   };
   reader.readAsDataURL(file);
 }
@@ -4913,7 +4965,8 @@ function cancelarTicket(mostrarMensaje = true) {
   localStorage.removeItem("ticket_foto_temp"); localStorage.removeItem("ticket_prompt_temp");
   document.getElementById("ticket-json-movil").value = "";
   document.getElementById("ticket-foto-movil").value = "";
-  document.getElementById("ticket-doc-movil").value = "";
+  const docIn = document.getElementById("ticket-doc-movil");
+  if (docIn) docIn.value = "";
   document.getElementById("ticket-preview-movil").style.display = "none";
   document.getElementById("ticket-doc-info").style.display = "none";
   document.getElementById("ticket-paso2").style.display = "none";
@@ -4960,6 +5013,7 @@ async function procesarTicketConIA() {
     estado.style.color = "#666";
     estado.textContent = "Jimmi está leyendo el ticket…";
   }
+  const t0 = Date.now();
   try {
     const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
       method: "POST",
@@ -4990,6 +5044,7 @@ async function procesarTicketConIA() {
       toast(data.error || "Error al procesar con Jimmi", true);
     }
   } catch (e) {
+
     if (estado) {
       estado.style.color = "var(--red)";
       estado.textContent = `Error: ${e.message || "desconocido"}`;
@@ -5584,6 +5639,7 @@ let _salidaTrasSync = false;
 
 function preguntarSalidaSiPendiente() {
   if (_modalSalidaAbierto || _salidaTrasSync || state._syncEnCurso) return;
+  if (_capturaTicketActiva || camaraDestinoTicket) return;
   if (!hayCambiosSesion()) return;
   abrirTerminarSesion(true);
 }
@@ -6174,14 +6230,22 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=49", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=50", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
   });
   window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
   if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
+  window.addEventListener("pageshow", () => {
+    if (localStorage.getItem("ticket_foto_temp")) {
+      try { navTo(1); restaurarTicket(); } catch (e) {}
+    }
+  });
   document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && localStorage.getItem("ticket_foto_temp") && !ticketFotoBase64) {
+      try { restaurarTicket(); navTo(1); } catch (e) {}
+    }
     if (document.visibilityState === "hidden") preguntarSalidaSiPendiente();
   });
   window.addEventListener("pagehide", () => preguntarSalidaSiPendiente());
