@@ -2006,6 +2006,9 @@ async function cargarFotosFaena(f) {
 
 function cerrarFaena() {
   document.getElementById("faena-overlay").classList.remove("open");
+  // Al volver a la pestaña Faenas, el importe refleja ya los cambios temporales
+  try { renderFaenas(); } catch (e) {}
+  try { actualizarIndicadorSesion(); } catch (e) {}
 }
 
 // Actualizar tabs al swipe en panels
@@ -2728,6 +2731,7 @@ async function eliminarGastoPresupuesto(faenaId, gastoId, idx) {
   guardarCola(cola);
   renderPanelPresupuesto(f);
   if (state.presupuestoParcial) renderPresupuestoParcialMovil();
+  renderFaenas();
   toast("Línea eliminada (pendiente de sincronizar)");
 }
 
@@ -2784,6 +2788,7 @@ async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
   cola.presupuestos.push({ tipo: "bloque_toggle", faena_id: faenaId, body: { nombre: nombreDb || "", incluido } });
   guardarCola(cola);
   renderPanelPresupuesto(f);
+  renderFaenas();
 }
 
 async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
@@ -2806,6 +2811,7 @@ async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
   guardarCola(cola);
   cerrarPresupuestoParcialMovil();
   renderPanelPresupuesto(f);
+  renderFaenas();
   toast("Partida eliminada (pendiente de sincronizar)");
 }
 
@@ -3973,23 +3979,10 @@ async function cambiarFaseMovil(event, id, fase) {
 
 function totalPresupuestoVisibleFaena(f) {
   if (!f) return 0;
-  // Asegura lista + totales coherentes con el panel de presupuesto
+  // Mismo total temporal que el panel de presupuesto (incluye cola local)
   try { recalcularPresupuestoLocal(f); } catch (e) {}
   const ti = parseFloat(f.total_incluido);
-  if (!Number.isNaN(ti) && ti > 0) return ti;
-  if (Array.isArray(f.bloques) && f.bloques.length) {
-    return f.bloques.reduce((s, b) => {
-      if (!b.incluido) return s;
-      return s + (parseFloat(b.total_incluido) || parseFloat(b.total) || 0);
-    }, 0);
-  }
-  const lista = (f.presupuesto && f.presupuesto.length)
-    ? f.presupuesto
-    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
-  return lista.reduce((s, g) => {
-    if (Number(g.incluido ?? 1) === 0) return s;
-    return s + (parseFloat(g.total) || ((parseFloat(g.cantidad) || 0) * (parseFloat(g.precio_unitario) || 0)) || 0);
-  }, 0);
+  return Number.isNaN(ti) ? 0 : ti;
 }
 
 function renderFaenas() {
@@ -6181,7 +6174,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=48", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=49", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
