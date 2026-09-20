@@ -2292,31 +2292,25 @@ function renderPresupuestoParcialMovil() {
       </div>
     </div>
     <div class="presup-actions" style="margin:0 0 12px 0;flex-wrap:wrap">
-      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Partida</button>
-      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
-      <button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar presupuesto</button>
+      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Línea</button>
+      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">+ Material</button>
+      <button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar partida</button>
     </div>
-    ${partidas.length ? `
-      <table class="presup-tabla" style="margin-top:4px">
-        <thead><tr><th>Descripción</th><th>Cant.</th><th>Total</th><th></th></tr></thead>
-        <tbody>
-          ${partidas.map(g => `
-            <tr>
-              <td>
-                <strong>${escHtml(g.descripcion || "—")}</strong>
-                <div style="font-size:0.68rem;color:#888">${escHtml(g.tipo||"")} · ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
-              </td>
-              <td>${parseFloat(g.cantidad||1)}</td>
-              <td class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</td>
-              <td>
-                <div class="presup-actions" style="justify-content:flex-end;margin:0">
-                  <button class="btn btn-s btn-inline" onclick="abrirGastoPresupuesto(${fid},'${g.id}',${nom})">Editar</button>
-                  <button class="btn btn-d btn-inline" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Eliminar</button>
-                </div>
-              </td>
-            </tr>`).join("")}
-        </tbody>
-      </table>` : '<div class="presup-empty">Sin partidas</div>'}
+    ${partidas.length ? partidas.map(g => `
+      <div class="presup-line">
+        <div class="presup-concepto">
+          ${escHtml(g.descripcion || "—")}
+          <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${escHtml(g.tipo||"")}</span>
+          <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad||1)} x ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
+        </div>
+        <div style="text-align:right">
+          <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
+          <div class="presup-actions" style="justify-content:flex-end">
+            <button class="btn btn-s" onclick="abrirGastoPresupuesto(${fid},'${g.id}',${nom})">Editar</button>
+            <button class="btn btn-d" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Eliminar</button>
+          </div>
+        </div>
+      </div>`).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
   `;
 }
 
@@ -2345,15 +2339,20 @@ function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
 }
 
 function abrirListaMaterialesPresupuestoMovil() {
-  // Igual que el PC: se puede abrir desde el listado o desde un presupuesto abierto.
+  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    toast("Abre una partida primero para añadir el material dentro", true);
+    return;
+  }
+  // Asegura el concepto/partida actual en el formulario oculto
   const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
-  if (!faenaId) { toast("Abre una faena primero", true); return; }
-  if (state.presupuestoParcial) {
-    const bloq = document.getElementById("gasto-bloque-txt");
-    if (bloq) bloq.value = String(state.presupuestoParcial.nombreDb || "");
-    if (!document.getElementById("gasto-faena-id")?.value) {
-      document.getElementById("gasto-faena-id").value = faenaId;
-    }
+  const bloque = state.presupuestoParcial
+    ? String(state.presupuestoParcial.nombreDb || "")
+    : (document.getElementById("gasto-bloque-txt")?.value || "");
+  if (faenaId && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    abrirGastoPresupuesto(faenaId, "", bloque);
+    cerrarModal("m-gasto-presupuesto"); // deja campos rellenados sin tapar la lista
+  } else if (document.getElementById("gasto-bloque-txt") && state.presupuestoParcial) {
+    document.getElementById("gasto-bloque-txt").value = String(state.presupuestoParcial.nombreDb || "");
   }
   const q = document.getElementById("q-consulta-mat-mov");
   if (q) q.value = "";
@@ -2402,31 +2401,28 @@ function renderConsultaMatMovil() {
 }
 
 async function usarMaterialEnPresupuestoMovil(nombre, precio) {
-  // Misma lógica que usarPrecioEnPresupuesto del PC.
   const faenaId = document.getElementById("gasto-faena-id")?.value || state.presupuestoParcial?.faenaId || state.faenaActualId;
   if (!faenaId) { toast("Abre una faena primero", true); return; }
+  if (!state.presupuestoParcial && !document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
+    toast("Abre una partida para meter el material dentro", true);
+    return;
+  }
+  // El material es una LÍNEA dentro de la partida abierta; nunca crea otra partida/concepto.
+  const bloque = state.presupuestoParcial
+    ? String(state.presupuestoParcial.nombreDb || "")
+    : String(document.getElementById("gasto-bloque-txt")?.value || "").trim();
   if (!document.getElementById("m-gasto-presupuesto")?.classList.contains("open")) {
-    const bloque = state.presupuestoParcial
-      ? String(state.presupuestoParcial.nombreDb || "")
-      : String(document.getElementById("gasto-bloque-txt")?.value || "").trim();
     abrirGastoPresupuesto(faenaId, "", bloque);
   }
   if (!document.getElementById("gasto-faena-id")?.value) {
     toast("No se pudo abrir la partida", true);
     return;
   }
-  // Nueva partida (línea), no editar otra
-  document.getElementById("gasto-id").value = "";
-  document.getElementById("gasto-title").textContent = "Nueva partida";
+  document.getElementById("gasto-id").value = ""; // siempre nueva línea, no editar otra
+  document.getElementById("gasto-title").textContent = "Nueva línea";
   document.getElementById("gasto-desc").value = nombre;
   const bloq = document.getElementById("gasto-bloque-txt");
-  if (state.presupuestoParcial) {
-    // Dentro de un presupuesto abierto: el material queda en ESE presupuesto (como en el PC).
-    if (bloq) bloq.value = String(state.presupuestoParcial.nombreDb || "");
-  } else if (bloq && !String(bloq.value || "").trim()) {
-    // Sin presupuesto abierto: igual que el PC (el material nombra el nuevo presupuesto).
-    bloq.value = nombre;
-  }
+  if (bloq) bloq.value = bloque;
   document.getElementById("gasto-tipo").value = "material";
   document.getElementById("gasto-precio").value = Number(precio || 0);
   const cant = document.getElementById("gasto-cant");
@@ -2439,8 +2435,14 @@ async function guardarGastoPresupuesto() {
   const faenaId = document.getElementById("gasto-faena-id").value;
   const gastoId = document.getElementById("gasto-id").value;
   const descripcion = document.getElementById("gasto-desc").value.trim();
+  const tipo = document.getElementById("gasto-tipo").value.trim() || "otro";
   const cantidad = parseFloat(document.getElementById("gasto-cant").value) || 1;
   const precio_unitario = parseFloat(document.getElementById("gasto-precio").value) || 0;
+  if (!descripcion && !document.getElementById("gasto-bloque-txt").value.trim() && !state.presupuestoParcial) {
+    toast("El concepto es obligatorio", true);
+    return;
+  }
+  if (!descripcion) { toast("El detalle de la línea es obligatorio", true); return; }
   const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || { presupuesto: [], bloques: [] };
@@ -2448,14 +2450,13 @@ async function guardarGastoPresupuesto() {
     const base = getServerUrl();
     const url = gastoId ? `${base}/presupuestos/${gastoId}` : `${base}/faenas/${faenaId}/presupuesto/item`;
     const method = gastoId ? "PUT" : "POST";
-    // Igual que el PC: si hay presupuesto parcial abierto, la línea pertenece a ese bloque.
+    // Si estamos dentro de una partida (parcial), el material/línea NO cambia de partida.
     let bloque;
     if (state.presupuestoParcial) {
       bloque = String(state.presupuestoParcial.nombreDb || "");
     } else {
-      bloque = (document.getElementById("gasto-bloque-txt").value || "").trim() || descripcion;
+      bloque = (document.getElementById("gasto-bloque-txt").value || "").trim();
     }
-    if (!bloque && !descripcion) { toast("El concepto es obligatorio", true); return; }
     const descFinal = descripcion || bloque;
     const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil((f.presupuesto || []).length ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"));
     const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
@@ -2476,7 +2477,7 @@ async function guardarGastoPresupuesto() {
     cerrarModal("m-gasto-presupuesto");
     if (!seguirParcial) cerrarPresupuestoParcialMovil();
     else if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast(gastoId ? `Partida actualizada` : `Partida añadida`);
+    toast(gastoId ? "Línea actualizada" : "Línea añadida a la partida");
   } catch (e) {
     console.error(e);
     const msg = String(e && e.name === "TimeoutError" ? "Tardó demasiado (red lenta)" : (e && e.message) || e).slice(0, 80);
@@ -2485,7 +2486,7 @@ async function guardarGastoPresupuesto() {
 }
 
 async function eliminarGastoPresupuesto(faenaId, gastoId) {
-  if (!confirm("¿Eliminar esta partida?")) return;
+  if (!confirm("¿Eliminar esta línea de la partida?")) return;
   try {
     const r = await fetch(`${getServerUrl()}/presupuestos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -2493,10 +2494,10 @@ async function eliminarGastoPresupuesto(faenaId, gastoId) {
     if (!d.ok) throw new Error(d.error || "Error");
     await recargarPresupuestoFaena(faenaId);
     if (state.presupuestoParcial) renderPresupuestoParcialMovil();
-    toast("✓ Partida eliminada");
+    toast("✓ Línea eliminada");
   } catch (e) {
     console.error(e);
-    toast("No se pudo eliminar la partida", true);
+    toast("No se pudo eliminar la línea", true);
   }
 }
 
@@ -2546,7 +2547,7 @@ async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
 }
 
 async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
-  if (!confirm("¿Eliminar este presupuesto y todas sus partidas?")) return;
+  if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto/bloque`, {
       method: "PUT",
@@ -2558,9 +2559,9 @@ async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
     if (!d.ok) throw new Error(d.error || "Error");
     cerrarPresupuestoParcialMovil();
     await recargarPresupuestoFaena(faenaId);
-    toast("Presupuesto eliminado");
+    toast("Partida eliminada");
   } catch (e) {
-    toast("No se pudo eliminar el presupuesto", true);
+    toast("No se pudo eliminar la partida", true);
   }
 }
 
@@ -5636,7 +5637,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=37", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=40", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
