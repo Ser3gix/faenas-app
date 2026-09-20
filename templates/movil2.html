@@ -1481,7 +1481,10 @@ function guardarCola(c, opts) {
 
 function esIdFaenaTemporal(id) {
   const s = String(id || "");
-  return !s || s.startsWith("temp") || s.startsWith("TMP") || s.startsWith("TEMP");
+  if (!s) return true;
+  // Faenas offline: TMP..., temp..., TEMP-F... — no confundir con TEMP-P- (líneas de presupuesto)
+  if (s.startsWith("TEMP-P-") || s.startsWith("TEMP-CLI-")) return false;
+  return s.startsWith("temp") || s.startsWith("TMP") || s.startsWith("TEMP-F") || s.startsWith("TEMP_");
 }
 
 function idsFaenasPendientesEliminar() {
@@ -1515,7 +1518,7 @@ function idsFaenasVivas() {
 function faenaIdSigueViva(id, vivos) {
   if (id == null || id === "" || id === 0 || id === "0") return true;
   const s = String(id);
-  if (s.startsWith("temp") || s.startsWith("TEMP-")) return true;
+  if (esIdFaenaTemporal(s) || s.startsWith("TEMP-P-") || s.startsWith("TEMP-CLI-")) return true;
   return vivos.has(s);
 }
 
@@ -1539,6 +1542,62 @@ function aplicarTerminadasServidor(lista) {
   localStorage.setItem("terminadas_cache", JSON.stringify(state.terminadas));
 }
 
+function aplicarColaPresupuestosLocal(ops) {
+  const lista = Array.isArray(ops) ? ops : (cargarCola().presupuestos || []);
+  if (!lista.length) return;
+  const touched = new Set();
+  for (const op of lista) {
+    if (!op || !op.faena_id) continue;
+    const f = state.faenas.find(x => String(x.id || x._tempId) === String(op.faena_id));
+    if (!f) continue;
+    asegurarPresupuestoLista(f);
+    const body = op.body || {};
+    const total = (parseFloat(body.cantidad) || 0) * (parseFloat(body.precio_unitario) || 0);
+    if (op.tipo === "item_crear") {
+      const tid = String(op.temp_id || "");
+      if (!tid) continue;
+      const existe = (f.presupuesto || []).some(x => String(x.id) === tid);
+      if (!existe) {
+        f.presupuesto.push({
+          id: tid,
+          faena_id: op.faena_id,
+          descripcion: body.descripcion || "",
+          tipo: body.tipo || "material",
+          cantidad: body.cantidad ?? 1,
+          precio_unitario: body.precio_unitario ?? 0,
+          bloque: body.bloque || "",
+          incluido: body.incluido ?? 1,
+          total
+        });
+      } else {
+        const linea = f.presupuesto.find(x => String(x.id) === tid);
+        if (linea) Object.assign(linea, body, { total });
+      }
+    } else if (op.tipo === "item_editar") {
+      const linea = (f.presupuesto || []).find(x => String(x.id) === String(op.id));
+      if (linea) Object.assign(linea, body, { total });
+    } else if (op.tipo === "item_eliminar") {
+      f.presupuesto = (f.presupuesto || []).filter(x => String(x.id) !== String(op.id));
+    } else if (op.tipo === "bloque_borrar") {
+      const nom = String((op.body && op.body.nombre) || "").trim();
+      f.presupuesto = (f.presupuesto || []).filter(p => String(p.bloque || "").trim() !== nom);
+    } else if (op.tipo === "bloque_toggle") {
+      const nom = String((op.body && op.body.nombre) || "").trim();
+      const inc = op.body && op.body.incluido ? 1 : 0;
+      (f.presupuesto || []).forEach(p => {
+        if (String(p.bloque || "").trim() === nom) p.incluido = inc;
+      });
+    } else {
+      continue;
+    }
+    recalcularPresupuestoLocal(f);
+    touched.add(String(f.id || f._tempId));
+  }
+  if (touched.size) {
+    try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
+  }
+}
+
 function aplicarRespuestaFaenas(d) {
   if (!d || !d.ok) return false;
   let ok = false;
@@ -1547,6 +1606,8 @@ function aplicarRespuestaFaenas(d) {
     aplicarTerminadasServidor(d.terminadas);
     state._terminadasDeSync = true;
   }
+  // Tras pisar con la nube, reaplicar cambios locales pendientes de presupuesto
+  try { aplicarColaPresupuestosLocal(); } catch (e) {}
   return ok;
 }
 
@@ -5541,8 +5602,9 @@ async function aceptarSalidaSync() {
       actualizarIndicadorSesion();
       return;
     }
-    state._sesionSucia = false;
-    guardarSnapshotSesion();
+    const quedan = contarPendientesCola();
+    state._sesionSucia = quedan > 0;
+    if (!quedan) guardarSnapshotSesion();
     actualizarIndicadorSesion();
     _salidaTrasSync = false;
   } catch (e) {
@@ -5648,82 +5710,91 @@ async function sincronizar() {
       try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:faenasAbortTimeout(6000)}); } catch(e) {}
     }
 
-    // Presupuestos (partidas / líneas / bloques)
-    const mapaPresup = {};
+    // Presupuestos (partidas / líneas / bloques) — lote en un solo request
     let presupOk = 0;
     let presupFail = 0;
-    const presupPend = [];
+    let presupPend = [];
     const opsPres = cola.presupuestos || [];
     if (opsPres.length) {
       estado.textContent = `✓ Subiendo ${opsPres.length} cambio${opsPres.length>1?"s":""} de presupuesto a la nube...`;
-      for (const op of opsPres) {
+      const opsEnvio = opsPres.map(op => {
+        const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
+        return { ...op, faena_id: faenaId };
+      });
+      const opsListas = opsEnvio.filter(op => op.faena_id && !esIdFaenaTemporal(op.faena_id));
+      const opsTemp = opsEnvio.filter(op => !op.faena_id || esIdFaenaTemporal(op.faena_id));
+      presupPend = [...opsTemp];
+      presupFail = opsTemp.length;
+      if (opsListas.length) {
         try {
-          const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
-          if (!faenaId || String(faenaId).startsWith("temp") || String(faenaId).startsWith("TEMP")) {
-            presupFail++;
-            presupPend.push(op);
-            continue;
+          const r = await fetch(`${API}/sync/presupuestos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ operaciones: opsListas }),
+            signal: faenasAbortTimeout(60000)
+          });
+          const d = await r.json().catch(() => ({ ok: false }));
+          if (r.ok && d.ok) {
+            presupOk = Number(d.data?.aplicados || 0);
+            const pendServidor = Array.isArray(d.data?.pendientes) ? d.data.pendientes : [];
+            if (pendServidor.length) {
+              presupPend = presupPend.concat(pendServidor);
+              presupFail += pendServidor.length;
+            }
+            if (d.data?.errores?.length) {
+              console.warn("Errores sync presupuestos:", d.data.errores);
+            }
+          } else {
+            // Fallback: una a una si el endpoint lote no está disponible
+            for (const op of opsListas) {
+              try {
+                const faenaId = op.faena_id;
+                let r1 = null, okOp = false;
+                if (op.tipo === "item_crear") {
+                  r1 = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+                  });
+                  if (r1.ok) { const x = await r1.json(); okOp = !!x.ok; }
+                } else if (op.tipo === "item_editar") {
+                  const id = op.id;
+                  if (String(id).startsWith("TEMP-P-")) {
+                    r1 = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+                    });
+                  } else {
+                    r1 = await fetch(`${API}/presupuestos/${id}`, {
+                      method: "PUT", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+                    });
+                  }
+                  if (r1 && r1.ok) { const x = await r1.json(); okOp = !!x.ok; }
+                } else if (op.tipo === "item_eliminar") {
+                  if (String(op.id).startsWith("TEMP-P-")) okOp = true;
+                  else {
+                    r1 = await fetch(`${API}/presupuestos/${op.id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+                    if (r1.ok) { const x = await r1.json().catch(() => ({ ok: true })); okOp = x.ok !== false; }
+                  }
+                } else if (op.tipo === "bloque_toggle" || op.tipo === "bloque_borrar") {
+                  r1 = await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+                  });
+                  if (r1.ok) { const x = await r1.json(); okOp = !!x.ok; }
+                }
+                if (okOp) presupOk++;
+                else { presupFail++; presupPend.push(op); }
+              } catch (e) {
+                presupFail++;
+                presupPend.push(op);
+              }
+            }
           }
-          let r = null;
-          let okOp = false;
-          if (op.tipo === "item_crear") {
-            r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
-            });
-            if (r.ok) {
-              const d = await r.json();
-              if (d.ok) {
-                okOp = true;
-                if (d.data && op.temp_id) mapaPresup[op.temp_id] = d.data.id;
-              }
-            }
-          } else if (op.tipo === "item_editar") {
-            let id = mapaPresup[op.id] || op.id;
-            if (String(id).startsWith("TEMP-P-")) {
-              r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
-              });
-            } else {
-              r = await fetch(`${API}/presupuestos/${id}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
-              });
-            }
-            if (r && r.ok) {
-              const d = await r.json();
-              if (d.ok) {
-                okOp = true;
-                if (d.data && d.data.id && op.id) mapaPresup[op.id] = d.data.id;
-              }
-            }
-          } else if (op.tipo === "item_eliminar") {
-            const id = mapaPresup[op.id] || op.id;
-            if (String(id).startsWith("TEMP-P-")) { okOp = true; }
-            else {
-              r = await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
-              if (r.ok) {
-                const d = await r.json().catch(() => ({ ok: true }));
-                okOp = d.ok !== false;
-              }
-            }
-          } else if (op.tipo === "bloque_toggle" || op.tipo === "bloque_borrar") {
-            r = await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
-              method: "PUT", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
-            });
-            if (r.ok) {
-              const d = await r.json();
-              okOp = !!d.ok;
-            }
-          }
-          if (okOp) presupOk++;
-          else { presupFail++; presupPend.push(op); }
         } catch (e) {
-          presupFail++;
-          presupPend.push(op);
-          console.error("Error sync presupuesto:", e);
+          console.error("Error sync presupuestos lote:", e);
+          presupFail += opsListas.length;
+          presupPend = presupPend.concat(opsListas);
         }
       }
       if (presupOk) estado.textContent = `✓ ${presupOk} presupuesto${presupOk>1?"s":""} en la nube`;
@@ -5865,6 +5936,11 @@ async function sincronizar() {
     guardarCola(colaLimpia, { silencioso: true });
     estado.textContent = "✓ Actualizando datos desde la nube...";
     await cargarDatosIniciales(true, true);
+    // Si quedaron presupuestos pendientes, reaplicar sobre lo descargado
+    if (presupPend.length) {
+      aplicarColaPresupuestosLocal(presupPend);
+      refrescarPantallaActual();
+    }
     // Reaplicar borrados locales de materiales que aún no subieron
     if (matElimPend.length) {
       const kill = new Set(matElimPend.map(String));
@@ -5889,6 +5965,13 @@ async function sincronizar() {
     if (matElimOk) partes.push(`${matElimOk} material${matElimOk>1?"es":""}`);
     if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
     if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
+    // Si había cambios de presupuesto y TODOS fallaron, no dar por buena la sync
+    if (opsPres.length && presupOk === 0 && presupFail > 0) {
+      estado.textContent = "✗ No se pudieron subir los presupuestos";
+      estado.className = "sync-estado sync-error";
+      toast("Los presupuestos no se guardaron en la nube. Siguen en el móvil", true);
+      return false;
+    }
     estado.textContent = partes.length ? `✓ Nube actualizada · ${partes.join(" · ")}` : "✓ Nube actualizada";
     estado.className = "sync-estado sync-ok";
     toast(partes.length ? `✓ Subido a la nube: ${partes.join(" · ")}` : "✓ Sincronizado con la nube");
@@ -6075,7 +6158,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=46", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=47", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

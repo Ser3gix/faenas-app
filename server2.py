@@ -2258,10 +2258,15 @@ def sincronizar_importe_faena(conn, faena_id):
 
 @app.route("/api/faenas/<int:id>/presupuesto/item", methods=["POST"])
 def crear_presupuesto_item(id):
-    datos = request.json
+    datos = request.json or {}
     cantidad = float(datos.get("cantidad", 1) or 1)
     precio_unitario = float(datos.get("precio_unitario", 0) or 0)
     total = cantidad * precio_unitario
+    # Si viene "bloque" (aunque sea ""), respetarlo. Solo usar descripcion si no se envió bloque.
+    if "bloque" in datos:
+        bloque = datos.get("bloque") or ""
+    else:
+        bloque = datos.get("descripcion") or ""
     conn = get_connection()
     cursor = _insertar_partida_presupuesto(
         conn,
@@ -2271,7 +2276,7 @@ def crear_presupuesto_item(id):
         cantidad,
         precio_unitario,
         total,
-        datos.get("bloque") or datos.get("descripcion") or "",
+        bloque,
         1 if datos.get("incluido", 1) not in (0, "0", False, "false") else 0,
     )
     total_faena = sincronizar_importe_faena(conn, id)
@@ -2390,6 +2395,219 @@ def gestionar_bloque_presupuesto(id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "data": {"importe": total_faena}})
+
+
+def _faena_id_sync_ok(valor):
+    try:
+        n = int(valor)
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route("/api/sync/presupuestos", methods=["POST"])
+def sync_presupuestos():
+    """Aplica en lote la cola de presupuestos del móvil."""
+    datos = request.json or {}
+    operaciones = datos.get("operaciones") or datos.get("presupuestos") or []
+    if not isinstance(operaciones, list):
+        return jsonify({"ok": False, "error": "operaciones inválidas"}), 400
+
+    aplicados = []
+    pendientes = []
+    errores = []
+    mapa_presup = {}
+
+    for idx, op in enumerate(operaciones):
+        if not isinstance(op, dict):
+            pendientes.append(op)
+            errores.append({"i": idx, "error": "op inválida"})
+            continue
+        tipo = str(op.get("tipo") or "")
+        faena_id = _faena_id_sync_ok(op.get("faena_id"))
+        if not faena_id:
+            pendientes.append(op)
+            errores.append({"i": idx, "tipo": tipo, "error": "faena_id temporal o inválido"})
+            continue
+        try:
+            if tipo == "item_crear":
+                body = op.get("body") or {}
+                cantidad = float(body.get("cantidad", 1) or 1)
+                precio_unitario = float(body.get("precio_unitario", 0) or 0)
+                total = cantidad * precio_unitario
+                if "bloque" in body:
+                    bloque = body.get("bloque") or ""
+                else:
+                    bloque = body.get("descripcion") or ""
+                conn = get_connection()
+                cursor = _insertar_partida_presupuesto(
+                    conn,
+                    faena_id,
+                    body.get("tipo", "material"),
+                    body.get("descripcion", ""),
+                    cantidad,
+                    precio_unitario,
+                    total,
+                    bloque,
+                    1 if body.get("incluido", 1) not in (0, "0", False, "false") else 0,
+                )
+                sincronizar_importe_faena(conn, faena_id)
+                conn.commit()
+                nuevo_id = cursor.lastrowid
+                conn.close()
+                temp_id = op.get("temp_id")
+                if temp_id:
+                    mapa_presup[str(temp_id)] = nuevo_id
+                aplicados.append({"i": idx, "tipo": tipo, "id": nuevo_id, "temp_id": temp_id})
+            elif tipo == "item_editar":
+                body = op.get("body") or {}
+                raw_id = mapa_presup.get(str(op.get("id")), op.get("id"))
+                if str(raw_id).startswith("TEMP-P-"):
+                    # aún no existe en nube: crear
+                    cantidad = float(body.get("cantidad", 1) or 1)
+                    precio_unitario = float(body.get("precio_unitario", 0) or 0)
+                    total = cantidad * precio_unitario
+                    if "bloque" in body:
+                        bloque = body.get("bloque") or ""
+                    else:
+                        bloque = body.get("descripcion") or ""
+                    conn = get_connection()
+                    cursor = _insertar_partida_presupuesto(
+                        conn,
+                        faena_id,
+                        body.get("tipo", "material"),
+                        body.get("descripcion", ""),
+                        cantidad,
+                        precio_unitario,
+                        total,
+                        bloque,
+                        1 if body.get("incluido", 1) not in (0, "0", False, "false") else 0,
+                    )
+                    sincronizar_importe_faena(conn, faena_id)
+                    conn.commit()
+                    nuevo_id = cursor.lastrowid
+                    conn.close()
+                    mapa_presup[str(op.get("id"))] = nuevo_id
+                    aplicados.append({"i": idx, "tipo": tipo, "id": nuevo_id})
+                else:
+                    pid = int(raw_id)
+                    cantidad = float(body.get("cantidad", 1) or 1)
+                    precio_unitario = float(body.get("precio_unitario", 0) or 0)
+                    total = cantidad * precio_unitario
+                    conn = get_connection()
+                    fila = conn.execute("SELECT faena_id FROM presupuestos_faena WHERE id=?", (pid,)).fetchone()
+                    if not fila:
+                        conn.close()
+                        pendientes.append(op)
+                        errores.append({"i": idx, "tipo": tipo, "error": "partida no encontrada"})
+                        continue
+                    bloque = body.get("bloque")
+                    incluido = body.get("incluido")
+                    try:
+                        if bloque is not None or incluido is not None:
+                            incluido_val = 1 if incluido is None else (0 if incluido in (0, "0", False, "false") else 1)
+                            cursor = conn.execute(
+                                """UPDATE presupuestos_faena
+                                   SET tipo=?, descripcion=?, cantidad=?, precio_unitario=?, total=?, bloque=?, incluido=?
+                                   WHERE id=?""",
+                                (
+                                    body.get("tipo", "material"),
+                                    body.get("descripcion", ""),
+                                    cantidad,
+                                    precio_unitario,
+                                    total,
+                                    _nombre_bloque(bloque) if bloque is not None else "",
+                                    incluido_val,
+                                    pid,
+                                ),
+                            )
+                        else:
+                            raise Exception("sin columnas")
+                    except Exception:
+                        cursor = conn.execute(
+                            """UPDATE presupuestos_faena
+                               SET tipo=?, descripcion=?, cantidad=?, precio_unitario=?, total=?
+                               WHERE id=?""",
+                            (
+                                body.get("tipo", "material"),
+                                body.get("descripcion", ""),
+                                cantidad,
+                                precio_unitario,
+                                total,
+                                pid,
+                            ),
+                        )
+                    sincronizar_importe_faena(conn, fila["faena_id"])
+                    conn.commit()
+                    conn.close()
+                    if cursor.rowcount == 0:
+                        pendientes.append(op)
+                        errores.append({"i": idx, "tipo": tipo, "error": "sin cambios"})
+                        continue
+                    aplicados.append({"i": idx, "tipo": tipo, "id": pid})
+            elif tipo == "item_eliminar":
+                raw_id = mapa_presup.get(str(op.get("id")), op.get("id"))
+                if str(raw_id).startswith("TEMP-P-"):
+                    aplicados.append({"i": idx, "tipo": tipo, "id": raw_id, "omitido": True})
+                    continue
+                pid = int(raw_id)
+                conn = get_connection()
+                fila = conn.execute("SELECT faena_id FROM presupuestos_faena WHERE id=?", (pid,)).fetchone()
+                cursor = conn.execute("DELETE FROM presupuestos_faena WHERE id=?", (pid,))
+                if fila:
+                    sincronizar_importe_faena(conn, fila["faena_id"])
+                conn.commit()
+                conn.close()
+                if cursor.rowcount == 0:
+                    # ya no existe: consideramos OK (idempotente)
+                    aplicados.append({"i": idx, "tipo": tipo, "id": pid, "ya_borrado": True})
+                else:
+                    aplicados.append({"i": idx, "tipo": tipo, "id": pid})
+            elif tipo in ("bloque_toggle", "bloque_borrar"):
+                body = op.get("body") or {}
+                nombre = _nombre_bloque(body.get("nombre"))
+                borrar = bool(body.get("borrar")) or tipo == "bloque_borrar"
+                conn = get_connection()
+                filas = filas_a_lista(conn.execute(
+                    "SELECT * FROM presupuestos_faena WHERE faena_id=? ORDER BY id", (faena_id,)
+                ).fetchall())
+                ids = [p["id"] for p in filas if _nombre_bloque(p.get("bloque")) == nombre]
+                if borrar:
+                    for pid in ids:
+                        conn.execute("DELETE FROM presupuestos_faena WHERE id=?", (pid,))
+                elif "incluido" in body:
+                    inc = 0 if body.get("incluido") in (0, "0", False, "false") else 1
+                    try:
+                        conn.execute(
+                            "UPDATE presupuestos_faena SET incluido=? WHERE faena_id=? AND TRIM(COALESCE(bloque,''))=?",
+                            (inc, faena_id, nombre),
+                        )
+                    except Exception as e:
+                        conn.close()
+                        pendientes.append(op)
+                        errores.append({"i": idx, "tipo": tipo, "error": str(e)})
+                        continue
+                sincronizar_importe_faena(conn, faena_id)
+                conn.commit()
+                conn.close()
+                aplicados.append({"i": idx, "tipo": tipo, "nombre": nombre})
+            else:
+                pendientes.append(op)
+                errores.append({"i": idx, "tipo": tipo, "error": "tipo desconocido"})
+        except Exception as e:
+            pendientes.append(op)
+            errores.append({"i": idx, "tipo": tipo, "error": str(e)})
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "aplicados": len(aplicados),
+            "pendientes": pendientes,
+            "detalle": aplicados,
+            "errores": errores,
+            "mapa": mapa_presup,
+        },
+    })
 
 
 # -------------------- PROMPTS --------------------
