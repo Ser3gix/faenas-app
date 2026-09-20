@@ -1450,7 +1450,8 @@ function cargarCola() {
     bookPendiente:           JSON.parse(localStorage.getItem("cola_bookPendiente")|| "[]"),
     faenasEliminar:         JSON.parse(localStorage.getItem("cola_faenasEliminar")|| "[]"),
     tiempos:                JSON.parse(localStorage.getItem("cola_tiempos") || "[]"),
-    presupuestos:           JSON.parse(localStorage.getItem("cola_presupuestos") || "[]")
+    presupuestos:           JSON.parse(localStorage.getItem("cola_presupuestos") || "[]"),
+    materialesEliminar:     JSON.parse(localStorage.getItem("cola_materialesEliminar") || "[]")
   };
 }
 
@@ -1470,6 +1471,7 @@ function guardarCola(c, opts) {
   localStorage.setItem("cola_bookPendiente",           JSON.stringify(c.bookPendiente || []));
   localStorage.setItem("cola_tiempos",                 JSON.stringify(c.tiempos || []));
   localStorage.setItem("cola_presupuestos",            JSON.stringify(c.presupuestos || []));
+  localStorage.setItem("cola_materialesEliminar",      JSON.stringify(c.materialesEliminar || []));
   const eliminar = c.faenasEliminar !== undefined
     ? (c.faenasEliminar || [])
     : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
@@ -4429,16 +4431,17 @@ function renderMateriales() {
     const id = document.getElementById("material-editar-id").value;
     const m = state.materiales.find(x => String(x.id) === String(id));
     if (!m || !confirm(`¿Eliminar el material "${m.nombre}" y sus precios?`)) return;
-    try {
-      const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "DELETE" });
-      const d = await r.json();
-      if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo eliminar");
-      state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
-      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-      cerrarModal("m-material");
-      renderMateriales();
-      toast("✓ Material eliminado");
-    } catch (e) { toast(e.message || "Error al eliminar material", true); }
+    state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    const cola = cargarCola();
+    cola.materialesEliminar = cola.materialesEliminar || [];
+    if (!String(id).startsWith("temp")) {
+      if (!cola.materialesEliminar.some(x => String(x) === String(id))) cola.materialesEliminar.push(id);
+    }
+    guardarCola(cola);
+    cerrarModal("m-material");
+    renderMateriales();
+    toast("Material eliminado (pendiente de sincronizar)");
   }
 
 async function editarMaterial(id) {
@@ -4453,27 +4456,38 @@ async function editarMaterial(id) {
   const definicion = prompt("Definición:", m.definicion || "");
   if (definicion === null) return;
   try {
-    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({nombre, unidad, categoria, definicion}) });
+    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({nombre, unidad, categoria, definicion}), signal: faenasAbortTimeout(10000) });
     const d = await r.json();
     if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo actualizar");
-    await cargarMateriales();
+    Object.assign(m, { nombre, unidad, categoria, definicion });
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
     renderMateriales();
     toast("✓ Material actualizado");
-  } catch (e) { toast(e.message || "Error al actualizar material", true); }
+  } catch (e) {
+    Object.assign(m, { nombre, unidad, categoria, definicion });
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    const cola = cargarCola();
+    cola.definicionesPendientes = cola.definicionesPendientes || [];
+    cola.definicionesPendientes.push({ id, definicion, nombre, unidad, categoria, _editar: true });
+    guardarCola(cola);
+    renderMateriales();
+    toast("Material guardado (pendiente de sincronizar)");
+  }
 }
 
 async function eliminarMaterial(id) {
   const m = state.materiales.find(x => String(x.id) === String(id));
   if (!m || !confirm(`¿Eliminar el material "${m.nombre}" y sus precios?`)) return;
-  try {
-    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "DELETE" });
-    const d = await r.json();
-    if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo eliminar");
-    state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
-    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-    renderMateriales();
-    toast("✓ Material eliminado");
-  } catch (e) { toast(e.message || "Error al eliminar material", true); }
+  state.materiales = state.materiales.filter(x => String(x.id) !== String(id));
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  const cola = cargarCola();
+  cola.materialesEliminar = cola.materialesEliminar || [];
+  if (!String(id).startsWith("temp")) {
+    if (!cola.materialesEliminar.some(x => String(x) === String(id))) cola.materialesEliminar.push(id);
+  }
+  guardarCola(cola);
+  renderMateriales();
+  toast("Material eliminado (pendiente de sincronizar)");
 }
 
 function editarDefinicionMaterial(id, nombre, def) {
@@ -5330,7 +5344,7 @@ function contarPendientesCola() {
     (c.gastos||[]).length + (c.tiempos||[]).length +
     (c.bookPendiente||[]).length + (c.bookEliminar||[]).length +
     (c.faenasEliminar||[]).length + (c.tickets||[]).length +
-    (c.presupuestos||[]).length;
+    (c.presupuestos||[]).length + (c.materialesEliminar||[]).length;
 }
 
 function hayCambiosSesion() {
@@ -5341,7 +5355,7 @@ function colaVacia() {
   return {
     clientes: [], faenas: [], anotaciones: [], anotacionesEditar: [], anotacionesEliminar: [],
     fotos: [], ticketFotos: [], tickets: [], faenasEditar: [], definicionesPendientes: [],
-    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: [], presupuestos: []
+    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: [], presupuestos: [], materialesEliminar: []
   };
 }
 
@@ -5487,6 +5501,7 @@ function actualizarPendientesInfo() {
   if (tkt) lineas.push(`${tkt} artículo${tkt>1?"s":""} de ticket`);
   if ((c.tiempos||[]).length) lineas.push(`${c.tiempos.length} tiempo${c.tiempos.length>1?"s":""}`);
   if ((c.presupuestos||[]).length) lineas.push(`${c.presupuestos.length} cambio${c.presupuestos.length>1?"s":""} de presupuesto`);
+  if ((c.materialesEliminar||[]).length) lineas.push(`${c.materialesEliminar.length} material${c.materialesEliminar.length>1?"es":""} a eliminar`);
   el.innerHTML = `<div class="pending-badge">⏳ Pendiente de sincronizar:<br>· ${lineas.join("<br>· ")}</div>`;
 }
 
@@ -5507,11 +5522,26 @@ async function sincronizar() {
   const cola = cargarCola();
   try {
     await enviarFaenasEliminadas();
-    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(5000)});
+    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(15000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
     }
     estado.textContent = "✓ Conectado...";
+
+    // Materiales eliminados
+    let matElimOk = 0;
+    const matElimPend = [];
+    for (const mid of (cola.materialesEliminar || [])) {
+      try {
+        const r = await fetch(`${API}/materiales/${mid}`, { method: "DELETE", signal: faenasAbortTimeout(10000) });
+        const d = await r.json().catch(() => ({ ok: r.ok }));
+        if (r.ok && d.ok !== false) matElimOk++;
+        else matElimPend.push(mid);
+      } catch (e) {
+        matElimPend.push(mid);
+      }
+    }
+    if (matElimOk) estado.textContent = `✓ ${matElimOk} material${matElimOk>1?"es":""} eliminado${matElimOk>1?"s":""} en la nube`;
 
     // Clientes nuevos
     const mapaClientes = {};
@@ -5544,6 +5574,7 @@ async function sincronizar() {
     const mapaPresup = {};
     let presupOk = 0;
     let presupFail = 0;
+    const presupPend = [];
     const opsPres = cola.presupuestos || [];
     if (opsPres.length) {
       estado.textContent = `✓ Subiendo ${opsPres.length} cambio${opsPres.length>1?"s":""} de presupuesto a la nube...`;
@@ -5552,9 +5583,11 @@ async function sincronizar() {
           const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
           if (!faenaId || String(faenaId).startsWith("temp") || String(faenaId).startsWith("TEMP")) {
             presupFail++;
+            presupPend.push(op);
             continue;
           }
           let r = null;
+          let okOp = false;
           if (op.tipo === "item_crear") {
             r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -5562,13 +5595,14 @@ async function sincronizar() {
             });
             if (r.ok) {
               const d = await r.json();
-              if (d.ok && d.data && op.temp_id) mapaPresup[op.temp_id] = d.data.id;
-              if (d.ok) presupOk++; else presupFail++;
-            } else presupFail++;
+              if (d.ok) {
+                okOp = true;
+                if (d.data && op.temp_id) mapaPresup[op.temp_id] = d.data.id;
+              }
+            }
           } else if (op.tipo === "item_editar") {
             let id = mapaPresup[op.id] || op.id;
             if (String(id).startsWith("TEMP-P-")) {
-              // Si solo se editó un temporal, créalo en la nube
               r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
@@ -5582,18 +5616,20 @@ async function sincronizar() {
             if (r && r.ok) {
               const d = await r.json();
               if (d.ok) {
-                presupOk++;
+                okOp = true;
                 if (d.data && d.data.id && op.id) mapaPresup[op.id] = d.data.id;
-              } else presupFail++;
-            } else presupFail++;
+              }
+            }
           } else if (op.tipo === "item_eliminar") {
             const id = mapaPresup[op.id] || op.id;
-            if (String(id).startsWith("TEMP-P-")) { presupOk++; continue; }
-            r = await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
-            if (r.ok) {
-              const d = await r.json().catch(() => ({ ok: true }));
-              if (d.ok !== false) presupOk++; else presupFail++;
-            } else presupFail++;
+            if (String(id).startsWith("TEMP-P-")) { okOp = true; }
+            else {
+              r = await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+              if (r.ok) {
+                const d = await r.json().catch(() => ({ ok: true }));
+                okOp = d.ok !== false;
+              }
+            }
           } else if (op.tipo === "bloque_toggle" || op.tipo === "bloque_borrar") {
             r = await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
               method: "PUT", headers: { "Content-Type": "application/json" },
@@ -5601,20 +5637,19 @@ async function sincronizar() {
             });
             if (r.ok) {
               const d = await r.json();
-              if (d.ok) presupOk++; else presupFail++;
-            } else presupFail++;
-          } else {
-            presupFail++;
+              okOp = !!d.ok;
+            }
           }
+          if (okOp) presupOk++;
+          else { presupFail++; presupPend.push(op); }
         } catch (e) {
           presupFail++;
+          presupPend.push(op);
           console.error("Error sync presupuesto:", e);
         }
       }
-      if (presupFail && !presupOk) {
-        throw new Error(`No se pudieron subir los presupuestos a la nube (${presupFail} error${presupFail>1?"es":""})`);
-      }
       if (presupOk) estado.textContent = `✓ ${presupOk} presupuesto${presupOk>1?"s":""} en la nube`;
+      if (presupFail) toast(`${presupFail} cambio${presupFail>1?"s":""} de presupuesto no se pudo${presupFail>1?"":"n"} subir`, true);
     }
 
     // Anotaciones
@@ -5745,12 +5780,22 @@ async function sincronizar() {
 
     await sincronizarBook(API);
 
-    // Limpiar temporal y recargar desde la nube
-    guardarCola(colaVacia(), { silencioso: true });
+    // Limpiar temporal (conserva solo lo que falló) y recargar desde la nube
+    const colaLimpia = colaVacia();
+    colaLimpia.presupuestos = presupPend;
+    colaLimpia.materialesEliminar = matElimPend;
+    guardarCola(colaLimpia, { silencioso: true });
     estado.textContent = "✓ Actualizando datos desde la nube...";
     await cargarDatosIniciales(true, true);
-    state._sesionSucia = false;
-    guardarSnapshotSesion();
+    // Reaplicar borrados locales de materiales que aún no subieron
+    if (matElimPend.length) {
+      const kill = new Set(matElimPend.map(String));
+      state.materiales = (state.materiales || []).filter(m => !kill.has(String(m.id)));
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    }
+    state._sesionSucia = !!(presupPend.length || matElimPend.length);
+    if (!state._sesionSucia) guardarSnapshotSesion();
+    else state._snapshotListo = true;
     actualizarPendientesInfo();
     actualizarIndicadorSesion();
     refrescarPantallaActual();
@@ -5763,6 +5808,7 @@ async function sincronizar() {
     if (cola.faenas.length) partes.push(`${cola.faenas.length} faena${cola.faenas.length>1?"s":""}`);
     if (cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
     if (presupOk) partes.push(`${presupOk} presupuesto${presupOk>1?"s":""}`);
+    if (matElimOk) partes.push(`${matElimOk} material${matElimOk>1?"es":""}`);
     if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
     if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
     estado.textContent = partes.length ? `✓ Nube actualizada · ${partes.join(" · ")}` : "✓ Nube actualizada";
@@ -5951,7 +5997,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=44", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=45", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
