@@ -2305,23 +2305,42 @@ function bloquesDePresupuestoMovil(lista) {
 
 function asegurarPresupuestoLista(f) {
   if (!f) return [];
-  if (Array.isArray(f.presupuesto) && f.presupuesto.length) return f.presupuesto;
-  const fromBloques = [];
-  for (const b of (f.bloques || [])) {
-    for (const p of (b.partidas || [])) {
-      fromBloques.push({
-        ...p,
-        bloque: (p.bloque != null && String(p.bloque).trim() !== "") ? p.bloque : (b.nombre_db || ""),
-        total: parseFloat(p.total) || ((parseFloat(p.cantidad) || 0) * (parseFloat(p.precio_unitario) || 0)) || 0
-      });
+  if (!(Array.isArray(f.presupuesto) && f.presupuesto.length)) {
+    const fromBloques = [];
+    for (const b of (f.bloques || [])) {
+      for (const p of (b.partidas || [])) {
+        fromBloques.push({
+          ...p,
+          bloque: (p.bloque != null && String(p.bloque).trim() !== "") ? p.bloque : (b.nombre_db || ""),
+          total: parseFloat(p.total) || ((parseFloat(p.cantidad) || 0) * (parseFloat(p.precio_unitario) || 0)) || 0
+        });
+      }
+    }
+    if (fromBloques.length) f.presupuesto = fromBloques;
+    else f.presupuesto = (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto").map(g => ({ ...g }));
+  }
+  // Garantiza id local para poder editar/eliminar aunque falte en caché
+  for (const p of f.presupuesto || []) {
+    if (p.id == null || p.id === "" || p.id === "undefined" || p.id === "null") {
+      p.id = "TEMP-P-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
     }
   }
-  if (fromBloques.length) {
-    f.presupuesto = fromBloques;
-    return f.presupuesto;
-  }
-  f.presupuesto = (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto").map(g => ({ ...g }));
   return f.presupuesto;
+}
+
+function resolverLineaPresupuesto(f, bloqueNombre, lineaId, idx) {
+  asegurarPresupuestoLista(f);
+  const gid = lineaId == null || lineaId === "undefined" || lineaId === "null" ? "" : String(lineaId);
+  if (gid) {
+    const porId = (f.presupuesto || []).find(g => String(g.id) === gid);
+    if (porId) return porId;
+  }
+  const delBloque = (f.presupuesto || []).filter(
+    p => String(p.bloque || "").trim() === String(bloqueNombre || "").trim()
+  );
+  const i = Number(idx);
+  if (Number.isInteger(i) && i >= 0 && i < delBloque.length) return delBloque[i];
+  return null;
 }
 
 function recalcularPresupuestoLocal(f) {
@@ -2355,37 +2374,62 @@ function renderPresupuestoParcialMovil() {
   const partidas = b ? (b.partidas || []) : [];
   const nombre = b ? (b.nombre || "General") : (st.nombreDb || "General");
   const total = b ? (parseFloat(b.total) || 0) : 0;
-  const fid = JSON.stringify(String(st.faenaId));
-  const nom = JSON.stringify(st.nombreDb || "");
   document.getElementById("presupuesto-parcial-mov-title").textContent = nombre;
-  document.getElementById("presupuesto-parcial-mov-contenido").innerHTML = `
+  const el = document.getElementById("presupuesto-parcial-mov-contenido");
+  if (!el) return;
+  el.innerHTML = `
     <div class="presup-total" style="margin-bottom:12px">
       <div>
-        <div class="presup-total-label">Cantidad</div>
+        <div class="presup-total-label">Total partida</div>
         <div class="presup-total-val" style="font-size:1.3rem">${total.toFixed(2)} €</div>
       </div>
     </div>
     <div class="presup-actions" style="margin:0 0 12px 0;flex-wrap:wrap">
-      <button class="btn btn-p btn-inline" onclick="abrirGastoPresupuesto(${fid},'',${nom})">+ Línea</button>
-      <button class="btn btn-s btn-inline" onclick="abrirListaMaterialesPresupuestoMovil()">+ Material</button>
-      <button class="btn btn-d btn-inline" onclick="borrarBloquePresupuestoMovil(${fid},${nom})">Eliminar partida</button>
+      <button type="button" class="btn btn-p btn-inline" data-acc="add-linea">+ Línea</button>
+      <button type="button" class="btn btn-s btn-inline" data-acc="add-mat">+ Material</button>
+      <button type="button" class="btn btn-d btn-inline" data-acc="del-bloque">Eliminar partida</button>
     </div>
-    ${partidas.length ? partidas.map(g => `
-      <div class="presup-line">
+    ${partidas.length ? partidas.map((g, i) => {
+      const gid = String(g.id ?? "");
+      return `<div class="presup-line" style="align-items:flex-start">
         <div class="presup-concepto">
           ${escHtml(g.descripcion || "—")}
           <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${escHtml(g.tipo||"")}</span>
           <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad||1)} x ${parseFloat(g.precio_unitario||0).toFixed(2)} €</div>
         </div>
-        <div style="text-align:right">
+        <div style="text-align:right;min-width:130px;flex-shrink:0">
           <div class="presup-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
-          <div class="presup-actions" style="justify-content:flex-end">
-            <button class="btn btn-s" onclick="abrirGastoPresupuesto(${fid},'${g.id}',${nom})">Editar</button>
-            <button class="btn btn-d" onclick="eliminarGastoPresupuesto(${fid},'${g.id}')">Eliminar</button>
+          <div class="presup-actions" style="justify-content:flex-end;margin-top:8px;flex-wrap:wrap">
+            <button type="button" class="btn btn-s" data-acc="edit-linea" data-id="${escHtml(gid)}" data-idx="${i}">Editar</button>
+            <button type="button" class="btn btn-d" data-acc="del-linea" data-id="${escHtml(gid)}" data-idx="${i}">Eliminar</button>
           </div>
         </div>
-      </div>`).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
+      </div>`;
+    }).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
   `;
+  if (!el._presupBound) {
+    el._presupBound = true;
+    el.addEventListener("click", onPresupuestoParcialClick);
+  }
+}
+
+function onPresupuestoParcialClick(ev) {
+  const btn = ev.target.closest("button[data-acc]");
+  if (!btn) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const st = state.presupuestoParcial;
+  if (!st) return;
+  const acc = btn.getAttribute("data-acc");
+  const fid = st.faenaId;
+  const nom = st.nombreDb || "";
+  const lid = btn.getAttribute("data-id") || "";
+  const idx = btn.getAttribute("data-idx");
+  if (acc === "add-linea") abrirGastoPresupuesto(fid, "", nom);
+  else if (acc === "add-mat") abrirListaMaterialesPresupuestoMovil();
+  else if (acc === "del-bloque") borrarBloquePresupuestoMovil(fid, nom);
+  else if (acc === "edit-linea") abrirGastoPresupuesto(fid, lid, nom, idx);
+  else if (acc === "del-linea") eliminarGastoPresupuesto(fid, lid, idx);
 }
 
 function cerrarPresupuestoParcialMovil() {
@@ -2393,22 +2437,32 @@ function cerrarPresupuestoParcialMovil() {
   cerrarModal("m-presupuesto-parcial-mov");
 }
 
-function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre) {
+function abrirGastoPresupuesto(faenaId, gastoId = "", bloqueNombre, idx) {
   const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId));
-  const presupuesto = f
-    ? ((f.presupuesto && f.presupuesto.length) ? f.presupuesto : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto"))
-    : [];
-  const gasto = presupuesto.find(g => String(g.id) === String(gastoId));
-  document.getElementById("gasto-faena-id").value = faenaId;
-  document.getElementById("gasto-id").value = gasto?.id || "";
-  document.getElementById("gasto-title").textContent = gasto ? "Editar partida" : "Nueva partida";
-  document.getElementById("gasto-desc").value = gasto?.descripcion || "";
-  document.getElementById("gasto-tipo").value = gasto?.tipo || "material";
-  document.getElementById("gasto-cant").value = gasto?.cantidad ?? 1;
-  document.getElementById("gasto-precio").value = gasto?.precio_unitario ?? "";
-  const bloq = gasto ? String(gasto.bloque || "") : (bloqueNombre != null ? String(bloqueNombre) : "");
+  if (!f) { toast("Faena no encontrada", true); return; }
+  const bloqRef = bloqueNombre != null ? String(bloqueNombre) : String(state.presupuestoParcial?.nombreDb || "");
+  const quiereEditar = !(gastoId == null || gastoId === "" || gastoId === "undefined" || gastoId === "null")
+    || (idx != null && idx !== "");
+  const gasto = quiereEditar ? resolverLineaPresupuesto(f, bloqRef, gastoId, idx) : null;
+  if (quiereEditar && !gasto) {
+    toast("No se encontró la línea a editar", true);
+    return;
+  }
+  document.getElementById("gasto-faena-id").value = String(faenaId);
+  document.getElementById("gasto-id").value = gasto ? String(gasto.id) : "";
+  document.getElementById("gasto-title").textContent = gasto ? "Editar línea" : "Nueva línea";
+  document.getElementById("gasto-desc").value = gasto ? (gasto.descripcion || "") : "";
+  document.getElementById("gasto-tipo").value = gasto ? (gasto.tipo || "material") : "material";
+  document.getElementById("gasto-cant").value = gasto ? (gasto.cantidad ?? 1) : 1;
+  document.getElementById("gasto-precio").value = gasto ? (gasto.precio_unitario ?? 0) : "";
+  const bloq = gasto
+    ? String(gasto.bloque || bloqRef || "")
+    : bloqRef;
   document.getElementById("gasto-bloque-txt").value = bloq;
+  // Dentro de una partida abierta, el concepto es la partida (solo se edita el detalle)
+  const campoConcepto = document.getElementById("gasto-bloque-txt")?.closest(".field");
+  if (campoConcepto) campoConcepto.style.display = state.presupuestoParcial ? "none" : "";
   abrirModal("m-gasto-presupuesto");
 }
 
@@ -2544,11 +2598,20 @@ async function guardarGastoPresupuesto() {
   if (gastoId) {
     let linea = f.presupuesto.find(x => String(x.id) === String(gastoId));
     if (!linea) {
-      linea = { id: gastoId };
-      f.presupuesto.push(linea);
+      toast("No se encontró la línea a editar", true);
+      return;
     }
     Object.assign(linea, body, { total });
-    cola.presupuestos.push({ tipo: "item_editar", faena_id: faenaId, id: gastoId, body });
+    cola.presupuestos = cola.presupuestos.filter(op =>
+      !(op.tipo === "item_editar" && String(op.id) === String(gastoId))
+    );
+    if (String(gastoId).startsWith("TEMP-P-")) {
+      const crear = cola.presupuestos.find(op => op.tipo === "item_crear" && String(op.temp_id) === String(gastoId));
+      if (crear) crear.body = { ...body };
+      else cola.presupuestos.push({ tipo: "item_crear", faena_id: faenaId, temp_id: gastoId, body });
+    } else {
+      cola.presupuestos.push({ tipo: "item_editar", faena_id: faenaId, id: gastoId, body });
+    }
   } else {
     const tempId = "TEMP-P-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
     f.presupuesto.push({ id: tempId, faena_id: faenaId, ...body, total });
@@ -2566,20 +2629,35 @@ async function guardarGastoPresupuesto() {
   toast(gastoId ? "Línea guardada (pendiente de sincronizar)" : "Línea añadida (pendiente de sincronizar)");
 }
 
-async function eliminarGastoPresupuesto(faenaId, gastoId) {
+async function eliminarGastoPresupuesto(faenaId, gastoId, idx) {
   if (!confirm("¿Eliminar esta línea de la partida?")) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-  if (!f) return;
-  asegurarPresupuestoLista(f);
-  f.presupuesto = (f.presupuesto || []).filter(x => String(x.id) !== String(gastoId));
+  if (!f) { toast("Faena no encontrada", true); return; }
+  const bloqueNom = state.presupuestoParcial?.nombreDb || "";
+  const linea = resolverLineaPresupuesto(f, bloqueNom, gastoId, idx);
+  if (!linea) { toast("No se encontró la línea a eliminar", true); return; }
+  const gid = String(linea.id);
+  const antes = (f.presupuesto || []).length;
+  f.presupuesto = (f.presupuesto || []).filter(x => String(x.id) !== gid);
+  if (f.presupuesto.length === antes) {
+    toast("No se encontró la línea a eliminar", true);
+    return;
+  }
   recalcularPresupuestoLocal(f);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
   const cola = cargarCola();
   cola.presupuestos = cola.presupuestos || [];
-  if (String(gastoId).startsWith("TEMP-P-")) {
-    cola.presupuestos = cola.presupuestos.filter(op => !(op.tipo === "item_crear" && String(op.temp_id) === String(gastoId)));
+  if (gid.startsWith("TEMP-P-")) {
+    cola.presupuestos = cola.presupuestos.filter(op =>
+      !(op.tipo === "item_crear" && String(op.temp_id) === gid) &&
+      !(op.tipo === "item_editar" && String(op.id) === gid)
+    );
   } else {
-    cola.presupuestos.push({ tipo: "item_eliminar", faena_id: faenaId, id: gastoId });
+    cola.presupuestos = cola.presupuestos.filter(op =>
+      !(op.tipo === "item_editar" && String(op.id) === gid) &&
+      !(op.tipo === "item_crear" && String(op.temp_id) === gid)
+    );
+    cola.presupuestos.push({ tipo: "item_eliminar", faena_id: faenaId, id: gid });
   }
   guardarCola(cola);
   renderPanelPresupuesto(f);
@@ -5997,7 +6075,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=45", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=46", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
