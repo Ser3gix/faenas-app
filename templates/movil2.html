@@ -2218,16 +2218,13 @@ function renderPanelDatos(f) {
 // ═══════════════════════════════════════════════════════════
 
 function renderPanelPresupuesto(f) {
-  const presupuesto = (f.presupuesto && f.presupuesto.length)
-    ? f.presupuesto
-    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+  recalcularPresupuestoLocal(f);
+  const presupuesto = f.presupuesto || [];
   const gastosReales = (f.gastos_reales && f.gastos_reales.length)
     ? f.gastos_reales
     : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
-  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(presupuesto);
-  const totalPresupuesto = typeof f.total_incluido === "number"
-    ? f.total_incluido
-    : bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  const bloquesP = f.bloques || [];
+  const totalPresupuesto = parseFloat(f.total_incluido) || 0;
   const totalGastos = gastosReales.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
 
   const fid = f.id || f._tempId;
@@ -2294,7 +2291,7 @@ function bloquesDePresupuestoMovil(lista) {
     if (!map.has(n)) map.set(n, { nombre: n, nombre_db: db, incluido: 1, partidas: [], total: 0, total_incluido: 0 });
     const g = map.get(n);
     g.partidas.push(p);
-    const tot = parseFloat(p.total) || 0;
+    const tot = parseFloat(p.total) || ((parseFloat(p.cantidad) || 0) * (parseFloat(p.precio_unitario) || 0)) || 0;
     g.total += tot;
     if (Number(p.incluido ?? 1) !== 0) g.total_incluido += tot;
   }
@@ -2302,6 +2299,41 @@ function bloquesDePresupuestoMovil(lista) {
     g.incluido = g.partidas.length && g.partidas.every(p => Number(p.incluido ?? 1) !== 0) ? 1 : 0;
   }
   return [...map.values()];
+}
+
+function asegurarPresupuestoLista(f) {
+  if (!f) return [];
+  if (Array.isArray(f.presupuesto) && f.presupuesto.length) return f.presupuesto;
+  const fromBloques = [];
+  for (const b of (f.bloques || [])) {
+    for (const p of (b.partidas || [])) {
+      fromBloques.push({
+        ...p,
+        bloque: (p.bloque != null && String(p.bloque).trim() !== "") ? p.bloque : (b.nombre_db || ""),
+        total: parseFloat(p.total) || ((parseFloat(p.cantidad) || 0) * (parseFloat(p.precio_unitario) || 0)) || 0
+      });
+    }
+  }
+  if (fromBloques.length) {
+    f.presupuesto = fromBloques;
+    return f.presupuesto;
+  }
+  f.presupuesto = (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto").map(g => ({ ...g }));
+  return f.presupuesto;
+}
+
+function recalcularPresupuestoLocal(f) {
+  if (!f) return f;
+  asegurarPresupuestoLista(f);
+  for (const p of f.presupuesto || []) {
+    const cant = parseFloat(p.cantidad) || 0;
+    const pu = parseFloat(p.precio_unitario) || 0;
+    p.total = cant * pu;
+  }
+  f.bloques = bloquesDePresupuestoMovil(f.presupuesto || []);
+  f.total_incluido = f.bloques.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  f.importe = f.total_incluido;
+  return f;
 }
 
 function abrirPresupuestoParcialMovil(faenaId, nombreDb) {
@@ -2315,10 +2347,8 @@ function renderPresupuestoParcialMovil() {
   if (!st) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(st.faenaId));
   if (!f) return;
-  const presupuesto = (f.presupuesto && f.presupuesto.length)
-    ? f.presupuesto
-    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
-  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(presupuesto);
+  recalcularPresupuestoLocal(f);
+  const bloquesP = f.bloques || [];
   const b = bloquesP.find(x => String(x.nombre_db || "") === String(st.nombreDb || ""));
   const partidas = b ? (b.partidas || []) : [];
   const nombre = b ? (b.nombre || "General") : (st.nombreDb || "General");
@@ -2487,6 +2517,7 @@ async function guardarGastoPresupuesto() {
   const f = (state.faenas || []).find(x => String(x.id || x._tempId) === String(faenaId))
     || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) { toast("Faena no encontrada", true); return; }
+  asegurarPresupuestoLista(f);
   let bloque;
   if (state.presupuestoParcial) {
     bloque = String(state.presupuestoParcial.nombreDb || "");
@@ -2495,8 +2526,7 @@ async function guardarGastoPresupuesto() {
   }
   const descFinal = descripcion || bloque;
   const tipo = document.getElementById("gasto-tipo").value.trim() || "material";
-  if (!f.presupuesto) f.presupuesto = [];
-  const bloquesP = (f.bloques && f.bloques.length) ? f.bloques : bloquesDePresupuestoMovil(f.presupuesto);
+  const bloquesP = bloquesDePresupuestoMovil(f.presupuesto);
   const bAct = bloquesP.find(x => String(x.nombre_db || "") === String(bloque));
   const body = {
     descripcion: descFinal,
@@ -2510,16 +2540,19 @@ async function guardarGastoPresupuesto() {
   const cola = cargarCola();
   cola.presupuestos = cola.presupuestos || [];
   if (gastoId) {
-    const linea = f.presupuesto.find(x => String(x.id) === String(gastoId));
-    if (linea) Object.assign(linea, body, { total });
+    let linea = f.presupuesto.find(x => String(x.id) === String(gastoId));
+    if (!linea) {
+      linea = { id: gastoId };
+      f.presupuesto.push(linea);
+    }
+    Object.assign(linea, body, { total });
     cola.presupuestos.push({ tipo: "item_editar", faena_id: faenaId, id: gastoId, body });
   } else {
     const tempId = "TEMP-P-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
     f.presupuesto.push({ id: tempId, faena_id: faenaId, ...body, total });
     cola.presupuestos.push({ tipo: "item_crear", faena_id: faenaId, temp_id: tempId, body });
   }
-  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
-  f.total_incluido = f.bloques.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+  recalcularPresupuestoLocal(f);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
   guardarCola(cola);
   renderPanelPresupuesto(f);
@@ -2535,8 +2568,9 @@ async function eliminarGastoPresupuesto(faenaId, gastoId) {
   if (!confirm("¿Eliminar esta línea de la partida?")) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
+  asegurarPresupuestoLista(f);
   f.presupuesto = (f.presupuesto || []).filter(x => String(x.id) !== String(gastoId));
-  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
+  recalcularPresupuestoLocal(f);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
   const cola = cargarCola();
   cola.presupuestos = cola.presupuestos || [];
@@ -2593,10 +2627,11 @@ function nuevoBloquePresupuestoMovil(faenaId) {
 async function toggleBloquePresupuestoMovil(faenaId, nombreDb, incluido) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
+  asegurarPresupuestoLista(f);
   (f.presupuesto || []).forEach(p => {
     if (String(p.bloque || "").trim() === String(nombreDb || "").trim()) p.incluido = incluido ? 1 : 0;
   });
-  f.bloques = bloquesDePresupuestoMovil(f.presupuesto || []);
+  recalcularPresupuestoLocal(f);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
   const cola = cargarCola();
   cola.presupuestos = cola.presupuestos || [];
@@ -2609,9 +2644,10 @@ async function borrarBloquePresupuestoMovil(faenaId, nombreDb) {
   if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
+  asegurarPresupuestoLista(f);
   const nom = String(nombreDb || "").trim();
   f.presupuesto = (f.presupuesto || []).filter(p => String(p.bloque || "").trim() !== nom);
-  f.bloques = bloquesDePresupuestoMovil(f.presupuesto);
+  recalcularPresupuestoLocal(f);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
   const cola = cargarCola();
   cola.presupuestos = cola.presupuestos || [];
@@ -5404,19 +5440,23 @@ function cerrarModalSalidaSync() {
 async function aceptarSalidaSync() {
   cerrarModalSalidaSync();
   _salidaTrasSync = true;
+  toast("Subiendo cambios a la nube…");
   try {
     const ok = await sincronizar();
     if (ok === false) {
       _salidaTrasSync = false;
-      toast("No se pudo actualizar. Los cambios siguen en el móvil", true);
+      toast("No se pudo actualizar la nube. Los cambios siguen en el móvil", true);
+      actualizarIndicadorSesion();
       return;
     }
     state._sesionSucia = false;
     guardarSnapshotSesion();
     actualizarIndicadorSesion();
+    _salidaTrasSync = false;
   } catch (e) {
     _salidaTrasSync = false;
-    toast("No se pudo actualizar. Los cambios siguen en el móvil", true);
+    toast("No se pudo actualizar la nube. Los cambios siguen en el móvil", true);
+    actualizarIndicadorSesion();
   }
 }
 
@@ -5502,39 +5542,79 @@ async function sincronizar() {
 
     // Presupuestos (partidas / líneas / bloques)
     const mapaPresup = {};
-    if ((cola.presupuestos||[]).length) {
-      estado.textContent = `✓ Subiendo ${cola.presupuestos.length} cambio${cola.presupuestos.length>1?"s":""} de presupuesto...`;
-      for (const op of cola.presupuestos) {
+    let presupOk = 0;
+    let presupFail = 0;
+    const opsPres = cola.presupuestos || [];
+    if (opsPres.length) {
+      estado.textContent = `✓ Subiendo ${opsPres.length} cambio${opsPres.length>1?"s":""} de presupuesto a la nube...`;
+      for (const op of opsPres) {
         try {
           const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
+          if (!faenaId || String(faenaId).startsWith("temp") || String(faenaId).startsWith("TEMP")) {
+            presupFail++;
+            continue;
+          }
+          let r = null;
           if (op.tipo === "item_crear") {
-            const r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
+            r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
+              body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
             });
             if (r.ok) {
               const d = await r.json();
               if (d.ok && d.data && op.temp_id) mapaPresup[op.temp_id] = d.data.id;
-            }
+              if (d.ok) presupOk++; else presupFail++;
+            } else presupFail++;
           } else if (op.tipo === "item_editar") {
-            const id = mapaPresup[op.id] || op.id;
-            if (String(id).startsWith("TEMP-P-")) continue;
-            await fetch(`${API}/presupuestos/${id}`, {
-              method: "PUT", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
-            });
+            let id = mapaPresup[op.id] || op.id;
+            if (String(id).startsWith("TEMP-P-")) {
+              // Si solo se editó un temporal, créalo en la nube
+              r = await fetch(`${API}/faenas/${faenaId}/presupuesto/item`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+              });
+            } else {
+              r = await fetch(`${API}/presupuestos/${id}`, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
+              });
+            }
+            if (r && r.ok) {
+              const d = await r.json();
+              if (d.ok) {
+                presupOk++;
+                if (d.data && d.data.id && op.id) mapaPresup[op.id] = d.data.id;
+              } else presupFail++;
+            } else presupFail++;
           } else if (op.tipo === "item_eliminar") {
             const id = mapaPresup[op.id] || op.id;
-            if (String(id).startsWith("TEMP-P-")) continue;
-            await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+            if (String(id).startsWith("TEMP-P-")) { presupOk++; continue; }
+            r = await fetch(`${API}/presupuestos/${id}`, { method: "DELETE", signal: faenasAbortTimeout(25000) });
+            if (r.ok) {
+              const d = await r.json().catch(() => ({ ok: true }));
+              if (d.ok !== false) presupOk++; else presupFail++;
+            } else presupFail++;
           } else if (op.tipo === "bloque_toggle" || op.tipo === "bloque_borrar") {
-            await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
+            r = await fetch(`${API}/faenas/${faenaId}/presupuesto/bloque`, {
               method: "PUT", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(op.body), signal: faenasAbortTimeout(25000)
+              body: JSON.stringify(op.body || {}), signal: faenasAbortTimeout(25000)
             });
+            if (r.ok) {
+              const d = await r.json();
+              if (d.ok) presupOk++; else presupFail++;
+            } else presupFail++;
+          } else {
+            presupFail++;
           }
-        } catch (e) {}
+        } catch (e) {
+          presupFail++;
+          console.error("Error sync presupuesto:", e);
+        }
       }
+      if (presupFail && !presupOk) {
+        throw new Error(`No se pudieron subir los presupuestos a la nube (${presupFail} error${presupFail>1?"es":""})`);
+      }
+      if (presupOk) estado.textContent = `✓ ${presupOk} presupuesto${presupOk>1?"s":""} en la nube`;
     }
 
     // Anotaciones
@@ -5665,53 +5745,29 @@ async function sincronizar() {
 
     await sincronizarBook(API);
 
-    // Limpiar cola (las fotos que no subieron se quedan en el móvil)
-    const colaFinal = cargarCola();
-    guardarCola({
-      clientes:[],
-      faenas:[],
-      anotaciones:[],
-      anotacionesEditar:[],
-      anotacionesEliminar:[],
-      fotos: (cola.fotos || []).filter(foto => !fotosOk.has(`${foto.faena_id}::${foto.nombre}`)),
-      ticketFotos:[],
-      tickets:[],
-      faenasEditar:[],
-      definicionesPendientes:[],
-      bookEliminar:[],
-      bookPendiente:[],
-      tiempos: cola.tiempos || [],
-      faenasEliminar: colaFinal.faenasEliminar || [],
-      presupuestos: []
-    }, { silencioso: true });
+    // Limpiar temporal y recargar desde la nube
+    guardarCola(colaVacia(), { silencioso: true });
+    estado.textContent = "✓ Actualizando datos desde la nube...";
+    await cargarDatosIniciales(true, true);
+    state._sesionSucia = false;
+    guardarSnapshotSesion();
+    actualizarPendientesInfo();
+    actualizarIndicadorSesion();
+    refrescarPantallaActual();
+
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
     document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
 
-    renderFaenas();
-    renderMateriales();
-    actualizarPendientesInfo();
-    actualizarIndicadorSesion();
-
-    // Si hay un overlay abierto, refrescar los paneles
-    if (state.faenaActualId) {
-      const f = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
-      if (f && document.getElementById("faena-overlay").classList.contains("open")) {
-        renderPanelDatos(f); renderPanelPresupuesto(f);
-        renderPanelDocumentos(f); renderPanelFotos(f); renderPanelGastos(f);
-      }
-    }
-
     const partes = [];
     if (cola.faenas.length) partes.push(`${cola.faenas.length} faena${cola.faenas.length>1?"s":""}`);
     if (cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
+    if (presupOk) partes.push(`${presupOk} presupuesto${presupOk>1?"s":""}`);
     if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
     if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
-    estado.textContent = partes.length ? `✓ Sincronizado · ${partes.join(" · ")}` : "✓ Sincronizado";
+    estado.textContent = partes.length ? `✓ Nube actualizada · ${partes.join(" · ")}` : "✓ Nube actualizada";
     estado.className = "sync-estado sync-ok";
-    state._sesionSucia = false;
-    guardarSnapshotSesion();
-    toast("✓ Sincronización completada");
+    toast(partes.length ? `✓ Subido a la nube: ${partes.join(" · ")}` : "✓ Sincronizado con la nube");
     return true;
   } catch(e) {
     if (estado) {
@@ -5895,7 +5951,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=43", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=44", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
