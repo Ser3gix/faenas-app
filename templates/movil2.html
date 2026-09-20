@@ -1608,6 +1608,11 @@ function aplicarRespuestaFaenas(d) {
   }
   // Tras pisar con la nube, reaplicar cambios locales pendientes de presupuesto
   try { aplicarColaPresupuestosLocal(); } catch (e) {}
+  // Recalcula totales para que la pestaña Faenas muestre el presupuesto al día
+  try {
+    (state.faenas || []).forEach(f => recalcularPresupuestoLocal(f));
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  } catch (e) {}
   return ok;
 }
 
@@ -2266,7 +2271,7 @@ function renderPanelDatos(f) {
     </div>
     <div class="datos-campo">
       <div class="datos-k">Importe</div>
-      <div class="datos-v" style="color:var(--green);font-size:1.1rem">${f.importe > 0 ? parseFloat(f.importe).toFixed(2) + " €" : "—"}</div>
+      <div class="datos-v" style="color:var(--green);font-size:1.1rem">${(() => { const t = totalPresupuestoVisibleFaena(f); return t > 0 ? t.toFixed(2) + " €" : "—"; })()}</div>
     </div>
     <div class="datos-campo">
       <div class="datos-k">Fecha</div>
@@ -3966,6 +3971,27 @@ async function cambiarFaseMovil(event, id, fase) {
   }
 }
 
+function totalPresupuestoVisibleFaena(f) {
+  if (!f) return 0;
+  // Asegura lista + totales coherentes con el panel de presupuesto
+  try { recalcularPresupuestoLocal(f); } catch (e) {}
+  const ti = parseFloat(f.total_incluido);
+  if (!Number.isNaN(ti) && ti > 0) return ti;
+  if (Array.isArray(f.bloques) && f.bloques.length) {
+    return f.bloques.reduce((s, b) => {
+      if (!b.incluido) return s;
+      return s + (parseFloat(b.total_incluido) || parseFloat(b.total) || 0);
+    }, 0);
+  }
+  const lista = (f.presupuesto && f.presupuesto.length)
+    ? f.presupuesto
+    : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+  return lista.reduce((s, g) => {
+    if (Number(g.incluido ?? 1) === 0) return s;
+    return s + (parseFloat(g.total) || ((parseFloat(g.cantidad) || 0) * (parseFloat(g.precio_unitario) || 0)) || 0);
+  }, 0);
+}
+
 function renderFaenas() {
   const cola = cargarCola();
   const el = document.getElementById("lista-faenas");
@@ -4003,20 +4029,17 @@ function renderFaenas() {
     const esTemp = f._offline;
     const id = f.id || f._tempId;
     const fase = faseDeFaena(f);
-    const presupuesto = (f.presupuesto && f.presupuesto.length)
-      ? f.presupuesto
-      : (f.gastos || []).filter(g => (g.tipo || "presupuesto") === "presupuesto");
+    const totalPresupuesto = totalPresupuestoVisibleFaena(f);
     const gastosReales = (f.gastos_reales && f.gastos_reales.length)
       ? f.gastos_reales
       : (f.gastos || []).filter(g => (g.tipo || "gasto") !== "presupuesto");
-    const totalPresupuesto = presupuesto.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
     const pendAnot = cola.anotaciones.filter(a => String(a.faena_id) === String(id)).length;
     const pendFotos = cola.fotos.filter(x => String(x.faena_id) === String(id)).length;
     const pend = pendAnot + pendFotos;
     return `<div class="faena-card" onclick="abrirFaena('${id}')">
       <div class="fc-top">
         ${esTemp ? `<span class="num-temp">⏳ ${escHtml(f.numero)}</span>` : `<span class="num-faena">${escHtml(f.numero)}</span>`}
-        ${totalPresupuesto > 0 ? `<span class="fc-precio">${totalPresupuesto.toFixed(2)} €</span>` : ""}
+        ${totalPresupuesto > 0 ? `<span class="fc-precio">${totalPresupuesto.toFixed(2)} €</span>` : `<span class="fc-precio">—</span>`}
       </div>
       <div class="fc-cliente">${escHtml(f.cliente_nombre||"—")}</div>
       <div class="fc-tipo">${escHtml(f.tipo_trabajo||"Sin descripción")}</div>
@@ -6158,7 +6181,7 @@ async function init() {
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=47", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=48", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
