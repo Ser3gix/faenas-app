@@ -1938,46 +1938,174 @@ function aplicarPendingSobreListas(faenaId, anotaciones, gastos, presupuesto) {
   return { anotaciones: anots, gastos: gasts, presupuesto: pres };
 }
 
+function remapeaIdsTrasFlushPc(mapaIds) {
+  if (!mapaIds || !Object.keys(mapaIds).length) return;
+  const aplicar = (obj) => {
+    if (!obj || obj.id == null) return;
+    const neu = mapaIds[String(obj.id)];
+    if (neu != null) obj.id = neu;
+  };
+  for (const p of (state.detalleActual?.presupuesto || [])) aplicar(p);
+  for (const g of (state.detalleActual?.gastos || [])) aplicar(g);
+  for (const f of (state.faenas || [])) aplicar(f);
+  for (const f of (state.terminadas || [])) aplicar(f);
+  for (const c of (state.clientes || [])) aplicar(c);
+  for (const m of (state.materiales || [])) aplicar(m);
+  if (state.detalleId != null && mapaIds[String(state.detalleId)] != null) {
+    state.detalleId = mapaIds[String(state.detalleId)];
+  }
+  if (state.presupuestoParcialPc?.faenaId != null && mapaIds[String(state.presupuestoParcialPc.faenaId)] != null) {
+    state.presupuestoParcialPc.faenaId = mapaIds[String(state.presupuestoParcialPc.faenaId)];
+  }
+}
+
+function esOpPresupuestoPc(op) {
+  const p = String(op && op.path || "");
+  return /\/presupuesto(\/|$)/.test(p) || /\/presupuestos\//.test(p);
+}
+
+function necesidadesRecargaTrasFlushPc(ops) {
+  let faenas = false, clientes = false, intermediarios = false, materiales = false, categorias = false;
+  for (const op of ops || []) {
+    const p = String(op.path || "");
+    if (/^\/clientes(\/|$)/.test(p)) clientes = true;
+    if (/^\/intermediarios(\/|$)/.test(p)) intermediarios = true;
+    if (/^\/materiales(\/|$)/.test(p)) materiales = true;
+    if (/categorias-material/.test(p)) categorias = true;
+    if (esOpPresupuestoPc(op) || /\/gastos\//.test(p) || /\/anotaciones/.test(p)) faenas = true;
+    if (
+      (op.method === "POST" && p === "/faenas") ||
+      (op.method === "PUT" && /^\/faenas\/[^/]+$/.test(p)) ||
+      /\/faenas\/[^/]+\/fase$/.test(p) ||
+      /\/faenas\/[^/]+\/archivar/.test(p)
+    ) {
+      faenas = true;
+    }
+  }
+  return { faenas, clientes, intermediarios, materiales, categorias };
+}
+
+function opsPresupuestoASyncPc(ops, mapaIds) {
+  const out = [];
+  for (const op of ops || []) {
+    let path = String(op.path || "");
+    for (const [tmp, real] of Object.entries(mapaIds || {})) {
+      path = path.split(String(tmp)).join(String(real));
+    }
+    const body = op.body ? clonarJSON(op.body) : null;
+    let m;
+    let fid = op._faenaId != null ? op._faenaId : state.detalleId;
+    const mFaena = path.match(/^\/faenas\/([^/]+)\//);
+    if (mFaena) fid = mFaena[1];
+    if (fid != null && mapaIds && mapaIds[String(fid)] != null) fid = mapaIds[String(fid)];
+    if (op.method === "POST" && (m = path.match(/^\/faenas\/([^/]+)\/presupuesto\/item$/))) {
+      out.push({ tipo: "item_crear", faena_id: m[1], temp_id: op._synthId, body: body || {} });
+    } else if (op.method === "PUT" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+      let id = m[1];
+      if (mapaIds && mapaIds[String(id)] != null) id = mapaIds[String(id)];
+      out.push({ tipo: "item_editar", faena_id: fid, id, body: body || {} });
+    } else if (op.method === "DELETE" && (m = path.match(/^\/presupuestos\/([^/]+)$/))) {
+      let id = m[1];
+      if (String(id).startsWith("tmp_")) continue;
+      if (mapaIds && mapaIds[String(id)] != null) id = mapaIds[String(id)];
+      out.push({ tipo: "item_eliminar", faena_id: fid, id });
+    } else if (op.method === "PUT" && /\/presupuesto\/bloque$/.test(path)) {
+      out.push({
+        tipo: body && body.borrar ? "bloque_borrar" : "bloque_toggle",
+        faena_id: fid,
+        body: body || {}
+      });
+    }
+  }
+  return out;
+}
+
+async function flushOpIndividualPc(op, mapaIds) {
+  let path = op.path;
+  for (const [tmp, real] of Object.entries(mapaIds)) {
+    path = String(path).split(String(tmp)).join(String(real));
+  }
+  let body = op.body ? clonarJSON(op.body) : null;
+  if (body && body.cliente_id != null && mapaIds[body.cliente_id] != null) {
+    body.cliente_id = mapaIds[body.cliente_id];
+  }
+  if (op.method === "DELETE" && /\/presupuestos\//.test(path)) {
+    const pid = String(path).split("/").pop();
+    if (pid.startsWith("tmp_")) return;
+  }
+  const r = await api(op.method, path, body);
+  if (!r.ok) throw new Error(r.error || "Error al actualizar");
+  if (op.method === "POST" && r.data && r.data.id != null && op._synthId != null) {
+    mapaIds[String(op._synthId)] = r.data.id;
+  }
+  if (op.method === "POST" && path === "/faenas" && r.data && op._synthId != null) {
+    const f = state.faenas.find(x => String(x.id) === String(op._synthId));
+    if (f) {
+      if (r.data.id != null) f.id = r.data.id;
+      if (r.data.numero) f.numero = r.data.numero;
+    }
+  }
+}
+
 async function flushPendingPc() {
   if (!pendingOps.length) { limpiarIndicadorSesionPc(); return true; }
   _flushing = true;
   const ops = pendingOps.slice();
   const mapaIds = {};
-  const faenasPresup = new Set();
   try {
-    for (const op of ops) {
-      let path = op.path;
-      for (const [tmp, real] of Object.entries(mapaIds)) {
-        path = path.split(String(tmp)).join(String(real));
-      }
-      let body = op.body ? clonarJSON(op.body) : null;
-      if (body && body.cliente_id != null && mapaIds[body.cliente_id] != null) {
-        body.cliente_id = mapaIds[body.cliente_id];
-      }
-      // Si es DELETE de un tmp que nunca se creó en servidor (ya filtrado), saltar
-      if (op.method === "DELETE" && /\/presupuestos\//.test(path)) {
-        const pid = path.split("/").pop();
-        if (String(pid).startsWith("tmp_")) {
-          continue;
+    const opsPres = ops.filter(esOpPresupuestoPc);
+    const opsOtros = ops.filter(op => !esOpPresupuestoPc(op));
+    for (const op of opsOtros) {
+      await flushOpIndividualPc(op, mapaIds);
+    }
+    if (opsPres.length) {
+      const operaciones = opsPresupuestoASyncPc(opsPres, mapaIds);
+      if (operaciones.length) {
+        const r = await fetch(API + "/sync/presupuestos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operaciones }),
+          signal: AbortSignal.timeout(60000)
+        });
+        const d = await parsearRespuesta(r);
+        if (!d.ok) throw new Error(d.error || "No se pudo subir el presupuesto");
+        const mapaServidor = (d.data && d.data.mapa) || {};
+        Object.assign(mapaIds, mapaServidor);
+        for (const a of (d.data && d.data.detalle) || []) {
+          if (a && a.temp_id != null && a.id != null) mapaIds[String(a.temp_id)] = a.id;
+        }
+        if (Array.isArray(d.data && d.data.pendientes) && d.data.pendientes.length) {
+          throw new Error("Algunos cambios de presupuesto no se aplicaron en la nube");
         }
       }
-      const r = await api(op.method, path, body);
-      if (!r.ok) throw new Error(r.error || "Error al actualizar");
-      if (op.method === "POST" && r.data && r.data.id != null) {
-        const synth = (op._synthId != null) ? op._synthId : null;
-        if (synth) mapaIds[String(synth)] = r.data.id;
-      }
-      const mFaena = String(op.path || "").match(/^\/faenas\/([^/]+)\//);
-      if (mFaena) faenasPresup.add(mFaena[1]);
-      if (/\/presupuestos\//.test(op.path) && state.detalleId) faenasPresup.add(String(state.detalleId));
     }
     pendingOps = [];
     _flushing = false;
-    await Promise.all([cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true), cargarMateriales(true), cargarCategorias(true)]);
+    remapeaIdsTrasFlushPc(mapaIds);
+
+    // Siempre alinear con la nube (como el móvil tras Terminar)
+    const need = necesidadesRecargaTrasFlushPc(ops);
+    const recargas = [cargarFaenas(true)];
+    if (need.clientes) recargas.push(cargarClientes(true));
+    if (need.intermediarios) recargas.push(cargarIntermediarios(true));
+    if (need.materiales) recargas.push(cargarMateriales(true));
+    if (need.categorias) recargas.push(cargarCategorias(true));
+    await Promise.all(recargas);
+    guardarCachePc();
     guardarSnapshotSesionPc();
-    renderFaenas(); renderClientes(); renderInter(); renderMateriales(); poblarSelects();
+    renderFaenas(); renderClientes(); renderInter();
+    if (_materialesListos) renderMateriales();
+    poblarSelects();
     if (state.detalleId) {
-      try { await verDetalle(parseInt(state.detalleId, 10) || state.detalleId); } catch (e) {}
+      try {
+        state.detalleCache = null;
+        state.detalleActual = { gastos: [], presupuesto: [] };
+        await verDetalle(parseInt(state.detalleId, 10) || state.detalleId);
+        if (state.presupuestoParcialPc) {
+          renderPresupuestoParcialPc();
+          abrirModal("m-presupuesto-parcial-pc");
+        }
+      } catch (e) {}
     }
     return true;
   } catch (e) {
@@ -2030,23 +2158,68 @@ function rechazarSalidaSyncPc() {
 }
 
 // ===== ARRANQUE =====
-async function init() {
-  await cargarEstadoDb();
-  await Promise.all([
-    cargarFaenas(true), cargarClientes(true),
-    cargarIntermediarios(true), cargarMateriales(true), cargarCategorias(true)
-  ]);
+let _materialesListos = false;
+
+function hidratarCachePc() {
+  try {
+    const faenas = JSON.parse(localStorage.getItem("pc_faenas_cache") || "null");
+    const terminadas = JSON.parse(localStorage.getItem("pc_terminadas_cache") || "null");
+    const clientes = JSON.parse(localStorage.getItem("pc_clientes_cache") || "null");
+    const inter = JSON.parse(localStorage.getItem("pc_inter_cache") || "null");
+    if (Array.isArray(faenas) && faenas.length) state.faenas = faenas;
+    if (Array.isArray(terminadas)) state.terminadas = terminadas;
+    if (Array.isArray(clientes)) state.clientes = clientes;
+    if (Array.isArray(inter)) state.intermediarios = inter;
+    return Array.isArray(faenas) && faenas.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+function guardarCachePc() {
+  try {
+    localStorage.setItem("pc_faenas_cache", JSON.stringify(state.faenas || []));
+    localStorage.setItem("pc_terminadas_cache", JSON.stringify(state.terminadas || []));
+    localStorage.setItem("pc_clientes_cache", JSON.stringify(state.clientes || []));
+    localStorage.setItem("pc_inter_cache", JSON.stringify(state.intermediarios || []));
+  } catch (e) {}
+}
+
+async function asegurarMaterialesPc() {
+  if (_materialesListos && Array.isArray(state.materiales) && state.materiales.length) {
+    if (!(state.categorias || []).length) await cargarCategorias(true);
+    return;
+  }
+  await Promise.all([cargarMateriales(true), cargarCategorias(true)]);
+  _materialesListos = true;
   rellenarSelectsCategoria();
   renderFiltroCats();
+  renderMateriales();
+}
+
+async function init() {
+  const hayCache = hidratarCachePc();
+  if (hayCache) {
+    renderFaenas();
+    renderClientes();
+    renderInter();
+    poblarSelects();
+    poblarSelectPolyboard();
+    poblarSelectPresupuesto();
+  }
+  cargarEstadoDb();
+  cargarIP();
+  cargarEstadoR2();
+  await Promise.all([
+    cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true)
+  ]);
+  guardarCachePc();
   renderFaenas();
   renderClientes();
   renderInter();
-  renderMateriales();
   poblarSelects();
   poblarSelectPolyboard();
   poblarSelectPresupuesto();
-  cargarIP();
-  cargarEstadoR2();
   guardarSnapshotSesionPc();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") preguntarSalidaPc();
@@ -2206,11 +2379,13 @@ async function api(method, path, body) {
       }
 
       const synth = sintetizarRespuestaPc(method, path, body);
+      const mFaena = String(path || "").match(/^\/faenas\/([^/]+)/);
       pendingOps.push({
         method,
         path,
         body: body == null ? null : clonarJSON(body),
-        _synthId: synth.data && synth.data.id
+        _synthId: synth.data && synth.data.id,
+        _faenaId: mFaena ? mFaena[1] : (state.detalleId != null ? state.detalleId : null)
       });
       marcarSesionSuciaPc();
       aplicarOpLocalPc(method, path, body, synth.data || {});
@@ -2255,6 +2430,7 @@ async function cargarFaenas(forzar) {
   ]);
   if (rAct.ok) state.faenas = rAct.data || [];
   if (rTer.ok) state.terminadas = rTer.data || [];
+  if (rAct.ok || rTer.ok) guardarCachePc();
 }
 
 function faseDeFaena(f) {
@@ -2274,17 +2450,26 @@ function seleccionarFase(fase) {
 async function cargarClientes(forzar) {
   if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/clientes");
-  if (r.ok) state.clientes = r.data;
+  if (r.ok) {
+    state.clientes = r.data;
+    guardarCachePc();
+  }
 }
 async function cargarIntermediarios(forzar) {
   if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/intermediarios");
-  if (r.ok) state.intermediarios = r.data;
+  if (r.ok) {
+    state.intermediarios = r.data;
+    guardarCachePc();
+  }
 }
 async function cargarMateriales(forzar) {
   if (sesionSucia && !forzar && !_flushing) return;
   const r = await api("GET", "/materiales");
-  if (r.ok) state.materiales = r.data;
+  if (r.ok) {
+    state.materiales = r.data;
+    _materialesListos = true;
+  }
 }
 async function cargarCategorias(forzar) {
   if (sesionSucia && !forzar && !_flushing) return;
@@ -2322,8 +2507,10 @@ function filtrarCatMaterial(cat) {
   renderMateriales();
 }
 function abrirModalNuevoMaterial() {
-  rellenarSelectsCategoria();
-  abrirModal("m-material");
+  asegurarMaterialesPc().then(() => {
+    rellenarSelectsCategoria();
+    abrirModal("m-material");
+  });
 }
 async function renderListaCategorias() {
   await cargarCategorias();
@@ -2379,7 +2566,9 @@ function nav(id) {
   const btn = document.querySelector(`nav button[data-nav="${id}"]`);
   if (btn) btn.classList.add("active");
   else if (typeof event !== "undefined" && event && event.target && event.target.tagName === "BUTTON") event.target.classList.add("active");
-  if (id === "materiales") rellenarFaenasTicketDestino();
+  if (id === "materiales") {
+    asegurarMaterialesPc().then(() => rellenarFaenasTicketDestino());
+  }
   if (id === "polyboard") poblarSelectPolyboard();
   if (id === "presupuesto") { poblarSelectPresupuesto(); }
   if (id === "book") renderBook();
@@ -2468,7 +2657,7 @@ function renderFaenas() {
     <tbody>${lista.map(f => {
       const esDirecto = f.intermediario_id === 0;
       const fase = faseDeFaena(f);
-      const precio = parseFloat(f.importe) || 0;
+      const precio = parseFloat(f.total_incluido) || parseFloat(f.importe) || 0;
       const acciones = fase !== "terminada" ? `
           <select class="fase-sel" onclick="event.stopPropagation()" onchange="cambiarFase(${f.id}, this.value)">
             <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
@@ -2664,6 +2853,14 @@ async function eliminarMaterialDesdeModal() {
 // ===== DETALLE FAENA =====
 state.detalleCache = null; // { anotaciones, docs, fotos, tiemposHtml }
 
+function htmlTiemposDesdeApiPc(rTiempos) {
+  const tot = (rTiempos && rTiempos.ok && rTiempos.data && rTiempos.data.totales) ? rTiempos.data.totales : [];
+  const labels = { medicion_diseno: "Medición y diseño", compras_gestion: "Compras y gestión", trabajo: "Trabajo" };
+  if (!tot.length) return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+  const txt = tot.map(t => `${labels[t.categoria] || t.categoria}: ${((t.minutos||0)/60).toFixed(1)} h`).join(" · ");
+  return `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">${txt}</span></div>`;
+}
+
 async function verDetalle(id, opts) {
   const forzarRed = !(opts && opts.soloLocal);
   let f = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
@@ -2672,17 +2869,18 @@ async function verDetalle(id, opts) {
   let anotaciones = [];
   let presupuesto = state.detalleActual?.presupuesto || [];
   let gastos = state.detalleActual?.gastos || [];
-  let docs = state.detalleCache?.docs || [];
-  let fotos = state.detalleCache?.fotos || [];
-  let tiemposHtml = state.detalleCache?.tiemposHtml || `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
+  const cacheMisma = state.detalleCache && String(state.detalleCache.faenaId) === String(id);
+  let docs = cacheMisma ? (state.detalleCache.docs || []) : [];
+  let fotos = cacheMisma ? (state.detalleCache.fotos || []) : [];
+  let tiemposHtml = cacheMisma
+    ? (state.detalleCache.tiemposHtml || `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`)
+    : `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Cargando…</span></div>`;
 
   if (forzarRed || String(state.detalleId) !== String(id) || !state.detalleCache) {
-    const [rAnot, rConceptos, rDocs, rFotos, rTiempos] = await Promise.all([
+    // Fase 1: conceptos + anotaciones (presupuesto usable al instante)
+    const [rAnot, rConceptos] = await Promise.all([
       api("GET", `/faenas/${id}/anotaciones`),
-      api("GET", `/faenas/${id}/conceptos`),
-      api("GET", `/faenas/${id}/documentos`),
-      api("GET", `/faenas/${id}/fotos`),
-      api("GET", `/faenas/${id}/tiempos`)
+      api("GET", `/faenas/${id}/conceptos`)
     ]);
     anotaciones = rAnot.ok ? rAnot.data : [];
     const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
@@ -2694,30 +2892,63 @@ async function verDetalle(id, opts) {
       gastos = merged.gastos;
       presupuesto = merged.presupuesto;
     }
-    docs = rDocs.ok ? rDocs.data : [];
-    fotos = rFotos.ok ? rFotos.data : [];
-    const tot = (rTiempos.ok && rTiempos.data && rTiempos.data.totales) ? rTiempos.data.totales : [];
-    const labels = { medicion_diseno: "Medición y diseño", compras_gestion: "Compras y gestión", trabajo: "Trabajo" };
-    if (!tot.length) tiemposHtml = `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`;
-    else {
-      const txt = tot.map(t => `${labels[t.categoria] || t.categoria}: ${((t.minutos||0)/60).toFixed(1)} h`).join(" · ");
-      tiemposHtml = `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">${txt}</span></div>`;
-    }
-    state.detalleCache = { anotaciones, docs, fotos, tiemposHtml, faenaId: id };
-  } else {
-    // Solo local: partir del estado actual + cola
-    anotaciones = state.detalleCache.anotaciones || [];
-    presupuesto = state.detalleActual?.presupuesto || [];
-    gastos = state.detalleActual?.gastos || [];
-    if (pendingOps.length) {
-      const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
-      // Para presupuesto/gastos ya están en detalleActual por aplicarOpLocalPc; no duplicar
-      anotaciones = merged.anotaciones;
-    }
-    docs = state.detalleCache.docs || [];
-    fotos = state.detalleCache.fotos || [];
-    tiemposHtml = state.detalleCache.tiemposHtml || tiemposHtml;
+    state.detalleId = id;
+    state.detalleActual = { gastos, presupuesto };
+    state.detalleCache = {
+      anotaciones,
+      docs,
+      fotos,
+      tiemposHtml,
+      faenaId: id,
+      secundarioPendiente: true
+    };
+    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+    abrirModal("m-detalle");
+
+    // Fase 2: fotos / documentos / tiempos en segundo plano
+    const gen = (state._detalleGen = (state._detalleGen || 0) + 1);
+    const fid = id;
+    Promise.all([
+      api("GET", `/faenas/${fid}/documentos`),
+      api("GET", `/faenas/${fid}/fotos`),
+      api("GET", `/faenas/${fid}/tiempos`)
+    ]).then(([rDocs, rFotos, rTiempos]) => {
+      if (state._detalleGen !== gen || String(state.detalleId) !== String(fid)) return;
+      if (!document.getElementById("m-detalle")?.classList.contains("open")) return;
+      const docs2 = rDocs.ok ? rDocs.data : [];
+      const fotos2 = rFotos.ok ? rFotos.data : [];
+      const tiempos2 = htmlTiemposDesdeApiPc(rTiempos);
+      if (state.detalleCache && String(state.detalleCache.faenaId) === String(fid)) {
+        state.detalleCache.docs = docs2;
+        state.detalleCache.fotos = fotos2;
+        state.detalleCache.tiemposHtml = tiempos2;
+        state.detalleCache.secundarioPendiente = false;
+      }
+      const f2 = state.faenas.find(x => String(x.id) === String(fid)) || (state.terminadas || []).find(x => String(x.id) === String(fid));
+      if (!f2) return;
+      pintarDetalleFaenaPc(f2, {
+        anotaciones: state.detalleCache?.anotaciones || anotaciones,
+        presupuesto: state.detalleActual?.presupuesto || presupuesto,
+        gastos: state.detalleActual?.gastos || gastos,
+        docs: docs2,
+        fotos: fotos2,
+        tiemposHtml: tiempos2
+      });
+    }).catch(() => {});
+    return;
   }
+
+  // Solo local: partir del estado actual + cola
+  anotaciones = state.detalleCache.anotaciones || [];
+  presupuesto = state.detalleActual?.presupuesto || [];
+  gastos = state.detalleActual?.gastos || [];
+  if (pendingOps.length) {
+    const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
+    anotaciones = merged.anotaciones;
+  }
+  docs = state.detalleCache.docs || [];
+  fotos = state.detalleCache.fotos || [];
+  tiemposHtml = state.detalleCache.tiemposHtml || tiemposHtml;
 
   state.detalleId = id;
   state.detalleActual = { gastos, presupuesto };
@@ -2777,7 +3008,9 @@ function pintarDetalleFaenaPc(f, data) {
           </div>
         `).join("")}
       </div>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin fotos — súbelas desde el móvil</p>'}
+    ` : (state.detalleCache && state.detalleCache.secundarioPendiente
+      ? '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Cargando fotos…</p>'
+      : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin fotos — súbelas desde el móvil</p>')}
     <hr>
     <div class="btn-row" style="margin:0;gap:6px">
       <button class="btn btn-s btn-sm" onclick="document.getElementById('doc-upload-${f.id}').click()">+ Añadir</button>
@@ -2798,7 +3031,9 @@ function pintarDetalleFaenaPc(f, data) {
           </div>
         `).join("")}
       </div>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>'}
+    ` : (state.detalleCache && state.detalleCache.secundarioPendiente
+      ? '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Cargando documentos…</p>'
+      : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>')}
     <hr>
     <div id="detalle-presupuesto-wrap">
     ${htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto)}
@@ -3934,7 +4169,12 @@ async function abrirPresupuestoEnCursor() {
   const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
   const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
 }
-function abrirModalMateriales() { renderConsultaMat(); abrirModal("m-consulta-mat"); }
+function abrirModalMateriales() {
+  asegurarMaterialesPc().then(() => {
+    renderConsultaMat();
+    abrirModal("m-consulta-mat");
+  });
+}
 function renderConsultaMat() {
   const q = (document.getElementById("q-consulta-mat")?.value || "").toLowerCase();
   const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
@@ -4081,7 +4321,7 @@ async function borrarBloquePresupuestoPc(faenaId, nombreDb) {
   });
   if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
   cerrarPresupuestoParcialPc();
-  toast("Partida eliminada (pendiente de sincronizar)");
+  toast("Partida eliminada");
   refrescarUiPresupuestoPc(faenaId);
 }
 
@@ -4092,11 +4332,12 @@ function abrirMaterialesPresupuestoPc(faenaId) {
     return;
   }
   if (fid && !state.presupuestoParcialPc && !document.getElementById("m-presupuesto-item")?.classList.contains("open")) {
-    // Sin partida abierta: pedir concepto nuevo vía formulario vacío listo
     document.getElementById("presupuesto-faena-id").value = fid;
   }
-  renderConsultaMat();
-  abrirModal("m-consulta-mat");
+  asegurarMaterialesPc().then(() => {
+    renderConsultaMat();
+    abrirModal("m-consulta-mat");
+  });
 }
 
 async function usarMaterialEnPresupuestoPc(nombre, precio) {
@@ -4185,7 +4426,7 @@ async function eliminarPresupuestoItem(itemId, faenaId) {
   if (!confirm("¿Eliminar esta línea de la partida?")) return false;
   const r = await api("DELETE", `/presupuestos/${itemId}`);
   if (r.ok) {
-    toast("Línea eliminada (pendiente de sincronizar)");
+    toast("Línea eliminada");
     cerrarModal("m-presupuesto-item");
     refrescarUiPresupuestoPc(faenaId);
     return true;

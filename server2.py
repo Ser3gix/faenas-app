@@ -1196,6 +1196,60 @@ def _omitir_sync_faena(faena_id):
         pass
     return None
 
+def _totales_presupuesto_incluido(conn, ids):
+    """Suma de partidas incluidas por faena (mismo criterio que sync/datos)."""
+    if not ids:
+        return {}
+    placeholders = ",".join(["?"] * len(ids))
+    try:
+        filas = conn.execute(
+            f"""
+            SELECT faena_id, COALESCE(SUM(total), 0) AS total
+            FROM presupuestos_faena
+            WHERE faena_id IN ({placeholders}) AND COALESCE(incluido, 1) <> 0
+            GROUP BY faena_id
+            """,
+            list(ids),
+        ).fetchall()
+    except Exception:
+        try:
+            filas = conn.execute(
+                f"""
+                SELECT faena_id, COALESCE(SUM(total), 0) AS total
+                FROM presupuestos_faena
+                WHERE faena_id IN ({placeholders})
+                GROUP BY faena_id
+                """,
+                list(ids),
+            ).fetchall()
+        except Exception:
+            return {}
+    out = {}
+    for fila in filas:
+        try:
+            out[fila["faena_id"]] = float(fila["total"] or 0)
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
+
+
+def _enriquecer_faenas_con_total_presupuesto(conn, lista):
+    ids = [f.get("id") for f in lista if f.get("id") is not None]
+    totales = _totales_presupuesto_incluido(conn, ids)
+    for f in lista:
+        fid = f.get("id")
+        if fid in totales:
+            total = totales[fid]
+            f["total_incluido"] = total
+            f["importe"] = total
+        else:
+            try:
+                f["total_incluido"] = float(f.get("importe") or 0)
+            except (TypeError, ValueError):
+                f["total_incluido"] = 0.0
+    return lista
+
+
 @app.route("/api/faenas", methods=["GET"])
 def get_faenas():
     conn = get_connection()
@@ -1207,8 +1261,10 @@ def get_faenas():
         WHERE f.archivada = 0
         ORDER BY f.id DESC
     """).fetchall()
+    lista = filas_a_lista(filas)
+    _enriquecer_faenas_con_total_presupuesto(conn, lista)
     conn.close()
-    return jsonify({"ok": True, "data": filas_a_lista(filas)})
+    return jsonify({"ok": True, "data": lista})
 
 @app.route("/api/faenas/archivadas", methods=["GET"])
 def get_faenas_archivadas():
@@ -1221,8 +1277,10 @@ def get_faenas_archivadas():
         WHERE f.archivada = 1
         ORDER BY f.id DESC
     """).fetchall()
+    lista = filas_a_lista(filas)
+    _enriquecer_faenas_con_total_presupuesto(conn, lista)
     conn.close()
-    return jsonify({"ok": True, "data": filas_a_lista(filas)})
+    return jsonify({"ok": True, "data": lista})
 
 @app.route("/api/faenas/<int:id>", methods=["GET"])
 def get_faena(id):
