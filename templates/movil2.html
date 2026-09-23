@@ -1853,6 +1853,16 @@ function urlJimmi(u) {
   return base + "/" + u;
 }
 
+function srcFotoFaena(faenaId, foto) {
+  const u = String((foto && (foto.data || foto.url)) || "");
+  if (u.indexOf("data:") === 0) return u;
+  const nom = foto && foto.nombre;
+  if (faenaId && nom) {
+    return getServerUrl().replace(/\/$/, "") + "/faenas/" + faenaId + "/fotos/" + encodeURIComponent(nom);
+  }
+  return urlJimmi(u);
+}
+
 function htmlFotosJimmi(imagenes) {
   if (!imagenes || !imagenes.length) return "";
   return `<div class="jimmi-fotos">${imagenes.map(im => {
@@ -3080,11 +3090,14 @@ function renderPanelFotos(f) {
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoPendiente('${faenaId}',${i})">×</button>
     </div>`).join("");
 
-  const gridSync = syncFotos.map((p, i) => `
+  const gridSync = syncFotos.map((p, i) => {
+    const src = srcFotoFaena(faenaId, p);
+    return `
     <div class="foto-thumb">
-      <img src="${p.data||""}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${p.data||""}')">
+      <img src="${src}" alt="${escHtml(p.nombre||"")}" loading="lazy" onclick="verFotoGrande('${src}')">
       <button type="button" class="foto-del" onclick="event.stopPropagation();eliminarFotoSincronizada('${faenaId}',${i})">×</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 
   const totalFotos = syncFotos.length + pending.length;
 

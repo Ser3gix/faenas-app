@@ -11,6 +11,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context, render_template, redirect, send_file, make_response
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
@@ -288,24 +289,39 @@ def _guardar_binario(faena, carpeta_rel, nombre, data, content_type):
     return ruta, "", "", "local"
 
 
+def _url_api_foto(faena_id, nombre):
+    if not faena_id or not nombre:
+        return ""
+    return f"/api/faenas/{int(faena_id)}/fotos/{quote(str(nombre), safe='')}"
+
+
 def _payload_foto(fila):
     ruta = (fila.get("ruta_foto") or "").strip()
     contenido = (fila.get("data_base64") or "").strip()
+    nombre = fila.get("nombre") or os.path.basename(ruta.replace("\\", "/"))
+    url_api = _url_api_foto(fila.get("faena_id"), nombre)
     if contenido:
-        data = f"data:{_mime_por_extension(fila.get('nombre'))};base64,{contenido}"
+        if contenido.startswith("data:"):
+            data = contenido
+        else:
+            data = f"data:{_mime_por_extension(nombre)};base64,{contenido}"
     else:
-        data = _url_desde_ruta(ruta)
+        data = url_api
         if not data and ruta and os.path.exists(ruta):
             try:
                 with open(ruta, "rb") as f:
-                    data = f"data:{_mime_por_extension(fila.get('nombre'))};base64," + base64.b64encode(f.read()).decode()
+                    data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
             except Exception:
                 data = ""
+    if not data:
+        data = url_api
     return {
         "id": fila.get("id"),
-        "nombre": fila.get("nombre"),
+        "faena_id": fila.get("faena_id"),
+        "nombre": nombre,
         "ruta": ruta,
         "data": data,
+        "url": url_api or data,
     }
 
 
@@ -5100,7 +5116,7 @@ def listar_fotos(id):
                         data = f"data:{_mime_por_extension(nombre)};base64," + base64.b64encode(f.read()).decode()
                 except Exception:
                     continue
-                fotos.append({"id": None, "nombre": nombre, "ruta": ruta, "data": data})
+                fotos.append({"id": None, "faena_id": id, "nombre": nombre, "ruta": ruta, "data": data, "url": _url_api_foto(id, nombre)})
 
     conn.close()
     return jsonify({"ok": True, "data": fotos})
@@ -5135,6 +5151,7 @@ def servir_foto_faena(id, nombre):
         return Response("No encontrada", status=404)
     resp = send_file(io.BytesIO(raw), mimetype=_mime_por_extension(nombre), download_name=nombre)
     resp.headers["Cache-Control"] = "private, max-age=3600"
+    resp.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
     return resp
 
 @app.route("/api/faenas/<int:id>/fotos/<path:nombre>", methods=["DELETE"])

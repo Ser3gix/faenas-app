@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -35,6 +36,7 @@ def _usar_mysql():
 
 _MYSQL_DESHABILITADO = False
 _MYSQL_ERROR = None
+_MYSQL_REINTENTO = 0
 
 
 def _serializar_valor(valor):
@@ -589,17 +591,25 @@ def get_db_status():
         "mysql_configurado": mysql_configurado(),
         "mysql_deshabilitado": _MYSQL_DESHABILITADO,
         "mysql_error": _MYSQL_ERROR,
+        "mysql_host": MYSQL_HOST,
+        "mysql_port": MYSQL_PORT,
     }
 
 
 def get_connection():
-    global _MYSQL_DESHABILITADO, _MYSQL_ERROR
+    global _MYSQL_DESHABILITADO, _MYSQL_ERROR, _MYSQL_REINTENTO
+
+    if _MYSQL_DESHABILITADO and time.time() >= _MYSQL_REINTENTO:
+        _MYSQL_DESHABILITADO = False
 
     if _usar_mysql():
         try:
-            return _mysql_conectar_con_bd()
+            conn = _mysql_conectar_con_bd()
+            _MYSQL_ERROR = None
+            return conn
         except Exception as exc:
             _MYSQL_DESHABILITADO = True
+            _MYSQL_REINTENTO = time.time() + 30
             _MYSQL_ERROR = str(exc)
             print("[AVISO] No se pudo conectar a MySQL. Se usara SQLite local.")
             print(f"[AVISO] Motivo MySQL: {_MYSQL_ERROR}")
