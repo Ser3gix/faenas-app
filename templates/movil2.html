@@ -332,15 +332,6 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 }
 .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-.tiempos-bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border-bottom: 1px solid var(--sawdust);
-  padding: 6px 10px;
-}
 .tiempos-sel {
   flex: 1;
   min-width: 0;
@@ -1072,7 +1063,6 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .btn-g { background: #DCFCE7; color: var(--green); }
 .btn-d { background: #FEE2E2; color: var(--red); }
 .btn-inline { width: auto; margin-bottom: 0; padding: 10px 14px; font-size: 0.9rem; }
-.tiempos-bar .tiempos-play { width: 44px; min-width: 44px; margin: 0; }
 .btn-row { display: flex; gap: 8px; margin-bottom: 8px; }
 
 .form-box {
@@ -1465,19 +1455,6 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="panel-tab" data-idx="3" onclick="irAPanel(3)">📸 Fotos</div>
       <div class="panel-tab" data-idx="4" onclick="irAPanel(4)">🧾 Gastos</div>
       <div class="panel-tab" data-idx="5" onclick="irAPanel(5)">⏱ Tiempos</div>
-    </div>
-  </div>
-
-  <div id="tiempos-bar" class="tiempos-bar">
-    <select class="tiempos-sel" id="tiempos-sel" aria-label="Categoría de tiempo">
-      <option value="medicion_diseno">Medición y diseño</option>
-      <option value="compras_gestion">Compras y gestión</option>
-      <option value="trabajo">Trabajo</option>
-    </select>
-    <button type="button" class="btn btn-p tiempos-play" id="tiempos-play" aria-label="Iniciar">▶</button>
-    <div>
-      <div class="tiempos-crono" id="tiempos-crono">0:00</div>
-      <div class="tiempos-tot" id="tiempos-tot">0.0 h</div>
     </div>
   </div>
 
@@ -2428,8 +2405,6 @@ function pararTickTiempo() {
 function pintarCronoTiempo() {
   const activo = leerTiempoActivo();
   const txt = activo ? formatoCrono(activo.inicio) : "0:00";
-  const el = document.getElementById("tiempos-crono");
-  if (el) el.textContent = txt;
   const elP = document.getElementById("tiempos-panel-crono");
   if (elP) elP.textContent = txt;
 }
@@ -2484,8 +2459,6 @@ function _ligarControlTiempo(selId, playId) {
     sel.addEventListener("change", () => {
       const id = state.faenaActualId;
       if (id) localStorage.setItem("tiempo_cat_" + id, sel.value);
-      const otro = document.getElementById(selId === "tiempos-sel" ? "tiempos-panel-sel" : "tiempos-sel");
-      if (otro && otro.value !== sel.value) otro.value = sel.value;
       const f = faenaDeTiempo(id);
       if (f) refrescarTiemposFaena(f, { sinRed: true });
     });
@@ -2498,7 +2471,7 @@ function _ligarControlTiempo(selId, playId) {
       const activo = leerTiempoActivo();
       if (activo) pararTiempoFaena(activo.faena_id);
       else if (id) {
-        const cat = (document.getElementById("tiempos-panel-sel") || document.getElementById("tiempos-sel") || {}).value;
+        const cat = (document.getElementById("tiempos-panel-sel") || {}).value;
         iniciarTiempoFaena(id, cat);
       }
     });
@@ -2506,7 +2479,6 @@ function _ligarControlTiempo(selId, playId) {
 }
 
 function initBarraTiempos() {
-  _ligarControlTiempo("tiempos-sel", "tiempos-play");
   _ligarControlTiempo("tiempos-panel-sel", "tiempos-panel-play");
 }
 
@@ -2592,18 +2564,9 @@ function renderPanelTiempos(f) {
 async function refrescarTiemposFaena(f, opts) {
   initBarraTiempos();
   const id = f && (f.id || f._tempId);
-  const sels = [
-    document.getElementById("tiempos-sel"),
-    document.getElementById("tiempos-panel-sel")
-  ].filter(Boolean);
-  const plays = [
-    document.getElementById("tiempos-play"),
-    document.getElementById("tiempos-panel-play")
-  ].filter(Boolean);
-  const totEls = [
-    document.getElementById("tiempos-tot"),
-    document.getElementById("tiempos-panel-tot")
-  ].filter(Boolean);
+  const sels = [document.getElementById("tiempos-panel-sel")].filter(Boolean);
+  const plays = [document.getElementById("tiempos-panel-play")].filter(Boolean);
+  const totEls = [document.getElementById("tiempos-panel-tot")].filter(Boolean);
   const activo = leerTiempoActivo();
   const totMap = minutosColaFaena(id);
   if (f && !esIdFaenaTemporal(id) && !(opts && opts.sinRed)) {
@@ -4642,8 +4605,9 @@ function renderFaenas() {
 
 function abrirFaenaDesdeTiempos(event, id) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
-  state.panelActual = 0;
+  state.panelActual = 5;
   abrirFaena(id);
+  irAPanel(5);
 }
 
 function eliminarFaenaDesdeTarjeta(event, id) {
@@ -7504,7 +7468,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "65z";
+  const UI_VER = "66a";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7532,7 +7496,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=65z", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66a", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
