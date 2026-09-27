@@ -275,6 +275,89 @@ textarea { resize: vertical; min-height: 70px; }
 .det-k { color: var(--muted); font-size: 0.72rem; }
 .det-v { color: var(--ink); font-weight: 500; max-width: 60%; text-align: right; }
 
+/* PRESUPUESTO (mismo aspecto que móvil) */
+.presup-total {
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.presup-total-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+.presup-total-val { font-size: 1.6rem; font-weight: 700; font-family: var(--font-sans); }
+.presup-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--sawdust);
+  gap: 10px;
+}
+.presup-line:last-child { border-bottom: none; }
+.presup-concepto { font-size: 0.9rem; flex: 1; }
+.presup-precio { font-size: 0.95rem; font-weight: 600; color: var(--green); white-space: nowrap; }
+.presup-empty { font-size: 0.95rem; color: var(--muted); text-align: center; padding: 20px 0; }
+.presup-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.presup-actions .btn { padding: 6px 10px; font-size: 0.78rem; }
+.presup-tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; background: #fff; }
+.presup-tabla th { text-align: left; font-size: 0.7rem; color: var(--muted); padding: 8px 6px; border-bottom: 2px solid var(--sawdust); font-weight: 600; }
+.presup-tabla td { padding: 12px 6px; border-bottom: 1px solid var(--sawdust); vertical-align: middle; }
+.presup-tabla tbody tr { cursor: pointer; }
+.presup-tabla tbody tr:hover { background: var(--paper-dark); }
+.presup-tabla tbody tr.excluido { opacity: 0.55; }
+.presup-tabla th:last-child, .presup-tabla td:last-child { width: 72px; text-align: center; }
+.presup-section-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.presup-incluir {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  position: relative;
+  cursor: pointer;
+}
+.presup-incluir input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.presup-check {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  background: #fff;
+  display: block;
+  box-sizing: border-box;
+}
+.presup-incluir input:checked + .presup-check { background: var(--accent); }
+.presup-incluir input:checked + .presup-check::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 11px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin: 1px 0 0 6px;
+}
+
 /* DETALLE FAENA — hub + secciones (PC) */
 #m-detalle .modal.pc-detalle-modal {
   max-width: 920px;
@@ -3583,36 +3666,53 @@ function eliminarCobroPc(faenaId, cobroId) {
 }
 
 function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
+  const gastos = (state.detalleActual && state.detalleActual.gastos) || [];
+  const totalGastos = gastos.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
+  const fid = f.id;
+  let lineas = "";
+  if (bloquesP.length) {
+    lineas = `<table class="presup-tabla">
+      <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th></tr></thead>
+      <tbody>
+        ${bloquesP.map(b => {
+          const nom = JSON.stringify(b.nombre_db || "");
+          const sub = parseFloat(b.total || 0) || 0;
+          return `<tr class="${b.incluido ? "" : "excluido"}" onclick='abrirPresupuestoParcialPc(${fid},${nom})'>
+            <td><strong>${esc(b.nombre || "General")}</strong></td>
+            <td class="presup-precio">${sub.toFixed(2)} €</td>
+            <td onclick="event.stopPropagation()">
+              <label class="presup-incluir">
+                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoPc(${fid},${nom},this.checked?1:0)'>
+                <span class="presup-check"></span>
+              </label>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+  } else {
+    lineas = `<div class="presup-empty">Sin presupuestos.<br><small>Crea uno por cada trabajo (puertas, encimera…).</small></div>`;
+  }
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
-      <strong style="font-size:0.85rem">Presupuestos (${bloquesP.length})</strong>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-p btn-sm" onclick="nuevoBloquePresupuestoPc(${f.id})">+ Presupuesto</button>
-        <button class="btn btn-s btn-sm" onclick="abrirMaterialesPresupuestoPc(${f.id})">Materiales</button>
-        <span class="badge b-orange" id="detalle-presup-total">Total ${totalPresupuesto.toFixed(2)} €</span>
+    <div class="presup-total">
+      <div>
+        <div class="presup-total-label">Total conjunto</div>
+        <div class="presup-total-val" id="detalle-presup-total">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</div>
       </div>
+      ${bloquesP.length ? `<div style="text-align:right">
+        <div class="presup-total-label">Gastos</div>
+        <div style="font-size:1.2rem;font-weight:700;color:#f0b080">${totalGastos.toFixed(2)} €</div>
+      </div>` : ""}
     </div>
-    ${bloquesP.length ? `
-      <table class="gastos-table">
-        <thead><tr><th>Concepto</th><th>Cantidad</th><th>Incluir</th><th></th></tr></thead>
-        <tbody>
-          ${bloquesP.map(b => {
-            const nom = JSON.stringify(b.nombre_db || "");
-            const sub = parseFloat(b.total || 0) || 0;
-            return `<tr style="cursor:pointer${b.incluido ? "" : ";opacity:0.55"}" onclick='abrirPresupuestoParcialPc(${f.id},${nom})'>
-              <td><strong>${esc(b.nombre || "General")}</strong><div style="font-size:0.7rem;color:#999">${(b.partidas||[]).length} línea${(b.partidas||[]).length===1?"":"s"}</div></td>
-              <td style="color:var(--green);font-weight:600">${sub.toFixed(2)} €</td>
-              <td onclick="event.stopPropagation()">
-                <input type="checkbox" ${b.incluido ? "checked" : ""} onchange='toggleBloquePresupuestoPc(${f.id},${nom},this.checked?1:0)' title="Incluir en total">
-              </td>
-              <td onclick="event.stopPropagation()">
-                <button class="btn btn-d btn-sm" onclick='borrarBloquePresupuestoPc(${f.id},${nom})'>×</button>
-              </td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin presupuestos. Crea uno por cada trabajo (puertas, encimera…).</p>'}
+    <div class="presup-section-title">
+      Presupuestos
+      <span style="font-size:0.75rem;color:#aaa;font-weight:600;margin-left:6px">${bloquesP.length}</span>
+    </div>
+    ${lineas}
+    <div class="presup-actions">
+      <button type="button" class="btn btn-p" onclick="nuevoBloquePresupuestoPc(${fid})">+ Presupuesto</button>
+      <button type="button" class="btn btn-s" onclick="abrirMaterialesPresupuestoPc(${fid})">Materiales</button>
+    </div>
   `;
 }
 
@@ -4849,35 +4949,34 @@ function renderPresupuestoParcialPc() {
   const fid = st.faenaId;
   const nom = JSON.stringify(st.nombreDb || "");
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:10px 12px;background:#f7f3eb;border-radius:8px">
+    <div class="presup-total" style="margin-bottom:12px">
       <div>
-        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#888">Total partida</div>
-        <div style="font-size:1.35rem;font-weight:700;color:var(--green)">${total.toFixed(2)} €</div>
+        <div class="presup-total-label">Total partida</div>
+        <div class="presup-total-val" style="font-size:1.3rem">${total.toFixed(2)} €</div>
       </div>
     </div>
-    <div class="btn-row" style="margin:0 0 12px 0;flex-wrap:wrap">
-      <button type="button" class="btn btn-p btn-sm" onclick='abrirPresupuestoItem(${fid},null,${nom})'>+ Línea</button>
-      <button type="button" class="btn btn-s btn-sm" onclick="abrirMaterialesPresupuestoPc()">+ Material</button>
-      <button type="button" class="btn btn-d btn-sm" onclick='borrarBloquePresupuestoPc(${fid},${nom})'>Eliminar partida</button>
+    <div class="presup-actions" style="margin:0 0 12px 0">
+      <button type="button" class="btn btn-p" onclick='abrirPresupuestoItem(${fid},null,${nom})'>+ Línea</button>
+      <button type="button" class="btn btn-s" onclick="abrirMaterialesPresupuestoPc()">+ Material</button>
+      <button type="button" class="btn btn-d" onclick='borrarBloquePresupuestoPc(${fid},${nom})'>Eliminar partida</button>
     </div>
-    ${partidas.length ? `
-      <table class="gastos-table">
-        <thead><tr><th>Detalle</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
-        <tbody>
-          ${partidas.map(g => `<tr>
-            <td>${esc(g.descripcion || "—")}</td>
-            <td><span class="badge b-orange">${esc(g.tipo || "")}</span></td>
-            <td>${g.cantidad ?? ""}</td>
-            <td>${parseFloat(g.precio_unitario || 0).toFixed(2)} €</td>
-            <td><strong>${parseFloat(g.total || 0).toFixed(2)} €</strong></td>
-            <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end">
-              <button class="btn btn-s btn-sm" onclick="abrirPresupuestoItem(${fid},${JSON.stringify(String(g.id))},${nom})">✏️</button>
-              <button class="btn btn-d btn-sm" onclick="eliminarPresupuestoItem(${JSON.stringify(String(g.id))},${fid})">×</button>
-            </div></td>
-          </tr>`).join("")}
-        </tbody>
-      </table>
-    ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin líneas en esta partida</p>'}
+    ${partidas.length ? partidas.map(g => {
+      const gid = JSON.stringify(String(g.id));
+      return `<div class="presup-line" style="align-items:flex-start">
+        <div class="presup-concepto">
+          ${esc(g.descripcion || "—")}
+          <span class="badge b-gray" style="font-size:0.58rem;margin-left:4px">${esc(g.tipo || "")}</span>
+          <div style="font-size:0.72rem;color:#888;margin-top:3px">${parseFloat(g.cantidad || 1)} x ${parseFloat(g.precio_unitario || 0).toFixed(2)} €</div>
+        </div>
+        <div style="text-align:right;min-width:130px;flex-shrink:0">
+          <div class="presup-precio">${parseFloat(g.total || 0).toFixed(2)} €</div>
+          <div class="presup-actions" style="justify-content:flex-end;margin-top:8px">
+            <button type="button" class="btn btn-s" onclick='abrirPresupuestoItem(${fid},${gid},${nom})'>Editar</button>
+            <button type="button" class="btn btn-d" onclick='eliminarPresupuestoItem(${gid},${fid})'>Eliminar</button>
+          </div>
+        </div>
+      </div>`;
+    }).join("") : '<div class="presup-empty">Sin líneas en esta partida</div>'}
   `;
 }
 
