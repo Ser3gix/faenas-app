@@ -68,6 +68,43 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   display: none;
 }
 .offline-indicator.show { display: block; }
+.sync-ind {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.18);
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  text-align: center;
+}
+.sync-ind.ok { background: rgba(34,197,94,0.55); }
+.sync-ind.pend { background: rgba(245,158,11,0.75); }
+.sync-ind.busy { background: rgba(59,130,246,0.75); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-ind.err { background: rgba(239,68,68,0.75); }
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.sync-banner {
+  display: none;
+  position: fixed;
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  left: 0; right: 0;
+  z-index: 59;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  pointer-events: none;
+}
+.sync-banner.show { display: block; }
+.sync-banner.pend { background: #d97706; }
+.sync-banner.busy { background: #2563eb; animation: sync-pulse 1s ease-in-out infinite; }
+.sync-banner.err { background: #dc2626; }
 .btn-terminar-sesion {
   border: 1px solid rgba(255,255,255,0.35);
   background: rgba(255,255,255,0.14);
@@ -742,6 +779,190 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .ticket-info { flex: 1; min-width: 0; }
 .ticket-nombre { font-size: 0.82rem; font-weight: 500; }
 .ticket-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+
+.ticket-art-list { display: flex; flex-direction: column; gap: 12px; }
+.ticket-art-card,
+.ticket-art-row-item {
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  overflow: visible;
+}
+.ticket-art-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 52px;
+  border: none;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  font: inherit;
+  color: inherit;
+}
+.ticket-art-row-item.open .ticket-art-row-head { background: var(--paper-dark); border-bottom: 1px solid var(--sawdust); }
+.ticket-art-row-head:active { background: var(--paper-dark); }
+.ticket-art-row-main { flex: 1; min-width: 0; }
+.ticket-art-row-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ticket-art-row-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ticket-art-row-precio {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ticket-art-row-chev {
+  color: var(--muted);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.ticket-art-row-chev { display: none; }
+.ticket-art-row-body {
+  display: block !important;
+  padding: 12px 14px 14px;
+  background: #fff;
+}
+.ticket-art-row-item.open .ticket-art-row-body { display: block !important; }
+.ticket-art-row-head {
+  cursor: default;
+  background: var(--paper-dark);
+  border-bottom: 1px solid var(--sawdust);
+}
+.ticket-art-hint {
+  font-size: 0.82rem;
+  color: #666;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+.ticket-art-field { margin-bottom: 10px; }
+.ticket-art-field:last-child { margin-bottom: 0; }
+.ticket-art-field label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #666;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ticket-art-field input,
+.ticket-art-field select,
+.ticket-art-field textarea {
+  width: 100%;
+  margin: 0;
+  font-size: 16px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  box-sizing: border-box;
+  background: #fff;
+}
+.ticket-art-field textarea {
+  min-height: 72px;
+  resize: vertical;
+  line-height: 1.35;
+}
+.ticket-art-field-material textarea[data-k="nombre"] {
+  min-height: 132px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ticket-art-field-compact {
+  margin-bottom: 6px;
+}
+.ticket-art-field-compact label {
+  font-size: 0.65rem;
+  margin-bottom: 2px;
+}
+.ticket-art-field-compact input {
+  min-height: 34px;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.ticket-art-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ticket-art-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.ticket-art-faena { display: none; }
+.ticket-show-faena .ticket-art-faena { display: block; }
+.ticket-art-body-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ticket-art-body-actions .btn { width: 100%; }
+
+#ticket-paso3 {
+  padding-bottom: 96px;
+}
+.ticket-paso3-sticky {
+  position: static;
+  z-index: 2;
+  margin-top: 16px;
+  padding: 10px 0 6px;
+  background: transparent;
+  pointer-events: auto;
+}
+.ticket-paso3-sticky .btn {
+  width: 100%;
+  pointer-events: auto;
+  box-shadow: none;
+}
+#ticket-tabla-wrap {
+  position: relative;
+  z-index: 3;
+  padding-bottom: 8px;
+}
+#ticket-art-select-wrap select {
+  width: 100%;
+  min-height: 48px;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: #fff;
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+#ticket-cruzar-notas,
+#ticket-ai-estado { display: none !important; }
+.ticket-art-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.ticket-art-actions .btn { flex: 1; min-width: 120px; }
+
+#m-ticket-articulo { z-index: 260; }
 .gasto-item {
   display: flex;
   justify-content: space-between;
@@ -999,9 +1220,11 @@ textarea { resize: vertical; min-height: 80px; }
   <span style="font-size:1.3rem">🪵</span>
   <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
+  <span class="sync-ind ok" id="sync-ind" title="Estado de sincronización">Al día</span>
   <span id="sesion-badge">0</span>
   <button type="button" class="btn-terminar-sesion" id="btn-terminar-sesion" onclick="abrirTerminarSesion()">Terminar</button>
 </header>
+<div class="sync-banner" id="sync-banner" aria-live="polite"></div>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
 <div id="main-carousel">
@@ -1031,10 +1254,10 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="form-box">
       <div class="form-title">Paso 1 — Foto del ticket</div>
       <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Una foto cada vez. Jimmi la lee y tú revisas la lista antes de guardar.</p>
-      <input type="file" id="ticket-foto-movil" accept="image/*" onchange="ticketPreview(event)" style="display:none">
+      <input type="file" id="ticket-foto-movil" accept="image/*,.heic,.heif" onchange="ticketPreview(event)" style="display:none">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-p btn-inline" onclick="document.getElementById('ticket-foto-movil').click()">🖼️ Galería</button>
-        <button class="btn btn-p btn-inline" onclick="tomarFotoDirecta()">📷 Cámara</button>
+        <button class="btn btn-p btn-inline" type="button" onclick="abrirGaleriaTicket()">🖼️ Galería</button>
+        <button class="btn btn-p btn-inline" type="button" onclick="tomarFotoDirecta()">📷 Cámara</button>
       </div>
       <div id="ticket-preview-movil" style="display:none;margin-top:10px">
         <img id="ticket-img-movil" style="width:100%;border-radius:8px;border:1px solid var(--sawdust);max-height:260px;object-fit:contain">
@@ -1052,8 +1275,7 @@ textarea { resize: vertical; min-height: 80px; }
       <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
     </div>
     <div class="form-box" id="ticket-paso3" style="display:none">
-      <div class="form-title">Paso 3 — Revisar y asignar</div>
-      <div id="ticket-cruzar-notas" style="font-size:0.82rem;color:#555;margin-bottom:8px;line-height:1.5"></div>
+      <div class="form-title">Paso 3 — Revisar materiales <span style="font-size:0.7rem;font-weight:500;color:#999">v64</span></div>
       <div class="field">
         <label>Destino</label>
         <select id="ticket-destino" onchange="actualizarDestinoTicket()">
@@ -1065,9 +1287,16 @@ textarea { resize: vertical; min-height: 80px; }
         <label>Faena</label>
         <select id="ticket-destino-faena"></select>
       </div>
+      <div class="field" id="ticket-art-select-wrap" style="display:none">
+        <label>Materiales detectados</label>
+        <select id="ticket-art-select" onchange="cambiarMaterialTicketSeleccionado()"></select>
+      </div>
       <div id="ticket-tabla-wrap"></div>
+      <div id="ticket-cruzar-notas" style="display:none" aria-hidden="true"></div>
       <textarea id="ticket-json-movil" style="display:none"></textarea>
-      <button class="btn btn-p" onclick="cargarJsonTicketMovil()">✓ Aceptar y borrar ticket</button>
+      <div class="ticket-paso3-sticky">
+        <button class="btn btn-p" type="button" onclick="cargarJsonTicketMovil()">✓ Guardar</button>
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn btn-s" onclick="mostrarTextoManual()">✍️ Texto manual</button>
@@ -1313,6 +1542,29 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<div class="overlay-modal" id="m-ticket-articulo">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <div class="form-title" id="ticket-art-modal-title">Editar material</div>
+    <input type="hidden" id="ticket-art-modal-container">
+    <input type="hidden" id="ticket-art-modal-idx">
+    <div class="field"><label>Material</label><input id="ticket-art-nombre" autocomplete="off"></div>
+    <div class="field"><label>Definición</label><textarea id="ticket-art-definicion" rows="3" placeholder="Referencia, medida…"></textarea></div>
+    <div class="field"><label>Cantidad</label><input type="number" inputmode="decimal" step="0.01" id="ticket-art-cantidad"></div>
+    <div class="field"><label>P. unitario</label><input type="number" inputmode="decimal" step="0.01" id="ticket-art-precio"></div>
+    <div class="field"><label>Total</label><input type="number" inputmode="decimal" step="0.01" id="ticket-art-total"></div>
+    <div class="field"><label>Categoría</label><input id="ticket-art-categoria" autocomplete="off"></div>
+    <div class="field"><label>Unidad</label><input id="ticket-art-unidad" autocomplete="off"></div>
+    <div class="field"><label>Proveedor</label><input id="ticket-art-proveedor" autocomplete="off"></div>
+    <div class="field ticket-art-faena" id="ticket-art-faena-wrap" style="display:none">
+      <label>Faena</label>
+      <select id="ticket-art-faena"></select>
+    </div>
+    <button class="btn btn-p" type="button" onclick="guardarTicketArticuloModal()">✓ Guardar material</button>
+    <button class="btn btn-d" type="button" onclick="eliminarTicketArticuloModal()">🗑️ Eliminar</button>
+    <button class="btn btn-s" type="button" onclick="cerrarTicketArticuloModal()">Cancelar</button>
+  </div>
+</div>
+
 <!-- Modal: Presupuesto parcial -->
 <div class="overlay-modal" id="m-presupuesto-parcial-mov">
   <div class="modal-box">
@@ -1462,7 +1714,15 @@ function guardarCola(c, opts) {
   localStorage.setItem("cola_anotacionesEditar",       JSON.stringify(c.anotacionesEditar || []));
   localStorage.setItem("cola_anotacionesEliminar",     JSON.stringify(c.anotacionesEliminar || []));
   localStorage.setItem("cola_gastos",                  JSON.stringify(c.gastos || []));
-  localStorage.setItem("cola_fotos",                   JSON.stringify(c.fotos || []));
+  // Fotos: no guardar base64 en localStorage si hay blobId (IndexedDB)
+  const fotosLite = (c.fotos || []).map(f => {
+    if (f && f.blobId && f.data) {
+      const { data, ...rest } = f;
+      return rest;
+    }
+    return f;
+  });
+  localStorage.setItem("cola_fotos",                   JSON.stringify(fotosLite));
   localStorage.setItem("cola_ticket_fotos",            JSON.stringify(c.ticketFotos || []));
   localStorage.setItem("cola_tickets",                 JSON.stringify(c.tickets || []));
   localStorage.setItem("cola_faenasEditar",            JSON.stringify(c.faenasEditar || []));
@@ -1477,6 +1737,7 @@ function guardarCola(c, opts) {
     : JSON.parse(localStorage.getItem("cola_faenasEliminar") || "[]");
   localStorage.setItem("cola_faenasEliminar", JSON.stringify(eliminar));
   if (!(opts && opts.silencioso) && typeof marcarSesionSucia === "function") marcarSesionSucia();
+  if (!(opts && opts.sinFondo) && typeof programarSyncFondo === "function") programarSyncFondo();
 }
 
 function esIdFaenaTemporal(id) {
@@ -1837,7 +2098,6 @@ function getServerUrl() {
   }
   return "/api";
 }
-
 
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -3248,14 +3508,18 @@ async function procesarListaFotos(files) {
         const nombre = `${numeroFaena}_foto_${Date.now()}_${guardadas}.jpg`;
         try {
           await guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena);
-          const cola = cargarCola();
-          cola.fotos.push({ faena_id: fotoFaenaId, data: base64, nombre, fecha: new Date().toISOString() });
-          guardarCola(cola);
+          const blobId = `foto_${Date.now()}_${guardadas}_${Math.random().toString(36).slice(2, 8)}`;
+          await idbPutFoto(blobId, base64);
+          if (String(fotoFaenaId) !== "elegir") {
+            const cola = cargarCola();
+            cola.fotos.push({ faena_id: fotoFaenaId, blobId, nombre, fecha: new Date().toISOString() });
+            guardarCola(cola);
+          }
           if (f) {
             f.fotosLocalMovil = f.fotosLocalMovil || [];
-            f.fotosLocalMovil.push({ nombre, data: base64, _local: true });
+            f.fotosLocalMovil.push({ nombre, data: base64, _local: true, blobId });
           }
-          nuevas.push({ nombre, data: base64 });
+          nuevas.push({ nombre, data: base64, blobId });
           guardadas++;
         } catch(e) { toast("Sin espacio en el móvil", true); }
         resolve();
@@ -3271,9 +3535,8 @@ async function procesarListaFotos(files) {
     abrirDestinoFoto();
     return;
   }
-  for (const foto of nuevas) {
-    await subirFotoAlServidor(fotoFaenaId, foto.nombre, foto.data);
-  }
+  // Subida en segundo plano (no bloquea la UI)
+  programarSyncFondo(400);
   if (f) renderPanelFotos(f);
 }
 
@@ -3298,10 +3561,15 @@ async function confirmarDestinoFoto(tipo) {
     const faenaId = document.getElementById("foto-destino-faena")?.value;
     if (!faenaId) { toast("Elige una faena", true); return; }
     fotoFaenaId = faenaId;
+    const cola = cargarCola();
     for (const foto of fotos) {
-      await subirFotoAlServidor(faenaId, foto.nombre, foto.data);
+      const blobId = foto.blobId || `foto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (foto.data) await idbPutFoto(blobId, foto.data);
+      cola.fotos.push({ faena_id: faenaId, blobId, nombre: foto.nombre, fecha: new Date().toISOString() });
     }
+    guardarCola(cola);
     toast("Foto guardada en la faena");
+    programarSyncFondo(400);
   } else {
     const faenaId = document.getElementById("foto-destino-faena")?.value || 0;
     for (const foto of fotos) {
@@ -3329,10 +3597,17 @@ async function confirmarDestinoFoto(tipo) {
 async function subirFotoAlServidor(faenaId, nombre, data) {
   if (!faenaId || String(faenaId).startsWith("temp")) return false;
   try {
+    let payload = data;
+    if (!payload) {
+      const cola = cargarCola();
+      const item = (cola.fotos || []).find(x => String(x.faena_id) === String(faenaId) && x.nombre === nombre);
+      payload = await resolverDatosFotoCola(item || { data });
+    }
+    if (!payload) return false;
     const r = await fetch(`${getServerUrl()}/sync/fotos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ faena_id: faenaId, nombre, data }),
+      body: JSON.stringify({ faena_id: faenaId, nombre, data: payload }),
       signal: faenasAbortTimeout(30000)
     });
     const d = await r.json();
@@ -3363,10 +3638,7 @@ async function subirFotoAlServidor(faenaId, nombre, data) {
 }
 
 async function enviarFotosPendientes() {
-  const cola = cargarCola();
-  for (const foto of cola.fotos || []) {
-    await subirFotoAlServidor(foto.faena_id, foto.nombre, foto.data);
-  }
+  programarSyncFondo(200);
 }
 
 function eliminarFotoPendiente(faenaId, idx) {
@@ -4444,7 +4716,6 @@ async function guardarAnotacion() {
   const tipo    = document.getElementById("anot-tipo").value;
   const contenido = document.getElementById("anot-contenido").value.trim();
   if (!contenido) { toast("Escribe algo antes de guardar", true); return; }
-  const API = getServerUrl();
 
   if (editId) {
     const esPend = String(editId).startsWith("temp_");
@@ -4455,19 +4726,9 @@ async function guardarAnotacion() {
       guardarCola(cola);
       const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
       if (faena?.anotaciones) { const a = faena.anotaciones.find(a => String(a.id || a._tempId) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-      toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+      toast("Anotación actualizada — se sube sola");
+      cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
     }
-    try {
-      const r = await fetch(`${API}/anotaciones/${editId}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tipo,contenido}), signal: faenasAbortTimeout(4000) });
-      if (r.ok) {
-        const d = await r.json();
-        if (d.ok) {
-          const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
-          if (faena?.anotaciones) { const a = faena.anotaciones.find(x => String(x.id) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-          toast("✓ Anotación actualizada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
-        }
-      }
-    } catch(e) { console.error("Error editando anotación:", e); }
     const cola = cargarCola();
     if (!cola.anotacionesEditar) cola.anotacionesEditar = [];
     const idxEd = cola.anotacionesEditar.findIndex(e => String(e.id) === String(editId));
@@ -4476,31 +4737,19 @@ async function guardarAnotacion() {
     guardarCola(cola);
     const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
     if (faena?.anotaciones) { const a = faena.anotaciones.find(x => String(x.id) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-    toast("⏳ Guardado offline"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
+    toast("Anotación actualizada — se sube sola");
+    cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
   }
 
-  // Nueva anotación
+  // Nueva anotación: siempre cola local + sync fondo (así se ve Pendiente/Subiendo)
   const tempId = "temp_" + Date.now();
   const anotacion = { faena_id: faenaId, tipo, contenido, fecha: new Date().toISOString(), _tempId: tempId };
   const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
-  const esFaenaTemp = faena?._offline;
-  if (!esFaenaTemp) {
-    try {
-      const r = await fetch(`${API}/faenas/${faenaId}/anotaciones`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(anotacion), signal: faenasAbortTimeout(4000) });
-      if (r.ok) {
-        const d = await r.json();
-        if (d.ok) {
-          if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: d.data.id }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-          toast("✓ Anotación guardada"); cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
-        }
-      }
-    } catch(e) { console.error("Error creando anotación:", e); }
-  }
   const cola = cargarCola();
   cola.anotaciones.push(anotacion);
   guardarCola(cola);
   if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: tempId }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-  toast("⏳ Guardado offline");
+  toast("Anotación guardada — se sube sola");
   cerrarModal("m-anotacion");
   _refrescarDocumentos(faenaId);
 }
@@ -4729,24 +4978,35 @@ let ticketAnalisisActual = null;
 function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto = null) {
   const proveedorBase = (data && data.proveedor) ? String(data.proveedor).trim() : "";
   const fechaBase = (data && data.fecha) ? String(data.fecha).trim() : "";
-  const articulos = (data && Array.isArray(data.articulos)) ? data.articulos : [];
+  const articulos = (data && Array.isArray(data.articulos)) ? data.articulos
+    : (data && Array.isArray(data.materiales) ? data.materiales : []);
   return {
     proveedor: proveedorBase,
     fecha: fechaBase,
     articulos: articulos
       .filter(a => a && typeof a === "object")
       .map(a => {
-        const nombre = String(a.nombre || "").trim();
+        const nombre = String(a.nombre || a.descripcion || a.material || a.producto || "").trim();
         const unidad = String(a.unidad || "ud").trim() || "ud";
         const categoria = String(a.categoria || "Otro").trim() || "Otro";
         const proveedor = String(a.proveedor || proveedorBase || "").trim();
         const cantidad = Number(a.cantidad || 0) || 0;
-        const precio = Number(a.precio_unitario || 0) || 0;
+        const precio = Number(a.precio_unitario || a.precio || 0) || 0;
         const total = Number(a.total || (cantidad * precio)) || 0;
         const faena_id = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
           ? (faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null)
           : String(a.faena_id).trim();
-        return { nombre, unidad, categoria, proveedor, cantidad, precio_unitario: precio, total, faena_id };
+        return {
+          nombre,
+          unidad,
+          categoria,
+          definicion: String(a.definicion || a.referencia || a.detalle || "").trim(),
+          proveedor,
+          cantidad,
+          precio_unitario: precio,
+          total,
+          faena_id
+        };
       })
       .filter(a => a.nombre)
   };
@@ -4764,92 +5024,460 @@ function _ticketOpcionesFaena(valueSeleccionado) {
   return base + opciones;
 }
 
+let ticketAnalisisStore = {};
+
+function _ticketGetData(containerId) {
+  return ticketAnalisisStore[containerId] || null;
+}
+
+function _ticketSetData(containerId, data) {
+  ticketAnalisisStore[containerId] = data;
+  const wrap = document.getElementById(containerId);
+  if (wrap) wrap._analisisData = data;
+}
+
+function _ticketMostrarFaenaEnTarjetas(containerId) {
+  if (containerId !== "ticket-tabla-wrap") return !!containerId;
+  return (document.getElementById("ticket-destino")?.value || "almacen") === "faena";
+}
+
+function _fmtEurTicket(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "0 €";
+  return `${(Math.round(v * 100) / 100).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
+}
+
+function _ticketArtBodyHtml(a, i, mostrarFaena) {
+  const nombre = escHtml(a.nombre || "");
+  const definicion = escHtml(a.definicion || "");
+  const categoria = escHtml(a.categoria || "Otro");
+  const unidad = escHtml(a.unidad || "ud");
+  const proveedor = escHtml(a.proveedor || "");
+  const cantidad = Number.isFinite(Number(a.cantidad)) ? a.cantidad : 0;
+  const precio = Number.isFinite(Number(a.precio_unitario)) ? a.precio_unitario : 0;
+  const total = Number.isFinite(Number(a.total)) ? a.total : (Number(cantidad) * Number(precio));
+  const faena = a.faena_id ? String(a.faena_id) : "";
+  return `
+    <div class="ticket-art-field ticket-art-field-material">
+      <label>Material</label>
+      <textarea data-k="nombre" rows="6" autocomplete="off" style="min-height:132px;font-size:17px;font-weight:600;width:100%;box-sizing:border-box;padding:10px;line-height:1.35">${nombre}</textarea>
+    </div>
+    <div class="ticket-art-field">
+      <label>Definición</label>
+      <textarea data-k="definicion" rows="3" placeholder="Referencia, medida…">${definicion}</textarea>
+    </div>
+    <div class="ticket-art-row-3">
+      <div class="ticket-art-field">
+        <label>Cant.</label>
+        <input type="number" inputmode="decimal" step="0.01" data-k="cantidad" value="${cantidad}">
+      </div>
+      <div class="ticket-art-field">
+        <label>P. unit.</label>
+        <input type="number" inputmode="decimal" step="0.01" data-k="precio_unitario" value="${precio}">
+      </div>
+      <div class="ticket-art-field">
+        <label>Total</label>
+        <input type="number" inputmode="decimal" step="0.01" data-k="total" value="${Number.isFinite(Number(total)) ? total : 0}">
+      </div>
+    </div>
+    <div class="ticket-art-row-2">
+      <div class="ticket-art-field ticket-art-field-compact">
+        <label>Categoría</label>
+        <input type="text" data-k="categoria" value="${categoria}" autocomplete="off" style="min-height:34px;font-size:14px;padding:4px 8px">
+      </div>
+      <div class="ticket-art-field ticket-art-field-compact">
+        <label>Unidad</label>
+        <input type="text" data-k="unidad" value="${unidad}" autocomplete="off" style="min-height:34px;font-size:14px;padding:4px 8px">
+      </div>
+    </div>
+    <div class="ticket-art-field ticket-art-field-compact">
+      <label>Proveedor</label>
+      <input type="text" data-k="proveedor" value="${proveedor}" autocomplete="off" style="min-height:34px;font-size:14px;padding:4px 8px">
+    </div>
+    <div class="ticket-art-field ticket-art-faena" style="${mostrarFaena ? "" : "display:none"}">
+      <label>Faena</label>
+      <select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select>
+    </div>
+    <div class="ticket-art-body-actions">
+      <button type="button" class="btn btn-d" data-ticket-art-del="${i}">🗑️ Eliminar</button>
+    </div>`;
+}
+
+function _ticketIdxAbierto(data) {
+  if (!data) return -1;
+  if (data.abiertoIdx === "all") return "all";
+  const n = Number(data.abiertoIdx);
+  return Number.isFinite(n) ? n : -1;
+}
+
+function _ticketEstaAbierto(abierto, i) {
+  return abierto === "all" || abierto === i;
+}
+
+function _aplicarAperturaTicketArt(wrap, idx) {
+  if (!wrap) return;
+  const cid = wrap.id || "ticket-tabla-wrap";
+  const d = _ticketGetData(cid) || wrap._analisisData;
+  if (!d) return;
+  const mostrarFaena = _ticketMostrarFaenaEnTarjetas(cid);
+  const prev = _ticketIdxAbierto(d);
+  const mismo = prev === idx;
+  d.abiertoIdx = mismo ? -1 : idx;
+  _ticketSetData(cid, d);
+
+  wrap.querySelectorAll("[data-ticket-art-wrap]").forEach(el => {
+    const i = Number(el.getAttribute("data-ticket-art-wrap"));
+    const body = el.querySelector(".ticket-art-row-body");
+    const open = _ticketEstaAbierto(d.abiertoIdx, i);
+    el.classList.toggle("open", open);
+    if (!body) return;
+    if (open) {
+      const art = (d.articulos || [])[i];
+      if (art) body.innerHTML = _ticketArtBodyHtml(art, i, mostrarFaena);
+    } else {
+      body.innerHTML = "";
+    }
+  });
+  if (!mismo) {
+    try {
+      wrap.querySelector(`[data-ticket-art-wrap="${idx}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (e2) {}
+  }
+}
+
+function _rellenarSelectMaterialesTicket(containerId) {
+  const sel = document.getElementById("ticket-art-select");
+  const wrapSel = document.getElementById("ticket-art-select-wrap");
+  if (!sel || !wrapSel) return;
+  if (containerId !== "ticket-tabla-wrap") {
+    wrapSel.style.display = "none";
+    return;
+  }
+  const data = _ticketGetData(containerId);
+  const articulos = (data && data.articulos) ? data.articulos : [];
+  if (!articulos.length) {
+    wrapSel.style.display = "none";
+    sel.innerHTML = "";
+    return;
+  }
+  wrapSel.style.display = "block";
+  let idx = Number(data && data.abiertoIdx);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= articulos.length) idx = 0;
+  if (data) data.abiertoIdx = idx;
+  sel.innerHTML = articulos.map((a, i) => {
+    const nom = escHtml(a.nombre || `(material ${i + 1})`);
+    const cant = Number(a.cantidad || 0);
+    const total = Number(a.total || (cant * Number(a.precio_unitario || 0)));
+    const label = `${i + 1}. ${nom} — ${_fmtEurTicket(total)}`;
+    return `<option value="${i}"${i === idx ? " selected" : ""}>${label}</option>`;
+  }).join("");
+}
+
+function cambiarMaterialTicketSeleccionado() {
+  const sel = document.getElementById("ticket-art-select");
+  const wrap = document.getElementById("ticket-tabla-wrap");
+  if (!sel || !wrap) return;
+  const cid = wrap.id || "ticket-tabla-wrap";
+  try { _sincronizarArticulosDesdeDom(cid); } catch (e0) {}
+  const data = _ticketGetData(cid);
+  if (!data) return;
+  const idx = Number(sel.value);
+  data.abiertoIdx = Number.isFinite(idx) ? idx : 0;
+  _ticketSetData(cid, data);
+  _pintarListaAnalisisTicket(wrap);
+}
+
+function _pintarListaAnalisisTicket(wrap) {
+  if (!wrap) return;
+  const containerId = wrap.id || "ticket-tabla-wrap";
+  const data = _ticketGetData(containerId) || wrap._analisisData;
+  if (!data) return;
+  wrap._analisisData = data;
+  const articulos = data.articulos || [];
+  let idx = Number(data.abiertoIdx);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= articulos.length) idx = articulos.length ? 0 : -1;
+  data.abiertoIdx = idx;
+  _ticketSetData(containerId, data);
+  _rellenarSelectMaterialesTicket(containerId);
+
+  const mostrarFaena = _ticketMostrarFaenaEnTarjetas(containerId);
+  const prov = escHtml(data.proveedor || "");
+  const fec = escHtml(data.fecha || "");
+
+  if (!articulos.length) {
+    wrap.innerHTML = `
+      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Sin materiales. Añade uno.</div>
+      <div class="ticket-art-actions">
+        <button type="button" class="btn btn-s" data-ticket-art-add="1">+ Añadir material</button>
+      </div>`;
+  } else {
+    const a = articulos[idx];
+    const nombre = escHtml(a.nombre || "(sin nombre)");
+    wrap.innerHTML = `
+      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""} · <strong>${articulos.length}</strong> material${articulos.length !== 1 ? "es" : ""}</div>
+      <div class="ticket-art-card" data-ticket-art-wrap="${idx}">
+        <div class="ticket-art-row-head">
+          <div class="ticket-art-row-main">
+            <div class="ticket-art-row-title">${idx + 1}. ${nombre}</div>
+            <div class="ticket-art-row-sub">Elige otro en la lista de arriba</div>
+          </div>
+        </div>
+        <div class="ticket-art-row-body">${_ticketArtBodyHtml(a, idx, mostrarFaena)}</div>
+      </div>
+      <div class="ticket-art-actions">
+        <button type="button" class="btn btn-s" data-ticket-art-add="1">+ Añadir material</button>
+      </div>`;
+  }
+
+  wrap.classList.toggle("ticket-show-faena", !!mostrarFaena);
+
+  if (!wrap._ticketListaBound) {
+    wrap._ticketListaBound = true;
+    wrap.addEventListener("click", e => {
+      const cid = wrap.id || "ticket-tabla-wrap";
+      if (e.target.closest("[data-ticket-art-add]")) {
+        try { _sincronizarArticulosDesdeDom(cid); } catch (e1) {}
+        anadirTicketArticuloLista(cid);
+        return;
+      }
+      const delBtn = e.target.closest("[data-ticket-art-del]");
+      if (delBtn) {
+        e.preventDefault();
+        try { _sincronizarArticulosDesdeDom(cid); } catch (e2) {}
+        eliminarTicketArticuloDesplegado(cid, Number(delBtn.getAttribute("data-ticket-art-del")));
+      }
+    });
+    wrap.addEventListener("input", e => {
+      const t = e.target;
+      if (!t || !t.getAttribute) return;
+      const k = t.getAttribute("data-k");
+      if (!k) return;
+      const cid = wrap.id || "ticket-tabla-wrap";
+      if (k === "cantidad" || k === "precio_unitario") {
+        const body = t.closest(".ticket-art-row-body");
+        if (body) {
+          const cant = Number((body.querySelector('[data-k="cantidad"]')?.value || "0").replace(",", "."));
+          const precio = Number((body.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
+          const totalEl = body.querySelector('[data-k="total"]');
+          if (totalEl && Number.isFinite(cant) && Number.isFinite(precio)) {
+            totalEl.value = String(Math.round(cant * precio * 100) / 100);
+          }
+        }
+      }
+      _sincronizarArticulosDesdeDom(cid);
+      // Actualiza la etiqueta del select sin redibujar el formulario
+      try {
+        const data = _ticketGetData(cid);
+        const sel = document.getElementById("ticket-art-select");
+        if (data && sel && sel.selectedOptions[0] && data.articulos[data.abiertoIdx]) {
+          const a = data.articulos[data.abiertoIdx];
+          const i = Number(data.abiertoIdx);
+          sel.selectedOptions[0].textContent = `${i + 1}. ${a.nombre || "(sin nombre)"} — ${_fmtEurTicket(a.total)}`;
+        }
+      } catch (eLab) {}
+    });
+    wrap.addEventListener("change", () => {
+      _sincronizarArticulosDesdeDom(wrap.id || "ticket-tabla-wrap");
+    });
+  }
+}
+
+function _sincronizarArticulosDesdeDom(containerId) {
+  const wrap = document.getElementById(containerId);
+  const data = _ticketGetData(containerId) || (wrap && wrap._analisisData);
+  if (!wrap || !data) return;
+  const body = wrap.querySelector(".ticket-art-row-body");
+  const art = _leerArticuloDesdeBody(body);
+  const idx = Number(data.abiertoIdx);
+  if (art && Number.isFinite(idx) && idx >= 0) {
+    data.articulos[idx] = art;
+  }
+  _ticketSetData(containerId, data);
+  if (containerId === "ticket-tabla-wrap") {
+    ticketAnalisisActual = {
+      ...(ticketAnalisisActual || {}),
+      proveedor: data.proveedor,
+      fecha: data.fecha,
+      articulos: data.articulos.map(a => ({ ...a }))
+    };
+  }
+}
+
 function _renderTablaAnalisisTicket(data, containerId = "ticket-tabla-wrap", faenaPorDefecto = null) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
   const normalizado = _normalizarAnalisisParaTablaMateriales(data || {}, faenaPorDefecto);
-  const articulos = normalizado.articulos.length ? normalizado.articulos : [{
-    nombre: "", unidad: "ud", categoria: "Otro", proveedor: normalizado.proveedor,
-    cantidad: 1, precio_unitario: 0, total: 0, faena_id: faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null
-  }];
-  const prov = escHtml(normalizado.proveedor || "");
-  const fec = escHtml(normalizado.fecha || "");
-  const rows = articulos.map((a, i) => {
-    const nombre = escHtml(a.nombre || "");
-    const categoria = escHtml(a.categoria || "Otro");
-    const proveedor = escHtml(a.proveedor || normalizado.proveedor || "");
-    const cantidad = Number(a.cantidad || 0);
-    const precio = Number(a.precio_unitario || 0);
-    const total = Number(a.total || (cantidad * precio));
-    const unidad = escHtml(a.unidad || "ud");
-    const faena = a.faena_id ? String(a.faena_id) : "";
-    return `<tr data-i="${i}">
-      <td><input type="text" data-k="categoria" value="${categoria}" style="margin:0;font-size:0.82rem;width:110px"></td>
-      <td><input type="text" data-k="nombre" value="${nombre}" style="margin:0;font-size:0.82rem"></td>
-      <td><input type="text" data-k="proveedor" value="${proveedor}" style="margin:0;font-size:0.82rem;width:120px"></td>
-      <td><input type="number" step="0.01" data-k="cantidad" value="${Number.isFinite(cantidad) ? cantidad : 0}" style="margin:0;font-size:0.82rem;width:84px"></td>
-      <td><input type="number" step="0.01" data-k="precio_unitario" value="${Number.isFinite(precio) ? precio : 0}" style="margin:0;font-size:0.82rem;width:92px"></td>
-      <td><input type="number" step="0.01" data-k="total" value="${Number.isFinite(total) ? total : 0}" style="margin:0;font-size:0.82rem;width:96px"></td>
-      <td><input type="text" data-k="unidad" value="${unidad}" style="margin:0;font-size:0.82rem;width:72px"></td>
-      <td><select data-k="faena_id" style="margin:0;font-size:0.82rem;min-width:160px">${_ticketOpcionesFaena(faena)}</select></td>
-    </tr>`;
-  }).join("");
-  wrap.innerHTML = `
-    <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""}</div>
-    <div style="overflow:auto;border:1px solid var(--sawdust);border-radius:8px;background:#fff">
-      <table style="width:100%;border-collapse:collapse;min-width:720px">
-        <thead>
-          <tr>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Categoría</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Material</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Proveedor</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Cant.</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">P. unit.</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Total</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Unidad</th>
-            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--sawdust);font-size:0.8rem">Faena</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+  const articulos = normalizado.articulos.length ? normalizado.articulos : [];
+  const payload = {
+    proveedor: normalizado.proveedor || "",
+    fecha: normalizado.fecha || "",
+    faenaPorDefecto: faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null,
+    articulos: articulos.map(a => ({ ...a })),
+    abiertoIdx: articulos.length ? 0 : -1
+  };
+  _ticketSetData(containerId, payload);
+  if (containerId === "ticket-tabla-wrap") {
+    ticketAnalisisActual = {
+      ...(ticketAnalisisActual || {}),
+      proveedor: payload.proveedor,
+      fecha: payload.fecha,
+      articulos: payload.articulos.map(a => ({ ...a }))
+    };
+  }
+  try {
+    _pintarListaAnalisisTicket(wrap);
+  } catch (ePaint) {
+    console.error("pintar lista ticket:", ePaint);
+    wrap.innerHTML = `<div style="padding:12px;color:var(--red)">Error al mostrar materiales. Recarga e inténtalo.</div>`;
+  }
 }
 
 function _leerTablaAnalisisTicket(containerId = "ticket-tabla-wrap", datosReferencia = null) {
   const wrap = document.getElementById(containerId);
+  try { _sincronizarArticulosDesdeDom(containerId); } catch (eSync) {}
   const referencia = datosReferencia || ticketAnalisisActual;
-  if (!wrap || !referencia) return null;
-  const filas = Array.from(wrap.querySelectorAll("tbody tr"));
-  const articulos = [];
-  let proveedorComun = "";
-  for (const tr of filas) {
-    const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
-    if (!nombre) continue;
-    const categoria = (tr.querySelector('[data-k="categoria"]')?.value || "Otro").trim() || "Otro";
-    const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
-    if (!proveedorComun && proveedor) proveedorComun = proveedor;
-    const cantidad = Number((tr.querySelector('[data-k="cantidad"]')?.value || "0").replace(",", "."));
-    const precio = Number((tr.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
-    const totalVal = (tr.querySelector('[data-k="total"]')?.value || "").trim();
-    const totalNum = Number(totalVal.replace(",", "."));
-    const unidad = (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud";
-    const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
-    articulos.push({
-      nombre,
-      categoria,
-      proveedor,
-      cantidad: Number.isFinite(cantidad) ? cantidad : 0,
-      precio_unitario: Number.isFinite(precio) ? precio : 0,
-      total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
-      unidad,
-      faena_id: faenaRaw || null
-    });
+  const data = _ticketGetData(containerId) || (wrap && wrap._analisisData) || null;
+  if (data && Array.isArray(data.articulos)) {
+    const articulos = data.articulos
+      .filter(a => a && String(a.nombre || "").trim())
+      .map(a => ({
+        nombre: String(a.nombre || "").trim(),
+        categoria: String(a.categoria || "Otro").trim() || "Otro",
+        definicion: String(a.definicion || "").trim(),
+        proveedor: String(a.proveedor || data.proveedor || "").trim(),
+        cantidad: Number(a.cantidad || 0) || 0,
+        precio_unitario: Number(a.precio_unitario || 0) || 0,
+        total: Number(a.total || 0) || ((Number(a.cantidad || 0) || 0) * (Number(a.precio_unitario || 0) || 0)),
+        unidad: String(a.unidad || "ud").trim() || "ud",
+        faena_id: a.faena_id ? String(a.faena_id) : null
+      }));
+    return {
+      proveedor: data.proveedor || (referencia && referencia.proveedor) || "",
+      fecha: data.fecha || (referencia && referencia.fecha) || "",
+      articulos
+    };
   }
+  if (!referencia) return null;
   return {
-    proveedor: proveedorComun || referencia.proveedor || "",
+    proveedor: referencia.proveedor || "",
     fecha: referencia.fecha || "",
-    articulos
+    articulos: Array.isArray(referencia.articulos) ? referencia.articulos : []
   };
+}
+
+function _leerArticuloDesdeBody(body) {
+  if (!body) return null;
+  const val = k => (body.querySelector(`[data-k="${k}"]`)?.value || "").trim();
+  const nombre = val("nombre");
+  if (!nombre) return null;
+  const cantidad = Number(val("cantidad").replace(",", ".")) || 0;
+  const precio = Number(val("precio_unitario").replace(",", ".")) || 0;
+  const totalNum = Number(val("total").replace(",", "."));
+  return {
+    nombre,
+    definicion: val("definicion"),
+    categoria: val("categoria") || "Otro",
+    unidad: val("unidad") || "ud",
+    proveedor: val("proveedor"),
+    cantidad,
+    precio_unitario: precio,
+    total: Number.isFinite(totalNum) ? totalNum : cantidad * precio,
+    faena_id: val("faena_id") || null
+  };
+}
+
+function guardarTicketArticuloDesplegado(containerId, idx) {
+  const wrap = document.getElementById(containerId);
+  const data = _ticketGetData(containerId);
+  if (!wrap || !data || !Number.isFinite(idx)) return;
+  const body = wrap.querySelector(`[data-ticket-art-wrap="${idx}"] .ticket-art-row-body`);
+  const art = _leerArticuloDesdeBody(body);
+  if (!art) { toast("El nombre del material es obligatorio", true); return; }
+  data.articulos[idx] = art;
+  data.abiertoIdx = idx;
+  _ticketSetData(containerId, data);
+  if (containerId === "ticket-tabla-wrap") {
+    ticketAnalisisActual = {
+      ...(ticketAnalisisActual || {}),
+      proveedor: data.proveedor,
+      fecha: data.fecha,
+      articulos: data.articulos.map(a => ({ ...a }))
+    };
+    try { document.getElementById("ticket-json-movil").value = JSON.stringify(ticketAnalisisActual, null, 2); } catch (e) {}
+  }
+  _pintarListaAnalisisTicket(wrap);
+  toast("Material actualizado");
+}
+
+function eliminarTicketArticuloDesplegado(containerId, idx) {
+  const wrap = document.getElementById(containerId);
+  const data = _ticketGetData(containerId);
+  if (!wrap || !data || !Number.isFinite(idx)) return;
+  if (!confirm("¿Eliminar este material de la lista?")) return;
+  data.articulos.splice(idx, 1);
+  data.abiertoIdx = data.articulos.length ? Math.min(idx, data.articulos.length - 1) : -1;
+  _ticketSetData(containerId, data);
+  if (containerId === "ticket-tabla-wrap") {
+    ticketAnalisisActual = {
+      ...(ticketAnalisisActual || {}),
+      proveedor: data.proveedor,
+      fecha: data.fecha,
+      articulos: data.articulos.map(a => ({ ...a }))
+    };
+    try { document.getElementById("ticket-json-movil").value = JSON.stringify(ticketAnalisisActual, null, 2); } catch (e) {}
+  }
+  _pintarListaAnalisisTicket(wrap);
+  toast("Material eliminado");
+}
+
+function anadirTicketArticuloLista(containerId) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  let data = _ticketGetData(containerId);
+  if (!data) {
+    data = { proveedor: "", fecha: "", faenaPorDefecto: null, articulos: [], abiertoIdx: -1 };
+  }
+  data.articulos.push({
+    nombre: "",
+    definicion: "",
+    unidad: "ud",
+    categoria: "Otro",
+    proveedor: data.proveedor || "",
+    cantidad: 1,
+    precio_unitario: 0,
+    total: 0,
+    faena_id: data.faenaPorDefecto || null
+  });
+  data.abiertoIdx = data.articulos.length - 1;
+  _ticketSetData(containerId, data);
+  _pintarListaAnalisisTicket(wrap);
+}
+
+function abrirTicketArticuloModal(containerId, idx) {
+  const data = _ticketGetData(containerId);
+  const wrap = document.getElementById(containerId);
+  if (!data || !wrap) return;
+  data.abiertoIdx = Number.isFinite(idx) ? idx : 0;
+  _ticketSetData(containerId, data);
+  _pintarListaAnalisisTicket(wrap);
+}
+
+function cerrarTicketArticuloModal() {
+  document.getElementById("m-ticket-articulo")?.classList.remove("open");
+}
+
+function guardarTicketArticuloModal() {
+  const containerId = document.getElementById("ticket-art-modal-container")?.value || "ticket-tabla-wrap";
+  const idx = Number(document.getElementById("ticket-art-modal-idx")?.value);
+  guardarTicketArticuloDesplegado(containerId, idx);
+  cerrarTicketArticuloModal();
+}
+
+function eliminarTicketArticuloModal() {
+  const containerId = document.getElementById("ticket-art-modal-container")?.value || "ticket-tabla-wrap";
+  const idx = Number(document.getElementById("ticket-art-modal-idx")?.value);
+  eliminarTicketArticuloDesplegado(containerId, idx);
+  cerrarTicketArticuloModal();
 }
 
 async function tomarFotoDirecta() {
@@ -4883,82 +5511,110 @@ async function tomarFotoDirecta() {
   }
 }
 
-function ticketPreview(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+function abrirGaleriaTicket() {
+  const input = document.getElementById("ticket-foto-movil");
+  if (!input) return;
   _capturaTicketActiva = true;
-  _leerFotoTicket(file).finally(() => { _capturaTicketActiva = false; });
+  input.value = "";
+  input.click();
 }
 
-async function ticketDocumentoPreview(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  try {
-    ticketDocumentoBase64 = await fileToBase64(file);
-    ticketDocumentoNombre = file.name || "documento";
-    ticketDocumentoMime = file.type || "";
-    ticketFotoBase64 = null;
-    localStorage.removeItem("ticket_foto_temp");
-    document.getElementById("ticket-foto-movil").value = "";
-    document.getElementById("ticket-preview-movil").style.display = "none";
-    const info = document.getElementById("ticket-doc-info");
-    if (info) {
-      info.style.display = "block";
-      info.textContent = `Archivo seleccionado: ${file.name}`;
-    }
-    document.getElementById("ticket-paso2").style.display = "block";
-    document.getElementById("ticket-paso3").style.display = "none";
-    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-  } catch (e) {
-    toast("No se pudo leer el archivo", true);
+function ticketPreview(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) {
+    _capturaTicketActiva = false;
+    return;
   }
+  _capturaTicketActiva = true;
+  _leerFotoTicket(file).finally(() => { _capturaTicketActiva = false; });
 }
 
 async function _leerFotoTicket(file) {
   const url = URL.createObjectURL(file);
   document.getElementById("ticket-img-movil").src = url;
   document.getElementById("ticket-preview-movil").style.display = "block";
-  // Mostrar Paso 2 al instante (no esperar a comprimir) para que Jimmi siempre esté disponible
   document.getElementById("ticket-paso2").style.display = "block";
   document.getElementById("ticket-paso3").style.display = "none";
   document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
   const info = document.getElementById("ticket-doc-info");
   if (info) info.style.display = "none";
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (notas) notas.innerHTML = "";
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) { tabla._analisisData = null; tabla.innerHTML = ""; }
+  try { delete ticketAnalisisStore["ticket-tabla-wrap"]; } catch (eStore) {}
+  ticketAnalisisActual = null;
   ticketDocumentoBase64 = null;
   ticketDocumentoNombre = "";
   ticketDocumentoMime = "";
+  ticketFotoBase64 = null;
+  _setBotonJimmiTicket(false);
+  const estado = document.getElementById("ticket-ai-estado");
+  if (estado) {
+    estado.style.display = "block";
+    estado.style.color = "#666";
+    estado.textContent = "Preparando foto de la galería…";
+  }
   try {
     const docInput = document.getElementById("ticket-doc-movil");
     if (docInput) docInput.value = "";
   } catch (errDoc) {}
-  const reader = new FileReader();
-  reader.onload = async e => {
-    try {
-      const original = e.target.result;
-      ticketFotoBase64 = original;
-      const comprimida = await comprimirImagenParaTicket(original, 1900, 0.82);
-      ticketFotoBase64 = comprimida || original;
-      try {
-        localStorage.setItem("ticket_foto_temp", ticketFotoBase64);
-      } catch (lsErr) {}
-      document.getElementById("ticket-img-movil").src = ticketFotoBase64;
-      URL.revokeObjectURL(url);
-      document.getElementById("ticket-paso2").style.display = "block";
-      document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-    } catch (err) {
-      ticketFotoBase64 = e.target.result;
-      try { localStorage.setItem("ticket_foto_temp", ticketFotoBase64); } catch (e2) {}
-      try { document.getElementById("ticket-img-movil").src = ticketFotoBase64; } catch (e3) {}
-      try { URL.revokeObjectURL(url); } catch (e4) {}
-      document.getElementById("ticket-paso2").style.display = "block";
-      document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-      toast("La imagen se ha enviado con compresión mínima por seguridad", true);
+
+  let original;
+  try {
+    original = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target.result);
+      reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+      reader.readAsDataURL(file);
+    });
+  } catch (eRead) {
+    try { URL.revokeObjectURL(url); } catch (e0) {}
+    _setBotonJimmiTicket(false);
+    if (estado) {
+      estado.style.color = "var(--red)";
+      estado.textContent = eRead.message || "No se pudo leer la imagen";
     }
-  };
-  reader.onerror = () => {
-    toast("No se pudo leer la imagen", true);
-  };
-  reader.readAsDataURL(file);
+    toast(eRead.message || "No se pudo leer la imagen de la galería", true);
+    return;
+  }
+
+  // Comprimir SIEMPRE antes de Jimmi (la foto original de galería suele ser demasiado grande)
+  let lista = original;
+  try {
+    lista = await comprimirImagenParaTicket(original, 1400, 0.72);
+  } catch (err) {
+    lista = original;
+  }
+  // Si sigue enorme, segundo pase más agresivo
+  if (typeof lista === "string" && lista.length > 1800000) {
+    try {
+      lista = await comprimirImagenParaTicket(lista, 1000, 0.62);
+    } catch (err2) {}
+  }
+  ticketFotoBase64 = lista || original;
+  try { localStorage.setItem("ticket_foto_temp", ticketFotoBase64); } catch (ls1) {}
+  document.getElementById("ticket-img-movil").src = ticketFotoBase64;
+  try { URL.revokeObjectURL(url); } catch (e1) {}
+  document.getElementById("ticket-paso2").style.display = "block";
+  document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+  _setBotonJimmiTicket(!!ticketFotoBase64);
+  if (estado) {
+    estado.style.color = "var(--green)";
+    estado.textContent = "Foto lista. Pulsa Pedir a Jimmi.";
+  }
+}
+
+function _setBotonJimmiTicket(listo) {
+  const btn = document.getElementById("btn-ai-ticket");
+  if (!btn) return;
+  if (listo) {
+    btn.disabled = false;
+    btn.textContent = "🤖 Pedir a Jimmi";
+  } else {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Preparando foto…';
+  }
 }
 
 function cancelarTicket(mostrarMensaje = true) {
@@ -4972,7 +5628,15 @@ function cancelarTicket(mostrarMensaje = true) {
   document.getElementById("ticket-paso2").style.display = "none";
   document.getElementById("ticket-paso3").style.display = "none";
   const tabla = document.getElementById("ticket-tabla-wrap");
-  if (tabla) tabla.innerHTML = "";
+  if (tabla) {
+    tabla._analisisData = null;
+    tabla.innerHTML = "";
+  }
+  try { delete ticketAnalisisStore["ticket-tabla-wrap"]; } catch (eStore) {}
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (notas) notas.innerHTML = "";
+  const estado = document.getElementById("ticket-ai-estado");
+  if (estado) { estado.style.display = "none"; estado.textContent = ""; }
   document.getElementById("ticket-paso4").style.display = "none";
   const promptBox = document.getElementById("ticket-prompt-box");
   if (promptBox) promptBox.style.display = "none";
@@ -4983,6 +5647,8 @@ function cancelarTicket(mostrarMensaje = true) {
   ticketDocumentoMime = "";
   ticketOrigenAnalisis = "ticket";
   ticketAnalisisActual = null;
+  cerrarTicketArticuloModal();
+  _setBotonJimmiTicket(true);
   if (mostrarMensaje) toast("Ticket cancelado");
 }
 
@@ -5000,11 +5666,15 @@ function restaurarTicket() {
     document.getElementById("ticket-paso3").style.display = "none";
     document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
     ticketFotoBase64 = foto;
+    _setBotonJimmiTicket(true);
   }
 }
 
 async function procesarTicketConIA() {
-  if (!ticketFotoBase64) { toast("Haz una foto del ticket primero", true); return; }
+  if (!ticketFotoBase64) {
+    toast("Espera a que la foto esté lista o vuelve a seleccionarla", true);
+    return;
+  }
   const btn = document.getElementById("btn-ai-ticket");
   const estado = document.getElementById("ticket-ai-estado");
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Jimmi leyendo...'; }
@@ -5013,29 +5683,55 @@ async function procesarTicketConIA() {
     estado.style.color = "#666";
     estado.textContent = "Jimmi está leyendo el ticket…";
   }
-  const t0 = Date.now();
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (notas) notas.innerHTML = "";
+  // Preferir API del mismo origen en red local (Ollama en el PC)
+  let apiBase = getServerUrl();
   try {
-    const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
+    const h = String(location.hostname || "");
+    if (h === "127.0.0.1" || h === "localhost" || /^192\.168\./.test(h) || /^10\./.test(h)) {
+      apiBase = `${location.origin}/api`;
+    }
+  } catch (eApi) {}
+  try {
+    const r = await fetch(`${apiBase}/ia/procesar-ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imagen: ticketFotoBase64, guardar: false }),
-      signal: faenasAbortTimeout(50000)
+      signal: faenasAbortTimeout(120000)
     });
-    const data = await r.json();
+    let data = null;
+    try { data = await r.json(); } catch (eJson) { data = null; }
+    if (!r.ok || !data) {
+      throw new Error((data && data.error) || `Error del servidor (${r.status})`);
+    }
     if (data.ok && data.data) {
       ticketOrigenAnalisis = "ticket";
       ticketAnalisisActual = data.data;
-      document.getElementById("ticket-json-movil").value = JSON.stringify(data.data, null, 2);
-      _renderTablaAnalisisTicket(data.data);
+      try {
+        document.getElementById("ticket-json-movil").value = JSON.stringify(data.data, null, 2);
+      } catch (eJson2) {}
+      try {
+        _renderTablaAnalisisTicket(data.data);
+      } catch (eRender) {
+        console.error(eRender);
+        throw new Error("Jimmi respondió pero falló al mostrar la lista: " + (eRender.message || eRender));
+      }
+      const store = _ticketGetData("ticket-tabla-wrap");
+      const n = (store && store.articulos) ? store.articulos.length : ((data.data.articulos || []).length);
+      // Sin panel de resultados de Jimmi: solo la lista desplegable + ficha
+      try {
+        document.getElementById("ticket-paso2").style.display = "none";
+        if (estado) { estado.style.display = "none"; estado.textContent = ""; }
+        const notas = document.getElementById("ticket-cruzar-notas");
+        if (notas) notas.innerHTML = "";
+      } catch (eHide) {}
       document.getElementById("ticket-paso3").style.display = "block";
       rellenarFaenasTicketDestino();
-      await mostrarCruceTicket(data.data.articulos || []);
-      const n = (data.data.articulos || []).length;
-      if (estado) {
-        estado.style.color = "var(--green)";
-        estado.textContent = `Jimmi encontró ${n} artículo${n !== 1 ? "s" : ""}. Revisa, elige destino y acepta.`;
-      }
-      toast("Revisa la lista y acepta");
+      if (!n) toast("Sin materiales detectados", true);
+      try {
+        document.getElementById("ticket-art-select-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (eScroll) {}
     } else {
       if (estado) {
         estado.style.color = "var(--red)";
@@ -5044,14 +5740,17 @@ async function procesarTicketConIA() {
       toast(data.error || "Error al procesar con Jimmi", true);
     }
   } catch (e) {
-
+    const abortado = e && (e.name === "AbortError" || /abort/i.test(String(e.message || "")));
+    const msg = abortado
+      ? "Jimmi tardó demasiado. Vuelve a pulsar Pedir a Jimmi."
+      : (e.message || "desconocido");
     if (estado) {
       estado.style.color = "var(--red)";
-      estado.textContent = `Error: ${e.message || "desconocido"}`;
+      estado.textContent = `Error: ${msg}`;
     }
-    toast("Error: " + (e.message || "desconocido"), true);
+    toast("Error: " + msg, true);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "🤖 Pedir a Jimmi"; }
+    _setBotonJimmiTicket(!!ticketFotoBase64);
   }
 }
 
@@ -5067,6 +5766,8 @@ function actualizarDestinoTicket() {
   const dest = document.getElementById("ticket-destino")?.value || "almacen";
   const wrap = document.getElementById("ticket-destino-faena-wrap");
   if (wrap) wrap.style.display = dest === "faena" ? "block" : "none";
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) tabla.classList.toggle("ticket-show-faena", dest === "faena");
 }
 
 async function mostrarCruceTicket(articulos) {
@@ -5544,6 +6245,148 @@ async function sincronizarBook(API) {
 // SYNC
 // ═══════════════════════════════════════════════════════════
 
+// ── IndexedDB para blobs de fotos (evita hinchar localStorage) ──
+const FAENAS_IDB = "faenas_blobs_v1";
+const FAENAS_IDB_STORE = "fotos";
+let _idbP = null;
+
+function idbFaenas() {
+  if (_idbP) return _idbP;
+  _idbP = new Promise((resolve, reject) => {
+    if (!window.indexedDB) { resolve(null); return; }
+    const req = indexedDB.open(FAENAS_IDB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(FAENAS_IDB_STORE)) db.createObjectStore(FAENAS_IDB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+  return _idbP;
+}
+
+async function idbPutFoto(blobId, dataUrl) {
+  const db = await idbFaenas();
+  if (!db || !blobId || !dataUrl) return false;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction(FAENAS_IDB_STORE, "readwrite");
+      tx.objectStore(FAENAS_IDB_STORE).put(dataUrl, blobId);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch (e) { resolve(false); }
+  });
+}
+
+async function idbGetFoto(blobId) {
+  const db = await idbFaenas();
+  if (!db || !blobId) return null;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction(FAENAS_IDB_STORE, "readonly");
+      const req = tx.objectStore(FAENAS_IDB_STORE).get(blobId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+}
+
+async function idbDelFoto(blobId) {
+  const db = await idbFaenas();
+  if (!db || !blobId) return;
+  try {
+    const tx = db.transaction(FAENAS_IDB_STORE, "readwrite");
+    tx.objectStore(FAENAS_IDB_STORE).delete(blobId);
+  } catch (e) {}
+}
+
+async function resolverDatosFotoCola(foto) {
+  if (!foto) return null;
+  if (foto.data) return foto.data;
+  if (foto.blobId) return await idbGetFoto(foto.blobId);
+  return null;
+}
+
+let _syncFondoTimer = null;
+let _syncFondoEnCurso = false;
+let _syncFondoUltimoError = "";
+
+function actualizarIndicadorSyncEstado(modo) {
+  const el = document.getElementById("sync-ind");
+  const ban = document.getElementById("sync-banner");
+  if (!el) return;
+  const n = typeof contarPendientesCola === "function" ? contarPendientesCola() : 0;
+  let label = "Al día";
+  let cls = "sync-ind ok";
+  let banCls = "sync-banner";
+  let banTxt = "";
+  if (modo === "busy" || _syncFondoEnCurso || state._syncEnCurso) {
+    cls = "sync-ind busy";
+    label = "Subiendo…";
+    banCls = "sync-banner show busy";
+    banTxt = n > 0 ? `Subiendo ${n} cambio${n !== 1 ? "s" : ""} a la nube…` : "Subiendo cambios a la nube…";
+  } else if (!navigator.onLine) {
+    cls = "sync-ind pend";
+    label = n ? `Sin red · ${n}` : "Sin red";
+    if (n > 0) { banCls = "sync-banner show pend"; banTxt = `Sin red · ${n} pendiente${n !== 1 ? "s" : ""}`; }
+  } else if (_syncFondoUltimoError && n > 0) {
+    cls = "sync-ind err";
+    label = `Error · ${n}`;
+    banCls = "sync-banner show err";
+    banTxt = `Error al subir · quedan ${n}`;
+  } else if (n > 0) {
+    cls = "sync-ind pend";
+    label = `Pendiente ${n}`;
+    banCls = "sync-banner show pend";
+    banTxt = `${n} cambio${n !== 1 ? "s" : ""} pendiente${n !== 1 ? "s" : ""} de subir`;
+  }
+  el.className = cls;
+  el.textContent = label;
+  if (ban) { ban.className = banCls; ban.textContent = banTxt; }
+}
+
+function programarSyncFondo(ms) {
+  if (_syncFondoTimer) clearTimeout(_syncFondoTimer);
+  const delay = typeof ms === "number" ? ms : 1200;
+  _syncFondoTimer = setTimeout(() => {
+    _syncFondoTimer = null;
+    drenarColaEnSegundoPlano().catch(() => {});
+  }, delay);
+  actualizarIndicadorSyncEstado();
+}
+
+async function drenarColaEnSegundoPlano() {
+  const n0 = contarPendientesCola();
+  if (_syncFondoEnCurso || state._syncEnCurso) return false;
+  if (!navigator.onLine) { actualizarIndicadorSyncEstado(); return false; }
+  if (n0 <= 0) { actualizarIndicadorSyncEstado("ok"); return true; }
+  _syncFondoEnCurso = true;
+  actualizarIndicadorSesion();
+  actualizarIndicadorSyncEstado("busy");
+  try {
+    toast(`Subiendo ${n0} cambio${n0 !== 1 ? "s" : ""}…`);
+  } catch (eT0) {}
+  try {
+    const ok = await sincronizar({ fondo: true });
+    _syncFondoUltimoError = ok ? "" : (_syncFondoUltimoError || "fallo");
+    const nAfter = contarPendientesCola();
+    try {
+      if (ok && nAfter === 0) toast("✓ Sincronizado con la nube");
+      else if (!ok || nAfter > 0) toast(`Quedan ${nAfter || n0} pendiente${(nAfter || n0) !== 1 ? "s" : ""}`, true);
+    } catch (eT1) {}
+    return !!ok;
+  } catch (e) {
+    _syncFondoUltimoError = (e && e.message) || "error";
+    try { toast("No se pudo sincronizar ahora", true); } catch (eT2) {}
+    return false;
+  } finally {
+    _syncFondoEnCurso = false;
+    actualizarIndicadorSesion();
+    actualizarPendientesInfo();
+    actualizarIndicadorSyncEstado();
+  }
+}
+
 function contarPendientesCola() {
   const c = cargarCola();
   const tkt = (c.tickets||[]).reduce((s,t) => s+(t.articulos||[]).length, 0);
@@ -5574,14 +6417,22 @@ function actualizarIndicadorSesion() {
   const badge = document.getElementById("sesion-badge");
   const btn = document.getElementById("btn-terminar-sesion");
   if (badge) {
-    if (n > 0 || state._sesionSucia) {
+    if (_syncFondoEnCurso || state._syncEnCurso) {
+      badge.style.display = "inline-flex";
+      badge.textContent = "↑";
+    } else if (n > 0 || state._sesionSucia) {
       badge.style.display = "inline-flex";
       badge.textContent = String(n || "!");
     } else {
       badge.style.display = "none";
     }
   }
-  if (btn) btn.classList.toggle("sucia", !!(n > 0 || state._sesionSucia));
+  if (btn) {
+    btn.classList.toggle("sucia", !!(n > 0 || state._sesionSucia || _syncFondoEnCurso));
+    if (_syncFondoEnCurso || state._syncEnCurso) btn.textContent = "Subiendo…";
+    else btn.textContent = "Terminar";
+  }
+  actualizarIndicadorSyncEstado();
 }
 
 function marcarSesionSucia() {
@@ -5723,22 +6574,24 @@ function limpiarCacheLocal() {
   location.reload();
 }
 
-async function sincronizar() {
+async function sincronizar(opts) {
+  const fondo = !!(opts && opts.fondo);
   const btn = document.getElementById("btn-sync");
   const estado = document.getElementById("sync-estado") || { textContent: "", className: "" };
   let API = getServerUrl();
-  state._syncEnCurso = true;
-  if (btn) { btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...'; btn.disabled = true; }
-  if (estado) { estado.textContent = ""; estado.className = "sync-estado"; }
+  if (!fondo) state._syncEnCurso = true;
+  if (!fondo && btn) { btn.innerHTML = '<span class="spinner"></span>&nbsp; Sincronizando...'; btn.disabled = true; }
+  if (!fondo && estado) { estado.textContent = ""; estado.className = "sync-estado"; }
+  if (fondo) actualizarIndicadorSyncEstado("busy");
 
   const cola = cargarCola();
   try {
     await enviarFaenasEliminadas();
-    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(15000)});
+    let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(fondo ? 10000 : 15000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
     }
-    estado.textContent = "✓ Conectado...";
+    if (!fondo) estado.textContent = "✓ Conectado...";
 
     // Materiales eliminados
     let matElimOk = 0;
@@ -5753,7 +6606,7 @@ async function sincronizar() {
         matElimPend.push(mid);
       }
     }
-    if (matElimOk) estado.textContent = `✓ ${matElimOk} material${matElimOk>1?"es":""} eliminado${matElimOk>1?"s":""} en la nube`;
+    if (matElimOk && !fondo) estado.textContent = `✓ ${matElimOk} material${matElimOk>1?"es":""} eliminado${matElimOk>1?"s":""} en la nube`;
 
     // Clientes nuevos
     const mapaClientes = {};
@@ -5775,7 +6628,20 @@ async function sincronizar() {
         if (r.ok) { const d = await r.json(); if (d.ok) mapaFaenas[f._tempId] = {id:d.data.id, numero:d.data.numero}; }
       } catch(e) {}
     }
-    if (cola.faenas.length) estado.textContent = `✓ ${cola.faenas.length} faena${cola.faenas.length>1?"s":""} subida${cola.faenas.length>1?"s":""}...`;
+    if (cola.faenas.length && !fondo) estado.textContent = `✓ ${cola.faenas.length} faena${cola.faenas.length>1?"s":""} subida${cola.faenas.length>1?"s":""}...`;
+
+    // Remapear IDs temporales en memoria para fotos/anotaciones pendientes
+    if (Object.keys(mapaFaenas).length) {
+      for (const f of state.faenas || []) {
+        const map = mapaFaenas[f._tempId];
+        if (map) {
+          f.id = map.id;
+          if (map.numero) f.numero = map.numero;
+          delete f._offline;
+        }
+      }
+      try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
+    }
 
     // Faenas editadas
     for (const ed of (cola.faenasEditar||[])) {
@@ -5788,7 +6654,7 @@ async function sincronizar() {
     let presupPend = [];
     const opsPres = cola.presupuestos || [];
     if (opsPres.length) {
-      estado.textContent = `✓ Subiendo ${opsPres.length} cambio${opsPres.length>1?"s":""} de presupuesto a la nube...`;
+      if (!fondo) estado.textContent = `✓ Subiendo ${opsPres.length} cambio${opsPres.length>1?"s":""} de presupuesto a la nube...`;
       const opsEnvio = opsPres.map(op => {
         const faenaId = mapaFaenas[op.faena_id]?.id || op.faena_id;
         return { ...op, faena_id: faenaId };
@@ -5869,26 +6735,35 @@ async function sincronizar() {
           presupPend = presupPend.concat(opsListas);
         }
       }
-      if (presupOk) estado.textContent = `✓ ${presupOk} presupuesto${presupOk>1?"s":""} en la nube`;
-      if (presupFail) toast(`${presupFail} cambio${presupFail>1?"s":""} de presupuesto no se pudo${presupFail>1?"":"n"} subir`, true);
+      if (presupOk && !fondo) estado.textContent = `✓ ${presupOk} presupuesto${presupOk>1?"s":""} en la nube`;
+      if (presupFail && !fondo) toast(`${presupFail} cambio${presupFail>1?"s":""} de presupuesto no se pudo${presupFail>1?"":"n"} subir`, true);
     }
 
     // Anotaciones
+    let anotsOk = false;
     if (cola.anotaciones.length) {
       try {
         const anots = cola.anotaciones.map(a => {
           const f = state.faenas.find(x => String(x.id || x._tempId) === String(a.faena_id));
           return {...a, faena_id: mapaFaenas[a.faena_id]?.id || a.faena_id, numero: a.numero || f?.numero || ""};
         });
-        await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:faenasAbortTimeout(10000)});
-        estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
+        const rA = await fetch(`${API}/sync/anotaciones`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({anotaciones:anots}), signal:faenasAbortTimeout(10000)});
+        anotsOk = rA.ok;
+        if (!fondo && anotsOk) estado.textContent = `✓ ${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""} subida${cola.anotaciones.length>1?"s":""}...`;
       } catch(e) {}
     }
+    let anotsEdOk = false, anotsDelOk = false;
     if ((cola.anotacionesEditar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
+      try {
+        const r = await fetch(`${API}/sync/anotaciones-editar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ediciones:cola.anotacionesEditar}), signal:faenasAbortTimeout(8000)});
+        anotsEdOk = r.ok;
+      } catch(e) {}
     }
     if ((cola.anotacionesEliminar||[]).length) {
-      try { await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:faenasAbortTimeout(8000)}); } catch(e) {}
+      try {
+        const r = await fetch(`${API}/sync/anotaciones-eliminar`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids:cola.anotacionesEliminar}), signal:faenasAbortTimeout(8000)});
+        anotsDelOk = r.ok;
+      } catch(e) {}
     }
 
     if ((cola.gastos||[]).length) {
@@ -5911,7 +6786,7 @@ async function sincronizar() {
               }
             }
             cola.gastos = [];
-            guardarCola(cola);
+            guardarCola(cola, { silencioso: true, sinFondo: true });
           }
         }
       } catch(e) {}
@@ -5927,50 +6802,66 @@ async function sincronizar() {
     }
 
     // Tickets JSON (materiales)
+    let ticketsOk = false;
     if ((cola.tickets||[]).length) {
       try {
         const r = await fetch(`${API}/sync/tickets`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tickets:cola.tickets}), signal:faenasAbortTimeout(30000)});
-        if (r.ok) { const d = await r.json(); if (d.ok) estado.textContent = `✓ ${d.data.procesados} artículo${d.data.procesados!==1?"s":""} de ticket subido${d.data.procesados!==1?"s":""}...`; }
+        if (r.ok) {
+          const d = await r.json();
+          ticketsOk = !!d.ok;
+          if (!fondo && d.ok) estado.textContent = `✓ ${d.data.procesados} artículo${d.data.procesados!==1?"s":""} de ticket subido${d.data.procesados!==1?"s":""}...`;
+        }
       } catch(e) {}
     }
 
-    // Fotos de obra
+    // Fotos de obra (datos desde IndexedDB si hace falta)
     let fotosEnviadas = 0;
     const fotosOk = new Set();
+    const fotosPend = [];
     if (cola.fotos.length) {
-      estado.textContent = `✓ Subiendo ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}...`;
+      if (!fondo) estado.textContent = `✓ Subiendo ${cola.fotos.length} foto${cola.fotos.length>1?"s":""}...`;
       for (const foto of cola.fotos) {
         try {
           const faenaId = mapaFaenas[foto.faena_id]?.id || foto.faena_id;
-          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:foto.data}), signal:faenasAbortTimeout(30000)});
+          if (esIdFaenaTemporal(faenaId)) { fotosPend.push(foto); continue; }
+          const dataFoto = await resolverDatosFotoCola(foto);
+          if (!dataFoto) { fotosPend.push(foto); continue; }
+          const r = await fetch(`${API}/sync/fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:foto.nombre, data:dataFoto}), signal:faenasAbortTimeout(30000)});
           if (r.ok) {
             const d = await r.json();
             if (d.omitida || /no encontrada/i.test(d.error || "")) {
               fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
+              if (foto.blobId) idbDelFoto(foto.blobId);
             } else if (d.ok) {
               fotosEnviadas++;
               fotosOk.add(`${foto.faena_id}::${foto.nombre}`);
+              if (foto.blobId) idbDelFoto(foto.blobId);
             } else {
-              toast(d.error || "Una foto no se pudo guardar en la nube", true);
+              fotosPend.push(foto);
+              if (!fondo) toast(d.error || "Una foto no se pudo guardar en la nube", true);
             }
+          } else {
+            fotosPend.push(foto);
           }
-        } catch(e) {}
+        } catch(e) { fotosPend.push(foto); }
       }
-      estado.textContent = `✓ ${fotosEnviadas} foto${fotosEnviadas>1?"s":""} subida${fotosEnviadas>1?"s":""}...`;
+      if (!fondo) estado.textContent = `✓ ${fotosEnviadas} foto${fotosEnviadas>1?"s":""} subida${fotosEnviadas>1?"s":""}...`;
     }
 
     // Fotos de tickets → PC para procesar
     let ticketsEnviados = 0;
+    const ticketFotosPend = [];
     if ((cola.ticketFotos||[]).length) {
-      estado.textContent = `✓ Subiendo ${cola.ticketFotos.length} foto${cola.ticketFotos.length>1?"s":""} de ticket...`;
+      if (!fondo) estado.textContent = `✓ Subiendo ${cola.ticketFotos.length} foto${cola.ticketFotos.length>1?"s":""} de ticket...`;
       for (const tkt of cola.ticketFotos) {
         try {
           const faenaId = mapaFaenas[tkt.faena_id]?.id || tkt.faena_id;
           const r = await fetch(`${API}/sync/ticket-fotos`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({faena_id:faenaId, nombre:tkt.nombre, data:tkt.data}), signal:faenasAbortTimeout(30000)});
-          if (r.ok) { const d = await r.json(); if (d.ok) ticketsEnviados++; }
-        } catch(e) { console.error("Error subiendo ticket-foto:", e); }
+          if (r.ok) { const d = await r.json(); if (d.ok) ticketsEnviados++; else ticketFotosPend.push(tkt); }
+          else ticketFotosPend.push(tkt);
+        } catch(e) { ticketFotosPend.push(tkt); console.error("Error subiendo ticket-foto:", e); }
       }
-      estado.textContent = `✓ ${ticketsEnviados} foto${ticketsEnviados>1?"s":""} de ticket enviada${ticketsEnviados>1?"s":""}...`;
+      if (!fondo) estado.textContent = `✓ ${ticketsEnviados} foto${ticketsEnviados>1?"s":""} de ticket enviada${ticketsEnviados>1?"s":""}...`;
     }
 
     // Definiciones de material
@@ -5978,66 +6869,98 @@ async function sincronizar() {
       try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:faenasAbortTimeout(6000)}); } catch(e) {}
     }
 
-    // Descargar faenas + materiales + clientes
-    estado.textContent = "✓ Descargando datos del PC...";
-    const [rFaenas, rMat, rCli] = await Promise.all([
-      fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(15000)}),
-      fetch(`${API}/materiales`, {signal:faenasAbortTimeout(10000)}),
-      fetch(`${API}/clientes`, {signal:faenasAbortTimeout(10000)})
-    ]);
-    if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
-    if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
-    if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
+    // Book pendiente (si hay helper)
+    try { await sincronizarBook(API); } catch (eBook) {}
 
-    // Descargar fotos sincronizadas (thumbnails)
-    estado.textContent = "✓ Descargando fotos...";
-    for (const faena of state.faenas) {
-      try {
-        const r = await fetch(`${API}/faenas/${faena.id}/fotos`, {signal:faenasAbortTimeout(15000)});
-        if (r.ok) { const d = await r.json(); if (d.ok) faena.fotos = d.data; }
-      } catch(e) {}
+    // Pull ligero solo en sync completa (Terminar / botón), no en cada drenado de fondo
+    if (!fondo) {
+      if (estado) estado.textContent = "✓ Descargando datos del PC...";
+      const [rFaenas, rMat, rCli] = await Promise.all([
+        fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(15000)}),
+        fetch(`${API}/materiales`, {signal:faenasAbortTimeout(10000)}),
+        fetch(`${API}/clientes`, {signal:faenasAbortTimeout(10000)})
+      ]);
+      if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
+      if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
+      if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
+      // Fotos: solo de la faena abierta (no N+1 de todas)
+      const abierta = state.faenaActualId;
+      if (abierta && !esIdFaenaTemporal(abierta)) {
+        try {
+          const r = await fetch(`${API}/faenas/${abierta}/fotos`, {signal:faenasAbortTimeout(15000)});
+          if (r.ok) {
+            const d = await r.json();
+            if (d.ok) {
+              const f = state.faenas.find(x => String(x.id) === String(abierta));
+              if (f) f.fotos = d.data;
+            }
+          }
+        } catch (e) {}
+      }
+      try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
     }
-    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
 
-    await sincronizarBook(API);
-
-    // Limpiar temporal (conserva solo lo que falló) y recargar desde la nube
+    // Limpiar cola: conservar solo lo que sigue pendiente
+    const clientesPend = (cola.clientes || []).filter(c => !mapaClientes[c._tempId]);
+    const faenasPend = (cola.faenas || []).filter(f => !mapaFaenas[f._tempId]);
     const colaLimpia = colaVacia();
+    colaLimpia.clientes = clientesPend;
+    colaLimpia.faenas = faenasPend;
+    colaLimpia.faenasEditar = []; // enviadas best-effort
     colaLimpia.presupuestos = presupPend;
     colaLimpia.materialesEliminar = matElimPend;
-    guardarCola(colaLimpia, { silencioso: true });
-    estado.textContent = "✓ Actualizando datos desde la nube...";
-    await cargarDatosIniciales(true, true);
-    // Si quedaron presupuestos pendientes, reaplicar sobre lo descargado
-    if (presupPend.length) {
-      aplicarColaPresupuestosLocal(presupPend);
-      refrescarPantallaActual();
+    colaLimpia.anotaciones = anotsOk ? [] : (cola.anotaciones || []);
+    colaLimpia.anotacionesEditar = anotsEdOk ? [] : (cola.anotacionesEditar || []);
+    colaLimpia.anotacionesEliminar = anotsDelOk ? [] : (cola.anotacionesEliminar || []);
+    colaLimpia.gastos = cola.gastos || [];
+    colaLimpia.tiempos = cola.tiempos || [];
+    colaLimpia.tickets = ticketsOk ? [] : (cola.tickets || []);
+    colaLimpia.fotos = fotosPend;
+    colaLimpia.ticketFotos = ticketFotosPend;
+    colaLimpia.definicionesPendientes = [];
+    colaLimpia.bookPendiente = cola.bookPendiente || [];
+    colaLimpia.bookEliminar = cola.bookEliminar || [];
+    colaLimpia.faenasEliminar = cola.faenasEliminar || [];
+    guardarCola(colaLimpia, { silencioso: true, sinFondo: true });
+
+    if (!fondo) {
+      if (estado) estado.textContent = "✓ Actualizando datos desde la nube...";
+      await cargarDatosIniciales(true, true);
+      if (presupPend.length) {
+        aplicarColaPresupuestosLocal(presupPend);
+        refrescarPantallaActual();
+      }
+      if (matElimPend.length) {
+        const kill = new Set(matElimPend.map(String));
+        state.materiales = (state.materiales || []).filter(m => !kill.has(String(m.id)));
+        localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+      }
     }
-    // Reaplicar borrados locales de materiales que aún no subieron
-    if (matElimPend.length) {
-      const kill = new Set(matElimPend.map(String));
-      state.materiales = (state.materiales || []).filter(m => !kill.has(String(m.id)));
-      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-    }
-    state._sesionSucia = !!(presupPend.length || matElimPend.length);
+
+    const quedan = contarPendientesCola();
+    state._sesionSucia = quedan > 0;
     if (!state._sesionSucia) guardarSnapshotSesion();
     else state._snapshotListo = true;
     actualizarPendientesInfo();
     actualizarIndicadorSesion();
-    refrescarPantallaActual();
+    if (!fondo) refrescarPantallaActual();
 
     const ahora = new Date().toLocaleString("es-ES");
     localStorage.setItem("ultima_sync", ahora);
     document.getElementById("ultima-sync") && (document.getElementById("ultima-sync").textContent = ahora);
 
+    if (fondo) {
+      _syncFondoUltimoError = quedan && fotosPend.length === cola.fotos.length && cola.fotos.length ? "fotos" : "";
+      return quedan === 0 || presupOk > 0 || fotosEnviadas > 0 || Object.keys(mapaFaenas).length > 0 || anotsOk;
+    }
+
     const partes = [];
-    if (cola.faenas.length) partes.push(`${cola.faenas.length} faena${cola.faenas.length>1?"s":""}`);
-    if (cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
+    if (Object.keys(mapaFaenas).length) partes.push(`${Object.keys(mapaFaenas).length} faena${Object.keys(mapaFaenas).length>1?"s":""}`);
+    if (anotsOk && cola.anotaciones.length) partes.push(`${cola.anotaciones.length} anotación${cola.anotaciones.length>1?"es":""}`);
     if (presupOk) partes.push(`${presupOk} presupuesto${presupOk>1?"s":""}`);
     if (matElimOk) partes.push(`${matElimOk} material${matElimOk>1?"es":""}`);
     if (fotosEnviadas) partes.push(`${fotosEnviadas} foto${fotosEnviadas>1?"s":""}`);
     if (ticketsEnviados) partes.push(`${ticketsEnviados} ticket${ticketsEnviados>1?"s":""}`);
-    // Si había cambios de presupuesto y TODOS fallaron, no dar por buena la sync
     if (opsPres.length && presupOk === 0 && presupFail > 0) {
       estado.textContent = "✗ No se pudieron subir los presupuestos";
       estado.className = "sync-estado sync-error";
@@ -6049,6 +6972,10 @@ async function sincronizar() {
     toast(partes.length ? `✓ Subido a la nube: ${partes.join(" · ")}` : "✓ Sincronizado con la nube");
     return true;
   } catch(e) {
+    if (fondo) {
+      _syncFondoUltimoError = e.message || "error";
+      return false;
+    }
     if (estado) {
       estado.textContent = `✗ Error: ${e.message}`;
       estado.className = "sync-estado sync-error";
@@ -6056,8 +6983,11 @@ async function sincronizar() {
     toast("Error: " + e.message, true);
     return false;
   } finally {
-    state._syncEnCurso = false;
-    if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
+    if (!fondo) {
+      state._syncEnCurso = false;
+      if (btn) { btn.innerHTML = "⟳ &nbsp; Sincronizar ahora"; btn.disabled = false; }
+    }
+    actualizarIndicadorSyncEstado();
   }
 }
 
@@ -6210,7 +7140,11 @@ async function actualizarEnSegundoPlano() {
     guardarSnapshotSesion();
     incorporarFaenasPendientes();
     refrescarPantallaActual();
-    if (contarPendientesCola() > 0) state._sesionSucia = true;
+    if (contarPendientesCola() > 0) {
+      state._sesionSucia = true;
+      programarSyncFondo(500);
+    }
+    actualizarIndicadorSesion();
   } catch (e) {
     console.warn("Actualización en segundo plano:", e);
     state._cargando = false;
@@ -6224,18 +7158,46 @@ async function recargarDatos() {
 }
 
 async function init() {
+  // Forzar descarga de UI nueva si el SW tenía una versión vieja
+  const UI_VER = "65f";
+  try {
+    const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
+    if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
+      localStorage.setItem("faenas_ui_ver", UI_VER);
+      if ("serviceWorker" in navigator && location.protocol !== "file:") {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        if (fuerza) {
+          location.replace(location.pathname + location.hash);
+          return;
+        }
+        location.reload();
+        return;
+      }
+    }
+  } catch (eUi) {}
   hidratarDesdeCache();
   state._cargando = !state.faenas.length;
   initBarraTiempos();
   if (leerTiempoActivo()) arrancarTickTiempo();
   refrescarPantallaActual();
+  actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=50", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=65f", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
+    actualizarIndicadorSyncEstado();
+    programarSyncFondo(600);
   });
-  window.addEventListener("offline", () => document.getElementById("offline-ind")?.classList.add("show"));
+  window.addEventListener("offline", () => {
+    document.getElementById("offline-ind")?.classList.add("show");
+    actualizarIndicadorSyncEstado();
+  });
   if (!navigator.onLine) document.getElementById("offline-ind")?.classList.add("show");
   window.addEventListener("pageshow", () => {
     if (localStorage.getItem("ticket_foto_temp")) {
@@ -6243,8 +7205,11 @@ async function init() {
     }
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && localStorage.getItem("ticket_foto_temp") && !ticketFotoBase64) {
-      try { restaurarTicket(); navTo(1); } catch (e) {}
+    if (document.visibilityState === "visible") {
+      if (localStorage.getItem("ticket_foto_temp") && !ticketFotoBase64) {
+        try { restaurarTicket(); navTo(1); } catch (e) {}
+      }
+      programarSyncFondo(800);
     }
     if (document.visibilityState === "hidden") preguntarSalidaSiPendiente();
   });
@@ -6258,6 +7223,7 @@ async function init() {
     actualizarPendientesInfo();
     if (contarPendientesCola() > 0) state._sesionSucia = true;
     actualizarIndicadorSesion();
+    programarSyncFondo(1500);
   } catch (e) {
     state._cargando = false;
     console.warn("Carga inicial:", e);

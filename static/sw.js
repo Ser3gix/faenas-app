@@ -1,12 +1,9 @@
 ﻿// ============================================================
-// sw.js â€” Service Worker para funcionamiento offline
-// GestiÃ³n de Faenas â€” App mÃ³vil
-// VersiÃ³n 2 â€” cachea la app completa en la instalaciÃ³n
+// sw.js — Service Worker Faenas móvil
 // ============================================================
 
-const CACHE = "faenas-v50";
+const CACHE = "faenas-v65f";
 const ARCHIVOS_CACHE = [
-  "/movil2",
   "/static/manifest.json",
   "/static/sw.js"
 ];
@@ -16,7 +13,7 @@ self.addEventListener("install", e => {
     caches.open(CACHE).then(cache => {
       return Promise.allSettled(
         ARCHIVOS_CACHE.map(url =>
-          fetch(url).then(res => {
+          fetch(url, { cache: "no-store" }).then(res => {
             if (res.ok) cache.put(url, res);
           }).catch(() => {})
         )
@@ -28,7 +25,7 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -37,34 +34,28 @@ self.addEventListener("fetch", e => {
   const url = e.request.url;
   if (url.includes("/api/")) return;
 
-  const esPagina = e.request.mode === "navigate" || url.includes("/movil2") || url.includes("/static/sw.js");
-  if (esPagina) {
+  // /movil2 siempre de red (sin caché) para ver cambios de UI al instante
+  if (e.request.mode === "navigate" || url.includes("/movil2")) {
     e.respondWith(
-      caches.open(CACHE).then(cache =>
-        cache.match(e.request).then(cached => {
-          const networkFetch = fetch(e.request).then(res => {
-            if (res.ok && e.request.method === "GET") cache.put(e.request, res.clone());
-            return res;
-          }).catch(() => cached || null);
-          return networkFetch;
-        })
+      fetch(e.request, { cache: "no-store" }).catch(() =>
+        caches.open(CACHE).then(cache => cache.match("/movil2"))
       )
     );
     return;
   }
 
+  if (url.includes("/static/sw.js")) {
+    e.respondWith(fetch(e.request, { cache: "no-store" }));
+    return;
+  }
+
   e.respondWith(
-    caches.open(CACHE).then(cache =>
-      cache.match(e.request).then(cached => {
-        const networkFetch = fetch(e.request).then(res => {
-          if (res.ok && e.request.method === "GET") {
-            cache.put(e.request, res.clone());
-          }
-          return res;
-        }).catch(() => null);
-        return cached || networkFetch;
-      })
-    )
+    fetch(e.request).then(res => {
+      if (res.ok && e.request.method === "GET") {
+        const clone = res.clone();
+        caches.open(CACHE).then(cache => cache.put(e.request, clone)).catch(() => {});
+      }
+      return res;
+    }).catch(() => caches.open(CACHE).then(cache => cache.match(e.request)))
   );
 });
-
