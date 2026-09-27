@@ -327,24 +327,33 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   font-weight: 600;
   color: var(--ink);
 }
-.faena-hub-call {
+.faena-hub-acciones {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+}
+.faena-hub-call,
+.faena-hub-wa {
   display: none;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   gap: 4px;
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
-  background: var(--green);
   color: #fff;
   font-family: var(--font-sans);
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
 }
-.faena-hub-call.visible { display: inline-flex; }
+.faena-hub-call { background: var(--green); }
+.faena-hub-wa { background: #25D366; }
+.faena-hub-call.visible,
+.faena-hub-wa.visible { display: inline-flex; }
 .faena-hub-dir {
   font-size: 0.85rem;
   color: var(--muted);
@@ -1577,7 +1586,10 @@ textarea { resize: vertical; min-height: 80px; }
   <div class="faena-hub-header" id="faena-hub-header">
     <div class="faena-hub-top">
       <div class="faena-hub-meta" id="ov-hub-meta"></div>
-      <a class="faena-hub-call" id="ov-hub-call" href="tel:">📞 Llamar</a>
+      <div class="faena-hub-acciones">
+        <a class="faena-hub-call" id="ov-hub-call" href="tel:">📞 Llamar</a>
+        <a class="faena-hub-wa" id="ov-hub-wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
     </div>
     <div class="faena-hub-dir" id="ov-hub-dir"></div>
     <div class="faena-hub-importes" id="ov-hub-importes"></div>
@@ -2424,6 +2436,15 @@ function telefonoDeFaenaMovil(f) {
   return ((c && c.telefono) || "").trim();
 }
 
+function telefonoWhatsApp(tel) {
+  let d = String(tel || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.length === 9 && /^[6789]/.test(d)) d = "34" + d;
+  if (d.length < 10) return "";
+  return d;
+}
+
 function actualizarHubFaena(f) {
   if (!f) return;
   const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
@@ -2431,6 +2452,7 @@ function actualizarHubFaena(f) {
   const dirEl = document.getElementById("ov-hub-dir");
   const impEl = document.getElementById("ov-hub-importes");
   const callEl = document.getElementById("ov-hub-call");
+  const waEl = document.getElementById("ov-hub-wa");
   if (meta) {
     const badge = esDirecto
       ? `<span class="badge b-direct">Directo</span>`
@@ -2449,8 +2471,8 @@ function actualizarHubFaena(f) {
     const cobTxt = cob > 0 ? cob.toFixed(2) + " €" : "0,00 €";
     impEl.innerHTML = `<span class="hub-imp">${totTxt}</span><span class="hub-cta">A cta ${cobTxt}</span>`;
   }
+  const tel = telefonoDeFaenaMovil(f);
   if (callEl) {
-    const tel = telefonoDeFaenaMovil(f);
     if (tel) {
       callEl.href = "tel:" + tel.replace(/\s+/g, "");
       callEl.classList.add("visible");
@@ -2458,6 +2480,17 @@ function actualizarHubFaena(f) {
     } else {
       callEl.removeAttribute("href");
       callEl.classList.remove("visible");
+    }
+  }
+  if (waEl) {
+    const wa = telefonoWhatsApp(tel);
+    if (wa) {
+      waEl.href = "https://wa.me/" + wa;
+      waEl.classList.add("visible");
+      waEl.setAttribute("aria-label", "WhatsApp " + tel);
+    } else {
+      waEl.href = "#";
+      waEl.classList.remove("visible");
     }
   }
 }
@@ -8057,7 +8090,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66h";
+  const UI_VER = "66i";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8085,7 +8118,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66h", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66i", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
