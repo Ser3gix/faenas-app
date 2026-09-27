@@ -1013,102 +1013,51 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div class="sec-header">
     <h2>Presupuesto</h2>
   </div>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
+    Igual que en la faena: partidas, materiales e incluir. Jimmi te ayuda con esta faena.
+  </p>
 
-  <!-- Selección de faena -->
   <div class="form-box">
-    <div class="form-title">🔨 Seleccionar faena</div>
-    <div class="form-grid">
+    <div class="form-title">Seleccionar faena</div>
+    <div class="form-grid g1">
       <div>
         <label>Faena</label>
         <select id="pres-faena-sel" onchange="cargarPresupuesto()"></select>
       </div>
-      <div>
-        <label>Tarifa €/hora</label>
-        <input type="number" id="pres-tarifa" value="35" step="0.5" placeholder="35.00"
-               oninput="actualizarTotales()">
-      </div>
+    </div>
+  </div>
+
+  <div class="form-box" id="pres-hub-box" style="padding:14px 16px">
+    <div id="pres-hub-wrap">
+      <div class="empty"><div class="empty-icon">📋</div>Selecciona una faena para ver su presupuesto</div>
     </div>
   </div>
 
   <div class="form-box" style="border-color:var(--wood);background:linear-gradient(135deg,#faf6ee,#f5ede0)">
-    <div class="form-title">🤖 Asistente de materiales</div>
-    <p style="font-size:0.8rem;color:#666;margin-bottom:12px;line-height:1.6">
-      La búsqueda automática con Ollama se ha quitado. Usa el prompt de Valencia o Copilot externo para revisar materiales.
+    <div class="form-title">Jimmi</div>
+    <p style="font-size:0.78rem;color:#666;margin-bottom:10px;line-height:1.5">
+      Pregunta por esta faena, precios o cómo montar el presupuesto. Si propone un cambio, confírmalo antes de guardar.
     </p>
-    <div class="btn-row">
-      <button class="btn btn-s btn-sm" onclick="generarPromptBusquedaValencia()">
-        🔍 Generar prompt para Copilot
-      </button>
-    </div>
-    <div id="pres-valencia-box" style="display:none;margin-top:12px">
-      <div style="font-size:0.78rem;font-weight:500;color:var(--accent);margin-bottom:6px">Prompt para Copilot:</div>
-      <div class="prompt-box" id="pres-valencia-txt" style="max-height:200px"></div>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="btn btn-g btn-sm" onclick="copiar('pres-valencia-txt')">📋 Copiar prompt</button>
+    <div id="pres-chat-mensajes" style="
+      background:white;border:1px solid var(--sawdust);border-radius:6px;
+      padding:14px;min-height:140px;max-height:320px;overflow-y:auto;
+      margin-bottom:10px;display:flex;flex-direction:column;gap:12px;
+    ">
+      <div style="text-align:center;color:#ccc;font-size:0.82rem;padding:16px 0">
+        Elige una faena y pregunta a Jimmi
       </div>
     </div>
-  </div>
-
-  <!-- MATERIALES -->
-  <div class="form-box">
-    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
-      📦 Materiales
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-s btn-sm" onclick="abrirModalMateriales()">🔍 Consultar precios</button>
-        <button class="btn btn-s btn-sm" onclick="añadirMaterial()">+ Añadir</button>
+    <div style="display:flex;gap:8px">
+      <textarea id="pres-chat-input" placeholder="Ej: ¿Qué partidas le pongo a esta faena? ¿Precio de bisagras?"
+        style="flex:1;resize:none;height:64px;font-size:0.85rem"
+        onkeydown="if(event.ctrlKey&&event.key==='Enter')enviarConsultaPresupuestoPc()"></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-p" id="pres-btn-consulta" onclick="enviarConsultaPresupuestoPc()" style="height:32px;padding:0 14px">Enviar</button>
+        <button class="btn btn-s" onclick="cerrarConversacionJimmiPresupuestoPc()" style="height:32px;padding:0 14px;font-size:0.7rem">Cerrar</button>
+        <button class="btn btn-g" onclick="abrirCorregirJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem">Corregir</button>
       </div>
     </div>
-    <table class="gastos-table" id="tabla-materiales-pres">
-      <thead>
-        <tr>
-          <th style="text-align:left">Descripción</th>
-          <th>Cantidad</th>
-          <th>Precio unit. (€)</th>
-          <th>Total</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="tbody-materiales"></tbody>
-    </table>
-    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
-      Subtotal materiales: <strong id="subtotal-mat">0.00 €</strong>
-    </div>
-  </div>
-
-  <!-- MANO DE OBRA -->
-  <div class="form-box">
-    <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
-      🔨 Mano de obra
-      <button class="btn btn-s btn-sm" onclick="añadirManoObra()">+ Añadir</button>
-    </div>
-    <table class="gastos-table" id="tabla-mo-pres">
-      <thead>
-        <tr>
-          <th style="text-align:left">Descripción</th>
-          <th>Tipo</th>
-          <th>Cantidad</th>
-          <th>Precio (€)</th>
-          <th>Total</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="tbody-mo"></tbody>
-    </table>
-    <div style="text-align:right;font-weight:600;color:var(--accent);font-size:1rem;margin-top:8px">
-      Subtotal mano de obra: <strong id="subtotal-mo">0.00 €</strong>
-    </div>
-  </div>
-
-  <!-- TOTAL Y ACCIONES -->
-  <div class="form-box" style="border:2px solid var(--wood)">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:600;font-size:1.2rem;color:var(--accent)">TOTAL FAENA</span>
-      <span style="font-weight:600;font-size:1.5rem;color:var(--green)" id="total-faena">0.00 €</span>
-    </div>
-    <div class="btn-row" style="margin-top:14px">
-      <button class="btn btn-p" onclick="guardarPresupuesto()">💾 Guardar TXT en carpeta</button>
-      <button class="btn btn-s" onclick="abrirPresupuestoEnCursor()">📂 Abrir en Cursor</button>
-    </div>
+    <div style="font-size:0.7rem;color:#aaa;margin-top:6px">Ctrl+Enter para enviar · Contexto: faena seleccionada</div>
   </div>
 </div>
 
@@ -2785,7 +2734,11 @@ function nav(id) {
     asegurarMaterialesPc().then(() => rellenarFaenasTicketDestino());
   }
   if (id === "polyboard") poblarSelectPolyboard();
-  if (id === "presupuesto") { poblarSelectPresupuesto(); }
+  if (id === "presupuesto") {
+    poblarSelectPresupuesto();
+    const v = document.getElementById("pres-faena-sel")?.value;
+    if (v) cargarPresupuesto();
+  }
   if (id === "book") renderBook();
   if (id === "asistente") { poblarSelectAsistente(); cargarContextoJimmi(); }
 }
@@ -3748,6 +3701,10 @@ function refrescarUiPresupuestoPc(faenaId) {
   actualizarImporteFaenaLocalPc(id, total);
   if (document.getElementById("m-detalle")?.classList.contains("open")) {
     pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, cobros, docs, fotos, tiemposHtml });
+  }
+  const selPres = document.getElementById("pres-faena-sel")?.value;
+  if (selPres && String(selPres) === String(id) && typeof pintarPresupuestoSeccionPc === "function") {
+    pintarPresupuestoSeccionPc();
   }
   if (state.presupuestoParcialPc) {
     renderPresupuestoParcialPc();
@@ -4794,74 +4751,63 @@ async function generarPdfPedido() {
   } catch(e) { toast("Error de conexión", true); }
 }
 
-function generarPromptBusquedaValencia() {
-  const descripcion = document.getElementById("pres-ollama-input").value.trim();
-  const prompt = `Necesito encontrar los siguientes materiales de carpintería en tiendas o proveedores de Valencia (España):\n\n${descripcion || "[Describe aquí los materiales que necesitas]"}\n\nPor favor:\n1. Sugiere tiendas o distribuidores de carpintería en Valencia donde pueda encontrar estos materiales\n2. Indica el nombre comercial exacto de cada producto para buscarlo\n3. Si conoces precios aproximados orientativos, inclúyelos\n4. Incluye también opciones de compra online con envío a Valencia\n\nBusca especialmente en:\n- Tiendas de herrajes para carpintería en Valencia\n- Distribuidores de materiales para ebanistería\n- Ferreterías industriales de Valencia`;
-  document.getElementById("pres-valencia-txt").textContent = prompt; document.getElementById("pres-valencia-box").style.display = "block"; document.getElementById("pres-valencia-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-let presState = { materiales: [], manoObra: [] };
 function poblarSelectPresupuesto() {
   const sel = document.getElementById("pres-faena-sel");
-  if (sel) sel.innerHTML = '<option value="">— Selecciona una faena —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' +
+    state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre || "")}</option>`).join("");
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
+
+function pintarPresupuestoSeccionPc() {
+  const wrap = document.getElementById("pres-hub-wrap");
+  if (!wrap) return;
+  const id = document.getElementById("pres-faena-sel")?.value;
+  if (!id) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Selecciona una faena para ver su presupuesto</div>`;
+    return;
+  }
+  const f = state.faenas.find(x => String(x.id) === String(id))
+    || (state.terminadas || []).find(x => String(x.id) === String(id));
+  if (!f) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Faena no encontrada</div>`;
+    return;
+  }
+  const lista = (state.detalleActual && String(state.detalleId) === String(id))
+    ? (state.detalleActual.presupuesto || [])
+    : [];
+  const bloques = bloquesDePresupuestoPc(lista);
+  const total = totalPresupuestoPc(lista);
+  wrap.innerHTML = htmlPresupuestoDetallePc(f, bloques, total);
+}
+
 async function cargarPresupuesto() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) return;
-  const r = await api("GET", `/faenas/${id}/presupuesto`);
-  if (r.ok && r.data.contenido) parsearTxtPresupuesto(r.data.contenido);
-  else { presState.materiales = []; presState.manoObra = []; renderTablasManoObra(); renderTablasMateriales(); actualizarTotales(); }
-}
-function parsearTxtPresupuesto(txt) {
-  presState.materiales = []; presState.manoObra = []; const lineas = txt.split("\n"); let seccion = null;
-  for (const linea of lineas) {
-    if (linea.startsWith("MATERIALES")) { seccion = "mat"; continue; }
-    if (linea.startsWith("MANO DE OBRA")) { seccion = "mo"; continue; }
-    if (linea.startsWith("=") || linea.startsWith("-") || linea.startsWith("Subtotal") || linea.startsWith("Total") || linea.startsWith("Tarifa") || linea.trim() === "") continue;
-    if (seccion === "mat") { const match = linea.match(/^(.+?)\s+([\d.]+)\s+€\s*$/); if (match) presState.materiales.push({ descripcion: match[1].trim(), cantidad: 1, precio_unitario: parseFloat(match[2]) }); }
-    if (seccion === "mo") { const match = linea.match(/^(.+?)\s*\((\d+\.?\d*)(h|ud)\)\s*.+?([\d.]+)\s+€\s*$/); if (match) presState.manoObra.push({ descripcion: match[1].trim(), tipo: match[3] === "h" ? "hora" : "unidad", cantidad: parseFloat(match[2]), precio: 0 }); }
+  const id = document.getElementById("pres-faena-sel")?.value;
+  const wrap = document.getElementById("pres-hub-wrap");
+  if (!id) {
+    pintarPresupuestoSeccionPc();
+    return;
   }
-  renderTablasMateriales(); renderTablasManoObra(); actualizarTotales();
-}
-function renderTablasMateriales() {
-  const tbody = document.getElementById("tbody-materiales");
-  if (!presState.materiales.length) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin materiales — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.materiales.map((m, i) => { const total = (parseFloat(m.cantidad) || 0) * (parseFloat(m.precio_unitario) || 0); return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${m.descripcion}" onchange="presState.materiales[${i}].descripcion=this.value"></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${m.cantidad}" step="0.01" onchange="presState.materiales[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td><input type="number" style="border:none;background:transparent;width:80px;text-align:center;font-size:0.8rem" value="${m.precio_unitario}" step="0.01" onchange="presState.materiales[${i}].precio_unitario=parseFloat(this.value)||0;actualizarTotales()"></td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarMaterial(${i})">×</button></td></tr>`; }).join("");
-}
-function renderTablasManoObra() {
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const tbody = document.getElementById("tbody-mo");
-  if (!presState.manoObra.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px;font-size:0.8rem">Sin mano de obra — pulsa + Añadir</td></tr>`; return; }
-  tbody.innerHTML = presState.manoObra.map((l, i) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0); const total = (parseFloat(l.cantidad) || 0) * precio; return `<tr><td><input style="border:none;background:transparent;width:100%;font-size:0.8rem" value="${l.descripcion}" onchange="presState.manoObra[${i}].descripcion=this.value"></td><td><select style="border:none;background:transparent;font-size:0.78rem;font-family:inherit" onchange="presState.manoObra[${i}].tipo=this.value;renderTablasManoObra();actualizarTotales()"><option value="hora" ${l.tipo==="hora"?"selected":""}>Por hora</option><option value="unidad" ${l.tipo==="unidad"?"selected":""}>Por unidad</option></select></td><td><input type="number" style="border:none;background:transparent;width:60px;text-align:center;font-size:0.8rem" value="${l.cantidad}" step="0.5" onchange="presState.manoObra[${i}].cantidad=parseFloat(this.value)||0;actualizarTotales()"></td><td>${l.tipo === "hora" ? `<span style="font-size:0.78rem;color:var(--accent)">${tarifa.toFixed(2)} €/h</span>` : `<input type="number" style="border:none;background:transparent;width:70px;text-align:center;font-size:0.8rem" value="${l.precio||0}" step="0.5" onchange="presState.manoObra[${i}].precio=parseFloat(this.value)||0;actualizarTotales()">`}</td><td style="text-align:right;font-weight:500">${total.toFixed(2)} €</td><td><button class="btn btn-d btn-sm" onclick="eliminarManoObra(${i})">×</button></td></tr>`; }).join("");
-}
-function actualizarTotales() {
-  renderTablasMateriales(); renderTablasManoObra();
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const totalMat = presState.materiales.reduce((s, m) => s + (parseFloat(m.cantidad)||0) * (parseFloat(m.precio_unitario)||0), 0);
-  const totalMO = presState.manoObra.reduce((s, l) => { const precio = l.tipo === "hora" ? tarifa : (parseFloat(l.precio)||0); return s + (parseFloat(l.cantidad)||0) * precio; }, 0);
-  document.getElementById("subtotal-mat").textContent = totalMat.toFixed(2) + " €";
-  document.getElementById("subtotal-mo").textContent  = totalMO.toFixed(2) + " €";
-  document.getElementById("total-faena").textContent  = (totalMat + totalMO).toFixed(2) + " €";
-}
-function añadirMaterial() { presState.materiales.push({ descripcion: "Nuevo material", cantidad: 1, precio_unitario: 0 }); renderTablasMateriales(); actualizarTotales(); }
-function eliminarMaterial(i) { presState.materiales.splice(i, 1); renderTablasMateriales(); actualizarTotales(); }
-function añadirManoObra() { presState.manoObra.push({ descripcion: "Nueva partida", tipo: "hora", cantidad: 1, precio: 0 }); renderTablasManoObra(); actualizarTotales(); }
-function eliminarManoObra(i) { presState.manoObra.splice(i, 1); renderTablasManoObra(); actualizarTotales(); }
-async function guardarPresupuesto() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
-  const tarifa = parseFloat(document.getElementById("pres-tarifa").value) || 0;
-  const moConPrecio = presState.manoObra.map(l => ({ ...l, precio: l.tipo === "hora" ? tarifa : (parseFloat(l.precio) || 0) }));
-  const r = await api("POST", `/faenas/${id}/presupuesto`, { tarifa_hora: tarifa, materiales: presState.materiales, mano_obra: moConPrecio });
-  if (r.ok) {
-    toast(`✓ Presupuesto guardado · Total: ${r.data.total.toFixed(2)} €`);
-    await cargarFaenas();
-    renderFaenas();
+  if (wrap) wrap.innerHTML = `<div class="empty" style="padding:20px;color:#aaa">Cargando presupuesto…</div>`;
+  const rConceptos = await api("GET", `/faenas/${id}/conceptos`);
+  const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
+  let presupuesto = conceptos.presupuesto || [];
+  let gastos = conceptos.gastos || [];
+  if (pendingOps.length) {
+    const merged = aplicarPendingSobreListas(id, [], gastos, presupuesto);
+    gastos = merged.gastos;
+    presupuesto = merged.presupuesto;
   }
-  else toast(r.error, true);
+  state.detalleId = parseInt(id, 10) || id;
+  state.detalleActual = Object.assign({}, state.detalleActual || {}, { presupuesto, gastos });
+  const ia = document.getElementById("ia-faena-index");
+  const as = document.getElementById("asistente-faena-sel");
+  if (ia) ia.value = String(id);
+  if (as) as.value = String(id);
+  pintarPresupuestoSeccionPc();
 }
-async function abrirPresupuestoEnCursor() {
-  const id = document.getElementById("pres-faena-sel").value; if (!id) { toast("Selecciona una faena primero", true); return; }
-  const faena = state.faenas.find(f => f.id === parseInt(id)); if (!faena) return;
-  const r = await api("POST", "/cursor/abrir", { carpeta: faena.carpeta }); if (!r.ok) toast(r.error, true);
-}
+
 function abrirModalMateriales() {
   asegurarMaterialesPc().then(() => {
     renderConsultaMat();
@@ -4873,7 +4819,6 @@ function renderConsultaMat() {
   const lista = state.materiales.filter(m => !q || m.nombre.toLowerCase().includes(q) || (m.categoria||"").toLowerCase().includes(q));
   const el = document.getElementById("consulta-mat-lista");
   if (!lista.length) { el.innerHTML = '<div class="empty" style="padding:20px">Sin resultados</div>'; return; }
-  const modoDetalle = !!(state.presupuestoParcialPc || document.getElementById("m-presupuesto-item")?.classList.contains("open"));
   el.innerHTML = lista.map(m => {
     const precios = [...(m.precios||[])].sort((a,b) => a.precio_unitario - b.precio_unitario);
     return `<div style="padding:10px 0;border-bottom:1px solid var(--sawdust)">
@@ -4882,9 +4827,7 @@ function renderConsultaMat() {
         <span style="font-size:0.72rem;color:#aaa">${esc(m.unidad||"")} · ${esc(m.categoria||"")}</span>
       </div>
       <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px">${precios.map((p, i) => {
-        const fn = modoDetalle
-          ? `usarMaterialEnPresupuestoPc(${JSON.stringify(m.nombre)},${p.precio_unitario})`
-          : `usarPrecioEnPresupuesto(${JSON.stringify(m.nombre)},${p.precio_unitario})`;
+        const fn = `usarMaterialEnPresupuestoPc(${JSON.stringify(m.nombre)},${p.precio_unitario})`;
         return `<span style="font-size:0.78rem;${i===0?"color:var(--green);font-weight:500":"color:#666"}">${esc(p.proveedor||"—")}: ${parseFloat(p.precio_unitario).toFixed(2)}€
           <button class="btn btn-s btn-sm" style="padding:2px 6px;font-size:0.65rem;margin-left:4px" onclick='${fn}'>Usar</button></span>`;
       }).join("")}</div>
@@ -4892,11 +4835,7 @@ function renderConsultaMat() {
   }).join("");
 }
 function usarPrecioEnPresupuesto(nombre, precio) {
-  presState.materiales.push({ descripcion: nombre, cantidad: 1, precio_unitario: precio });
-  renderTablasMateriales();
-  actualizarTotales();
-  cerrarModal("m-consulta-mat");
-  toast(`✓ ${nombre} añadido al presupuesto TXT`);
+  usarMaterialEnPresupuestoPc(nombre, precio);
 }
 
 // ===== PRESUPUESTO POR PARTIDAS (como móvil) =====
@@ -5319,8 +5258,25 @@ function poblarSelectAsistente() {
   const contextoSel = document.getElementById("ia-faena-index");
   if (contextoSel) contextoSel.innerHTML = '<option value="">— Todas —</option>' + state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre)}</option>`).join("");
 }
-function añadirMensaje(texto, tipo) {
-  const contenedor = document.getElementById("chat-mensajes"); const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); const div = document.createElement("div"); div.className = `chat-msg ${tipo}`; const burbuja = document.createElement("div"); burbuja.className = "chat-burbuja"; burbuja.innerHTML = texto; div.appendChild(burbuja); const horaEl = document.createElement("div"); horaEl.className = "chat-hora"; horaEl.textContent = hora; div.appendChild(horaEl); const inicial = contenedor.querySelector("[style*='color:#ccc']"); if (inicial) inicial.remove(); contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; return div;
+function añadirMensaje(texto, tipo, contenedorId) {
+  const contenedor = document.getElementById(contenedorId || "chat-mensajes");
+  if (!contenedor) return null;
+  const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const div = document.createElement("div");
+  div.className = `chat-msg ${tipo}`;
+  const burbuja = document.createElement("div");
+  burbuja.className = "chat-burbuja";
+  burbuja.innerHTML = texto;
+  div.appendChild(burbuja);
+  const horaEl = document.createElement("div");
+  horaEl.className = "chat-hora";
+  horaEl.textContent = hora;
+  div.appendChild(horaEl);
+  const inicial = contenedor.querySelector("[style*='color:#ccc']");
+  if (inicial) inicial.remove();
+  contenedor.appendChild(div);
+  contenedor.scrollTop = contenedor.scrollHeight;
+  return div;
 }
 function pintarFotosJimmi(div, imagenes) {
   if (!div || !imagenes || !imagenes.length) return;
@@ -5340,39 +5296,123 @@ function pintarFotosJimmi(div, imagenes) {
   });
   if (wrap.childNodes.length) burbuja.appendChild(wrap);
 }
-function mostrarTyping() { const contenedor = document.getElementById("chat-mensajes"); const div = document.createElement("div"); div.className = "chat-msg asistente"; div.id = "typing-indicator"; div.innerHTML = `<div class="chat-typing"><span></span><span></span><span></span></div>`; contenedor.appendChild(div); contenedor.scrollTop = contenedor.scrollHeight; }
+function mostrarTyping(contenedorId) {
+  const contenedor = document.getElementById(contenedorId || "chat-mensajes");
+  if (!contenedor) return;
+  const div = document.createElement("div");
+  div.className = "chat-msg asistente";
+  div.id = "typing-indicator";
+  div.innerHTML = `<div class="chat-typing"><span></span><span></span><span></span></div>`;
+  contenedor.appendChild(div);
+  contenedor.scrollTop = contenedor.scrollHeight;
+}
 function quitarTyping() { const el = document.getElementById("typing-indicator"); if (el) el.remove(); }
-async function enviarConsulta() {
-  const input = document.getElementById("chat-input"); const pregunta = input.value.trim(); if (!pregunta) return;
-  const faenaId = document.getElementById("ia-faena-index")?.value || document.getElementById("asistente-faena-sel")?.value || null;
-  const modo = modoJimmiActual();
-  const btn = document.getElementById("btn-consulta");
-  añadirMensaje(pregunta, "usuario"); input.value = ""; btn.disabled = true; btn.textContent = "..."; mostrarTyping();
+
+async function _enviarConsultaJimmiCore(opts) {
+  const pregunta = (opts.pregunta || "").trim();
+  if (!pregunta) return;
+  const chatId = opts.chatId || "chat-mensajes";
+  const btn = opts.btnId ? document.getElementById(opts.btnId) : null;
+  const faenaId = opts.faenaId != null && opts.faenaId !== "" ? opts.faenaId : null;
+  const modo = opts.modo || modoJimmiActual();
+  if (opts.inputEl) opts.inputEl.value = "";
+  añadirMensaje(esc(pregunta), "usuario", chatId);
+  if (btn) { btn.disabled = true; btn.textContent = "..."; }
+  mostrarTyping(chatId);
   try {
-    const r = await fetch(API + "/secretario/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta, faena_id: faenaId ? parseInt(faenaId) : null, historial: chatHistorial.slice(-16), modo }) });
-    quitarTyping(); const data = await r.json();
+    const r = await fetch(API + "/secretario/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pregunta,
+        faena_id: faenaId ? parseInt(faenaId, 10) : null,
+        historial: chatHistorial.slice(-16),
+        modo
+      })
+    });
+    quitarTyping();
+    const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Jimmi no ha podido responder");
     chatHistorial.push({ rol: "usuario", texto: pregunta });
     chatHistorial.push({ rol: "jimmi", texto });
     if (data.ok) {
-      const msg = añadirMensaje(esc(data.data.respuesta), "asistente");
+      const msg = añadirMensaje(esc(data.data.respuesta), "asistente", chatId);
       pintarFotosJimmi(msg, data.data.imagenes);
       cargarContextoJimmi();
-      if (data.data.conversacion_cerrada) {
-        chatHistorial = [];
-      }
+      if (data.data.conversacion_cerrada) chatHistorial = [];
       const ag = data.data.anotacion_guardada;
       if (ag && ag.faena_id && state.detalleId && String(state.detalleId) === String(ag.faena_id)) {
-        verDetalle(state.detalleId);
+        if (document.getElementById("m-detalle")?.classList.contains("open")) verDetalle(state.detalleId);
       }
       if (data.data.ticket && (data.data.ticket.articulos || []).length) {
-        const fid = faenaId ? parseInt(faenaId) : null;
-        añadirMensaje("Hay materiales para revisar en Tickets.", "asistente");
+        const fid = faenaId ? parseInt(faenaId, 10) : null;
+        añadirMensaje("Hay materiales para revisar en Tickets.", "asistente", chatId);
         abrirTicketConDatos(data.data.ticket, fid);
       }
-    } else añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente");
-  } catch(e) { quitarTyping(); añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente"); }
-  btn.disabled = false; btn.textContent = "Enviar";
+      if (opts.onOk) opts.onOk(data);
+    } else {
+      añadirMensaje("⚠️ " + (data.error || "Error al consultar a Jimmi"), "asistente", chatId);
+    }
+  } catch (e) {
+    quitarTyping();
+    añadirMensaje("⚠️ No se pudo conectar con el asistente. Comprueba el servidor y la API configurada.", "asistente", chatId);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "Enviar"; }
+}
+
+async function enviarConsulta() {
+  const input = document.getElementById("chat-input");
+  const pregunta = (input && input.value || "").trim();
+  if (!pregunta) return;
+  const faenaId = document.getElementById("ia-faena-index")?.value || document.getElementById("asistente-faena-sel")?.value || null;
+  await _enviarConsultaJimmiCore({
+    pregunta,
+    faenaId,
+    inputEl: input,
+    chatId: "chat-mensajes",
+    btnId: "btn-consulta"
+  });
+}
+
+async function enviarConsultaPresupuestoPc() {
+  const fid = document.getElementById("pres-faena-sel")?.value;
+  if (!fid) { toast("Selecciona una faena primero", true); return; }
+  const input = document.getElementById("pres-chat-input");
+  const pregunta = (input && input.value || "").trim();
+  if (!pregunta) return;
+  await _enviarConsultaJimmiCore({
+    pregunta,
+    faenaId: fid,
+    modo: "faenas",
+    inputEl: input,
+    chatId: "pres-chat-mensajes",
+    btnId: "pres-btn-consulta",
+    onOk: () => {
+      if (String(state.detalleId) === String(fid)) pintarPresupuestoSeccionPc();
+    }
+  });
+}
+
+async function cerrarConversacionJimmiPresupuestoPc() {
+  const hist = (chatHistorial || []).slice();
+  const contenedor = document.getElementById("pres-chat-mensajes");
+  if (contenedor) {
+    contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:16px 0">Elige una faena y pregunta a Jimmi</div>`;
+  }
+  chatHistorial = [];
+  if (hist.length < 2) return;
+  try {
+    const r = await fetch(API + "/secretario/chat/cerrar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ historial: hist.slice(-16), modo: "faenas" })
+    });
+    const data = await r.json();
+    if (data.ok && data.data && data.data.util && data.data.resumen) {
+      toast("Jimmi ha apuntado: " + data.data.resumen);
+      cargarContextoJimmi();
+    }
+  } catch (e) {}
 }
 function usarSugerencia(texto) { document.getElementById("chat-input").value = texto; document.getElementById("chat-input").focus(); }
 async function cerrarConversacionJimmi() {
