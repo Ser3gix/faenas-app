@@ -1679,7 +1679,6 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="field"><label>Teléfono</label><input id="ef-tel" type="tel" placeholder="600 000 000"></div>
     <div class="field"><label>Dirección</label><input id="ef-dir"></div>
     <div class="field"><label>Tipo de trabajo *</label><input id="ef-tipo"></div>
-    <div class="field"><label>Importe (€)</label><input id="ef-importe" type="number" step="0.01" placeholder="0.00"></div>
     <button class="btn btn-p" onclick="guardarEditarFaena()">💾 Guardar</button>
     <button class="btn btn-s" onclick="cerrarModal('m-editar-faena')">Cancelar</button>
   </div>
@@ -5361,7 +5360,6 @@ function abrirEditarFaena(id) {
   document.getElementById("ef-tel").value = telefonoDeFaenaMovil(f);
   document.getElementById("ef-dir").value = direccionDeFaenaMovil(f) || f.direccion || "";
   document.getElementById("ef-tipo").value = f.tipo_trabajo || "";
-  document.getElementById("ef-importe").value = f.importe || "";
   abrirModal("m-editar-faena");
 }
 
@@ -5374,7 +5372,7 @@ async function guardarEditarFaena() {
     telefono:     document.getElementById("ef-tel").value.trim(),
     direccion:    document.getElementById("ef-dir").value.trim(),
     tipo_trabajo: document.getElementById("ef-tipo").value.trim(),
-    importe:      parseFloat(document.getElementById("ef-importe").value) || 0,
+    importe:      Number(faena.importe) || 0,
     fecha_inicio: faena.fecha_inicio || ""
   };
   if (!datos.tipo_trabajo) { toast("El tipo de trabajo es obligatorio", true); return; }
@@ -5385,7 +5383,6 @@ async function guardarEditarFaena() {
     faena.direccion = datos.direccion;
     faena.cliente_direccion = datos.direccion;
     faena.tipo_trabajo = datos.tipo_trabajo;
-    faena.importe = datos.importe;
     localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
 
     const cliente = state.clientes.find(c => String(c.id) === String(faena.cliente_id));
@@ -8060,7 +8057,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66g";
+  const UI_VER = "66h";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8088,7 +8085,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66g", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66h", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
