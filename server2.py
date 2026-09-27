@@ -1172,6 +1172,31 @@ def editar_cliente(id):
     conn.close()
     return jsonify({"ok": True})
 
+
+@app.route("/api/clientes/<int:id>", methods=["DELETE"])
+def eliminar_cliente(id):
+    conn = get_connection()
+    fila = conn.execute("SELECT id, nombre FROM clientes WHERE id=?", (id,)).fetchone()
+    if not fila:
+        conn.close()
+        return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+    try:
+        n_faenas = int(conn.execute(
+            "SELECT COUNT(*) AS n FROM faenas WHERE cliente_id=?", (id,)
+        ).fetchone()["n"] or 0)
+    except Exception:
+        n_faenas = 0
+    if n_faenas > 0:
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "error": f"No se puede eliminar: tiene {n_faenas} faena{'s' if n_faenas != 1 else ''} asociada{'s' if n_faenas != 1 else ''}. Reasigna o termina esas faenas primero."
+        }), 400
+    conn.execute("DELETE FROM clientes WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
 # -------------------- FAENAS --------------------
 
 def _conn_para_faena(faena_id):
