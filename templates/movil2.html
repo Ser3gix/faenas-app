@@ -310,16 +310,41 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   padding: 12px 16px;
   flex-shrink: 0;
 }
+.faena-hub-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
 .faena-hub-meta {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  margin-bottom: 6px;
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--ink);
 }
+.faena-hub-call {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.faena-hub-call.visible { display: inline-flex; }
 .faena-hub-dir {
   font-size: 0.85rem;
   color: var(--muted);
@@ -1550,7 +1575,10 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 
   <div class="faena-hub-header" id="faena-hub-header">
-    <div class="faena-hub-meta" id="ov-hub-meta"></div>
+    <div class="faena-hub-top">
+      <div class="faena-hub-meta" id="ov-hub-meta"></div>
+      <a class="faena-hub-call" id="ov-hub-call" href="tel:">📞 Llamar</a>
+    </div>
     <div class="faena-hub-dir" id="ov-hub-dir"></div>
     <div class="faena-hub-importes" id="ov-hub-importes"></div>
   </div>
@@ -2389,12 +2417,21 @@ document.getElementById("main-carousel").addEventListener("scroll", function() {
 // FAENA OVERLAY
 // ═══════════════════════════════════════════════════════════
 
+function telefonoDeFaenaMovil(f) {
+  if (!f) return "";
+  const propio = (f.cliente_telefono || f.telefono || "").trim();
+  if (propio) return propio;
+  const c = typeof buscarClientePorId === "function" ? buscarClientePorId(f.cliente_id) : null;
+  return ((c && c.telefono) || "").trim();
+}
+
 function actualizarHubFaena(f) {
   if (!f) return;
   const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
   const meta = document.getElementById("ov-hub-meta");
   const dirEl = document.getElementById("ov-hub-dir");
   const impEl = document.getElementById("ov-hub-importes");
+  const callEl = document.getElementById("ov-hub-call");
   if (meta) {
     const badge = esDirecto
       ? `<span class="badge b-direct">Directo</span>`
@@ -2402,7 +2439,7 @@ function actualizarHubFaena(f) {
     meta.innerHTML = `${escHtml(f.tipo_trabajo || "—")} · ${badge}`;
   }
   if (dirEl) {
-    const dir = f.direccion || (typeof direccionDeFaenaMovil === "function" ? direccionDeFaenaMovil(f) : "") || "";
+    const dir = (typeof direccionDeFaenaMovil === "function" ? direccionDeFaenaMovil(f) : "") || (f.direccion || "");
     dirEl.textContent = dir || "—";
     dirEl.style.display = dir ? "" : "none";
   }
@@ -2412,6 +2449,17 @@ function actualizarHubFaena(f) {
     const totTxt = tot > 0 ? tot.toFixed(2) + " €" : "—";
     const cobTxt = cob > 0 ? cob.toFixed(2) + " €" : "0,00 €";
     impEl.innerHTML = `<span class="hub-imp">${totTxt}</span><span class="hub-cta">A cta ${cobTxt}</span>`;
+  }
+  if (callEl) {
+    const tel = telefonoDeFaenaMovil(f);
+    if (tel) {
+      callEl.href = "tel:" + tel.replace(/\s+/g, "");
+      callEl.classList.add("visible");
+      callEl.setAttribute("aria-label", "Llamar " + tel);
+    } else {
+      callEl.removeAttribute("href");
+      callEl.classList.remove("visible");
+    }
   }
 }
 
@@ -5305,12 +5353,13 @@ async function crearFaena() {
 }
 
 function abrirEditarFaena(id) {
-  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  const f = state.faenas.find(x => String(x.id || x._tempId) === String(id))
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(id));
   if (!f) return;
   document.getElementById("ef-id").value = f.id || f._tempId;
   document.getElementById("ef-cliente").textContent = f.cliente_nombre || "—";
-  document.getElementById("ef-tel").value = f.cliente_telefono || f.telefono || "";
-  document.getElementById("ef-dir").value = f.direccion || "";
+  document.getElementById("ef-tel").value = telefonoDeFaenaMovil(f);
+  document.getElementById("ef-dir").value = direccionDeFaenaMovil(f) || f.direccion || "";
   document.getElementById("ef-tipo").value = f.tipo_trabajo || "";
   document.getElementById("ef-importe").value = f.importe || "";
   abrirModal("m-editar-faena");
@@ -5318,7 +5367,8 @@ function abrirEditarFaena(id) {
 
 async function guardarEditarFaena() {
   const id = document.getElementById("ef-id").value;
-  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(id));
+  const faena = state.faenas.find(f => String(f.id || f._tempId) === String(id))
+    || (state.terminadas || []).find(f => String(f.id || f._tempId) === String(id));
   if (!faena) return;
   const datos = {
     telefono:     document.getElementById("ef-tel").value.trim(),
@@ -5331,7 +5381,9 @@ async function guardarEditarFaena() {
 
   const aplicar = () => {
     faena.telefono = datos.telefono;
+    faena.cliente_telefono = datos.telefono;
     faena.direccion = datos.direccion;
+    faena.cliente_direccion = datos.direccion;
     faena.tipo_trabajo = datos.tipo_trabajo;
     faena.importe = datos.importe;
     localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
@@ -5339,11 +5391,14 @@ async function guardarEditarFaena() {
     const cliente = state.clientes.find(c => String(c.id) === String(faena.cliente_id));
     if (cliente) {
       cliente.telefono = datos.telefono;
+      cliente.direccion = datos.direccion;
       localStorage.setItem("clientes_cache", JSON.stringify(state.clientes));
     }
     renderFaenas();
     if (String(state.faenaActualId) === String(id)) {
       document.getElementById("ov-num").textContent = faena.numero || "";
+      document.getElementById("ov-cliente").textContent = faena.cliente_nombre || "—";
+      actualizarHubFaena(faena);
       renderPanelDatos(faena);
       renderPanelPresupuesto(faena);
     }
@@ -5369,17 +5424,18 @@ async function guardarEditarFaena() {
     const d = await r.json();
     if (d.ok) {
       const clienteId = faena.cliente_id;
-      if (clienteId) {
+      if (clienteId && !String(clienteId).startsWith("temp")) {
+        const cli = state.clientes.find(c => String(c.id) === String(clienteId));
         await fetch(`${getServerUrl()}/clientes/${clienteId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            nombre: faena.cliente_nombre || "",
+            nombre: faena.cliente_nombre || cli?.nombre || "",
             telefono: datos.telefono,
-            direccion: state.clientes.find(c => String(c.id) === String(clienteId))?.direccion || "",
-            email: state.clientes.find(c => String(c.id) === String(clienteId))?.email || "",
-            intermediario_id: 0,
-            notas: state.clientes.find(c => String(c.id) === String(clienteId))?.notas || ""
+            direccion: datos.direccion,
+            email: cli?.email || "",
+            intermediario_id: cli?.intermediario_id || 0,
+            notas: cli?.notas || ""
           }),
           signal: faenasAbortTimeout(6000)
         });
@@ -8004,7 +8060,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66f";
+  const UI_VER = "66g";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8032,7 +8088,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66f", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66g", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
