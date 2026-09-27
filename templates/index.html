@@ -2401,6 +2401,21 @@ async function asegurarMaterialesPc() {
   renderMateriales();
 }
 
+async function refrescarDatosInicialesPc() {
+  await Promise.all([
+    cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true)
+  ]);
+  if (sesionSucia) return;
+  guardarCachePc();
+  renderFaenas();
+  renderClientes();
+  renderInter();
+  poblarSelects();
+  poblarSelectPolyboard();
+  poblarSelectPresupuesto();
+  guardarSnapshotSesionPc();
+}
+
 async function init() {
   const hayCache = hidratarCachePc();
   if (hayCache) {
@@ -2410,21 +2425,17 @@ async function init() {
     poblarSelects();
     poblarSelectPolyboard();
     poblarSelectPresupuesto();
+    guardarSnapshotSesionPc();
   }
   cargarEstadoDb();
   cargarIP();
   cargarEstadoR2();
-  await Promise.all([
-    cargarFaenas(true), cargarClientes(true), cargarIntermediarios(true)
-  ]);
-  guardarCachePc();
-  renderFaenas();
-  renderClientes();
-  renderInter();
-  poblarSelects();
-  poblarSelectPolyboard();
-  poblarSelectPresupuesto();
-  guardarSnapshotSesionPc();
+  // Con caché: mostrar ya y refrescar en segundo plano. Sin caché: esperar datos.
+  if (hayCache) {
+    refrescarDatosInicialesPc().catch(() => {});
+  } else {
+    await refrescarDatosInicialesPc();
+  }
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") preguntarSalidaPc();
   });

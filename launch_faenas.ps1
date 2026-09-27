@@ -44,7 +44,22 @@ Write-Host "  Datos y faenas: $urlNube"
 Write-Host "  Este ordenador lee los PDF que se suban en la web"
 Write-Host ""
 
-Update-FaenasApp
+$stampUpdate = Join-Path $projectPath ".last_faenas_update"
+$horasEntreUpdates = 12
+$debeActualizar = $true
+if (-not $SoloActualizar -and (Test-Path $stampUpdate)) {
+    try {
+        $age = (Get-Date) - (Get-Item $stampUpdate).LastWriteTime
+        if ($age.TotalHours -lt $horasEntreUpdates) {
+            $debeActualizar = $false
+            Write-Host ("App al dia (ultima descarga hace {0:N1} h). Arranque rapido." -f $age.TotalHours)
+        }
+    } catch {}
+}
+if ($debeActualizar) {
+    Update-FaenasApp
+    try { Set-Content -Path $stampUpdate -Value ((Get-Date).ToString("o")) -Encoding UTF8 } catch {}
+}
 
 if ($SoloActualizar) {
     Write-Host ""

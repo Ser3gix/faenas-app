@@ -921,13 +921,17 @@ def static_files(filename):
 @app.route("/")
 @app.route("/index.html")
 def index():
-    resp = make_response(render_template("index.html", faenas_api_base=_url_api_publica()))
+    # En el PC: API local (misma MySQL). En la nube: PUBLIC_BASE_URL.
+    api_base = _url_api_publica() if en_servidor_nube() else ""
+    resp = make_response(render_template("index.html", faenas_api_base=api_base))
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return resp
 
 def _url_api_publica():
     base = (PUBLIC_BASE_URL or "").rstrip("/")
     return f"{base}/api" if base else ""
+
+_CLIENTES_BACKFILL_HECHO = False
 
 @app.route("/movil2")
 def movil2():
@@ -1111,12 +1115,15 @@ def editar_intermediario(id):
 # -------------------- CLIENTES --------------------
 @app.route("/api/clientes", methods=["GET"])
 def get_clientes():
+    global _CLIENTES_BACKFILL_HECHO
     conn = get_connection()
-    try:
-        _completar_datos_faenas_en_clientes(conn.cursor(), mysql=_usar_mysql())
-        conn.commit()
-    except Exception:
-        pass
+    if not _CLIENTES_BACKFILL_HECHO:
+        try:
+            _completar_datos_faenas_en_clientes(conn.cursor(), mysql=_usar_mysql())
+            conn.commit()
+            _CLIENTES_BACKFILL_HECHO = True
+        except Exception:
+            pass
     filas = conn.execute("""
         SELECT c.*, i.nombre AS intermediario_nombre
         FROM clientes c

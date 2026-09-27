@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import threading
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -20,11 +21,14 @@ from config import (
 )
 
 MYSQL_CONNECT_TIMEOUT = int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10") or 10)
+MYSQL_POOL_SIZE = max(1, min(16, int(os.environ.get("MYSQL_POOL_SIZE", "5") or 5)))
 
 try:
     import mysql.connector
+    from mysql.connector import pooling as mysql_pooling
 except Exception:
     mysql = None
+    mysql_pooling = None
 else:
     mysql = mysql.connector
 
@@ -35,6 +39,9 @@ def _usar_mysql():
 
 _MYSQL_DESHABILITADO = False
 _MYSQL_ERROR = None
+_MYSQL_BD_LISTA = False
+_MYSQL_POOL = None
+_MYSQL_POOL_LOCK = threading.Lock()
 
 
 def _serializar_valor(valor):
@@ -185,23 +192,50 @@ def _mysql_conectar_sin_bd():
 
 
 def _mysql_asegurar_base():
+    global _MYSQL_BD_LISTA
+    if _MYSQL_BD_LISTA:
+        return
     if not MYSQL_DATABASE:
         raise RuntimeError("No has configurado MYSQL_DATABASE.")
-    if not MYSQL_CREATE_DATABASE:
-        return
-    conexion = _mysql_conectar_sin_bd()
-    cursor = conexion.cursor()
-    cursor.execute(
-        f"CREATE DATABASE IF NOT EXISTS `{MYSQL_DATABASE}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-    )
-    conexion.commit()
-    cursor.close()
-    conexion.close()
+    if MYSQL_CREATE_DATABASE:
+        conexion = _mysql_conectar_sin_bd()
+        cursor = conexion.cursor()
+        cursor.execute(
+            f"CREATE DATABASE IF NOT EXISTS `{MYSQL_DATABASE}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        )
+        conexion.commit()
+        cursor.close()
+        conexion.close()
+    _MYSQL_BD_LISTA = True
+
+
+def _mysql_pool():
+    global _MYSQL_POOL
+    if _MYSQL_POOL is not None:
+        return _MYSQL_POOL
+    with _MYSQL_POOL_LOCK:
+        if _MYSQL_POOL is not None:
+            return _MYSQL_POOL
+        if mysql is None or mysql_pooling is None:
+            raise RuntimeError("Falta la dependencia mysql-connector-python. Instala requirements.txt primero.")
+        _mysql_asegurar_base()
+        params = _mysql_params(include_database=True)
+        _MYSQL_POOL = mysql_pooling.MySQLConnectionPool(
+            pool_name="faenas_pool",
+            pool_size=MYSQL_POOL_SIZE,
+            pool_reset_session=True,
+            **params,
+        )
+        return _MYSQL_POOL
 
 
 def _mysql_conectar_con_bd():
-    _mysql_asegurar_base()
-    conexion = mysql.connect(**_mysql_params(include_database=True))
+    try:
+        conexion = _mysql_pool().get_connection()
+    except Exception:
+        # Si el pool falla (p. ej. agotado), conexión directa
+        _mysql_asegurar_base()
+        conexion = mysql.connect(**_mysql_params(include_database=True))
     return _ConnectionCompat(conexion, "mysql")
 
 
