@@ -303,34 +303,107 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   min-height: 40px;
 }
 
-/* ──────── PANEL TABS ──────── */
-.panel-tabs-wrap {
+/* ──────── FAENA HUB (encabezado + menú) ──────── */
+.faena-hub-header {
   background: #fff;
   border-bottom: 1px solid var(--sawdust);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  padding: 12px 16px;
   flex-shrink: 0;
 }
-.panel-tabs-wrap::-webkit-scrollbar { display: none; }
-.panel-tabs {
+.faena-hub-meta {
   display: flex;
-  padding: 4px 8px;
-  gap: 4px;
-  min-width: max-content;
-}
-.panel-tab {
-  padding: 10px 14px;
-  font-family: var(--font-sans);
-  font-size: 0.88rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  white-space: nowrap;
-  user-select: none;
+  color: var(--ink);
 }
-.panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.faena-hub-dir {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.faena-hub-importes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.faena-hub-importes .hub-imp { color: var(--green); }
+.faena-hub-importes .hub-cta { color: var(--ink); }
+
+.faena-menu-wrap {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 12px;
+  min-height: 0;
+}
+.faena-menu-wrap.oculto { display: none; }
+.faena-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.faena-menu-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 14px 10px;
+  border: 1px solid var(--sawdust);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.faena-menu-btn:active { background: var(--paper-dark); }
+.faena-menu-btn .mi { font-size: 1.35rem; line-height: 1; }
+
+.faena-seccion-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--sawdust);
+  flex-shrink: 0;
+}
+.faena-seccion-bar.visible { display: flex; }
+.faena-seccion-back {
+  background: var(--paper-dark);
+  border: 1px solid var(--sawdust);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 999px;
+  min-height: 40px;
+}
+.faena-seccion-titulo {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .tiempos-sel {
   flex: 1;
@@ -498,29 +571,27 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   font-weight: 600;
 }
 
-/* ──────── PANEL CAROUSEL ──────── */
+/* ──────── PANEL AREA (una sección a la vez) ──────── */
 #panel-carousel {
   flex: 1;
-  display: flex;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-  scrollbar-width: none;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
-#panel-carousel::-webkit-scrollbar { display: none; }
+#panel-carousel.visible { display: flex; }
 .panel {
-  flex: 0 0 100vw;
-  width: 100vw;
+  display: none;
+  flex: 1;
+  width: 100%;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
   padding: 16px;
   -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
+.panel.activo { display: block; }
 
 /* ──────── DETALLE DATOS ──────── */
 .datos-campo {
@@ -1478,16 +1549,27 @@ textarea { resize: vertical; min-height: 80px; }
     <button class="overlay-edit-btn" onclick="abrirEditarFaena(state.faenaActualId)">✏️ Editar</button>
   </div>
 
-  <div class="panel-tabs-wrap">
-    <div class="panel-tabs" id="panel-tabs">
-      <div class="panel-tab active" data-idx="0" onclick="irAPanel(0)">📋 Datos</div>
-      <div class="panel-tab" data-idx="1" onclick="irAPanel(1)">€ Presupuesto</div>
-      <div class="panel-tab" data-idx="2" onclick="irAPanel(2)">💵 A cuenta</div>
-      <div class="panel-tab" data-idx="3" onclick="irAPanel(3)">📄 Documentos</div>
-      <div class="panel-tab" data-idx="4" onclick="irAPanel(4)">📸 Fotos</div>
-      <div class="panel-tab" data-idx="5" onclick="irAPanel(5)">🧾 Gastos</div>
-      <div class="panel-tab" data-idx="6" onclick="irAPanel(6)">⏱ Tiempos</div>
+  <div class="faena-hub-header" id="faena-hub-header">
+    <div class="faena-hub-meta" id="ov-hub-meta"></div>
+    <div class="faena-hub-dir" id="ov-hub-dir"></div>
+    <div class="faena-hub-importes" id="ov-hub-importes"></div>
+  </div>
+
+  <div class="faena-menu-wrap" id="faena-menu-wrap">
+    <div class="faena-menu" id="faena-menu">
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(0)"><span class="mi">📋</span>Datos</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(1)"><span class="mi">€</span>Presupuesto</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(2)"><span class="mi">💵</span>A cuenta</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(3)"><span class="mi">📄</span>Documentos</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(4)"><span class="mi">📸</span>Fotos</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(5)"><span class="mi">🧾</span>Gastos</button>
+      <button type="button" class="faena-menu-btn" onclick="irASeccion(6)"><span class="mi">⏱</span>Tiempos</button>
     </div>
+  </div>
+
+  <div class="faena-seccion-bar" id="faena-seccion-bar">
+    <button type="button" class="faena-seccion-back" onclick="volverAlMenuFaena()">← Secciones</button>
+    <div class="faena-seccion-titulo" id="faena-seccion-titulo"></div>
   </div>
 
   <div id="panel-carousel">
@@ -2071,10 +2153,15 @@ const state = {
   materiales:    [],
   faenaActualId: null,
   panelActual:   0,
+  vistaFaena:    "menu",
   faseVista:     "en_proceso",
   presupuestoParcial: null,
   tiemposPorFaena: {}
 };
+
+const SECCIONES_FAENA = [
+  "Datos", "Presupuesto", "A cuenta", "Documentos", "Fotos", "Gastos", "Tiempos"
+];
 
 function actualizarSelectorFaenasIA() {
   const sel = document.getElementById("ia-faena-id");
@@ -2302,15 +2389,41 @@ document.getElementById("main-carousel").addEventListener("scroll", function() {
 // FAENA OVERLAY
 // ═══════════════════════════════════════════════════════════
 
-function abrirFaena(id) {
+function actualizarHubFaena(f) {
+  if (!f) return;
+  const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
+  const meta = document.getElementById("ov-hub-meta");
+  const dirEl = document.getElementById("ov-hub-dir");
+  const impEl = document.getElementById("ov-hub-importes");
+  if (meta) {
+    const badge = esDirecto
+      ? `<span class="badge b-direct">Directo</span>`
+      : `<span class="badge b-inter">${escHtml(f.intermediario_nombre || "—")}</span>`;
+    meta.innerHTML = `${escHtml(f.tipo_trabajo || "—")} · ${badge}`;
+  }
+  if (dirEl) {
+    const dir = f.direccion || (typeof direccionDeFaenaMovil === "function" ? direccionDeFaenaMovil(f) : "") || "";
+    dirEl.textContent = dir || "—";
+    dirEl.style.display = dir ? "" : "none";
+  }
+  if (impEl) {
+    const tot = typeof totalPresupuestoVisibleFaena === "function" ? totalPresupuestoVisibleFaena(f) : 0;
+    const cob = typeof totalCobradoFaena === "function" ? totalCobradoFaena(f) : 0;
+    const totTxt = tot > 0 ? tot.toFixed(2) + " €" : "—";
+    const cobTxt = cob > 0 ? cob.toFixed(2) + " €" : "0,00 €";
+    impEl.innerHTML = `<span class="hub-imp">${totTxt}</span><span class="hub-cta">A cta ${cobTxt}</span>`;
+  }
+}
+
+function abrirFaena(id, opts) {
   state.faenaActualId = id;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(id))
     || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(id));
   if (!f) return;
   document.getElementById("ov-num").textContent = f.numero || "";
   document.getElementById("ov-cliente").textContent = f.cliente_nombre || "—";
+  actualizarHubFaena(f);
   document.getElementById("faena-overlay").classList.add("open");
-  // Renderizar todos los paneles
   renderPanelDatos(f);
   renderPanelPresupuesto(f);
   renderPanelCobros(f);
@@ -2320,10 +2433,9 @@ function abrirFaena(id) {
   renderPanelTiempos(f);
   cargarAnotacionesFaena(f);
   cargarFotosFaena(f);
-  // Ir al panel guardado
-  const pc = document.getElementById("panel-carousel");
-  pc.scrollTo({ left: state.panelActual * window.innerWidth, behavior: "instant" });
-  actualizarTabPanel(state.panelActual);
+  const seccion = opts && typeof opts.seccion === "number" ? opts.seccion : null;
+  if (seccion !== null) irASeccion(seccion);
+  else volverAlMenuFaena();
 }
 
 async function cargarAnotacionesFaena(f) {
@@ -2356,45 +2468,58 @@ async function cargarFotosFaena(f) {
 
 function cerrarFaena() {
   document.getElementById("faena-overlay").classList.remove("open");
-  // Al volver a la pestaña Faenas, el importe refleja ya los cambios temporales
+  state.vistaFaena = "menu";
   try { renderFaenas(); } catch (e) {}
   try { actualizarIndicadorSesion(); } catch (e) {}
 }
 
-// Actualizar tabs al swipe en panels
-const panelCarousel = document.getElementById("panel-carousel");
-panelCarousel.addEventListener("scroll", function() {
-  const idx = Math.round(this.scrollLeft / window.innerWidth);
-  if (idx !== state.panelActual) {
-    state.panelActual = idx;
-    actualizarTabPanel(idx);
-  }
-}, { passive: true });
-
-function irAPanel(idx) {
-  state.panelActual = idx;
+function volverAlMenuFaena() {
+  state.vistaFaena = "menu";
+  const menu = document.getElementById("faena-menu-wrap");
+  const bar = document.getElementById("faena-seccion-bar");
   const pc = document.getElementById("panel-carousel");
-  pc.scrollTo({ left: idx * window.innerWidth, behavior: "smooth" });
-  actualizarTabPanel(idx);
+  if (menu) menu.classList.remove("oculto");
+  if (bar) bar.classList.remove("visible");
+  if (pc) pc.classList.remove("visible");
+  document.querySelectorAll("#panel-carousel .panel").forEach(p => p.classList.remove("activo"));
+  if (state.faenaActualId) {
+    const f = faenaDeTiempo(state.faenaActualId)
+      || state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId))
+      || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+    if (f) actualizarHubFaena(f);
+  }
+}
+
+function irASeccion(idx) {
+  const i = Number(idx);
+  if (!Number.isFinite(i) || i < 0 || i >= SECCIONES_FAENA.length) return;
+  state.panelActual = i;
+  state.vistaFaena = "panel";
+  const menu = document.getElementById("faena-menu-wrap");
+  const bar = document.getElementById("faena-seccion-bar");
+  const titulo = document.getElementById("faena-seccion-titulo");
+  const pc = document.getElementById("panel-carousel");
+  if (menu) menu.classList.add("oculto");
+  if (bar) bar.classList.add("visible");
+  if (titulo) titulo.textContent = SECCIONES_FAENA[i] || "";
+  if (pc) pc.classList.add("visible");
+  document.querySelectorAll("#panel-carousel .panel").forEach((p, pi) => {
+    p.classList.toggle("activo", pi === i);
+  });
   if (!state.faenaActualId) return;
   const f = faenaDeTiempo(state.faenaActualId)
-    || state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+    || state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId))
+    || (state.terminadas || []).find(x => String(x.id || x._tempId) === String(state.faenaActualId));
   if (!f) return;
-  if (idx === 2) renderPanelCobros(f);
-  if (idx === 6) {
+  if (i === 2) renderPanelCobros(f);
+  if (i === 6) {
     if (!document.getElementById("tiempos-panel-tbody")) renderPanelTiempos(f);
     else refrescarTiemposFaena(f);
   }
 }
 
-function actualizarTabPanel(idx) {
-  document.querySelectorAll(".panel-tab").forEach((t, i) => {
-    t.classList.toggle("active", i === idx);
-  });
-  // Scroll el tab activo a la vista
-  const tab = document.querySelector(`.panel-tab[data-idx="${idx}"]`);
-  if (tab) tab.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-}
+function irAPanel(idx) { irASeccion(idx); }
+function actualizarTabPanel(_idx) { /* menú de secciones: sin tabs */ }
 
 // ═══════════════════════════════════════════════════════════
 // PANEL 0 — DATOS
@@ -2879,6 +3004,13 @@ function totalCobradoFaena(f) {
   return Math.round((Number(f.total_cobrado) || 0) * 100) / 100;
 }
 
+function _claveCobro(c) {
+  const fecha = String(c.fecha || "").trim().slice(0, 10);
+  const importe = (Math.round((Number(c.importe) || 0) * 100) / 100).toFixed(2);
+  const nota = String(c.nota || "").trim();
+  return `${fecha}|${importe}|${nota}`;
+}
+
 function cobrosVisiblesFaena(f) {
   const id = f && (f.id || f._tempId);
   const cola = cargarCola();
@@ -2887,14 +3019,26 @@ function cobrosVisiblesFaena(f) {
       .filter(op => (op.op || "") === "delete" && String(op.faena_id) === String(id))
       .map(op => String(op.id))
   );
-  const lista = (f.cobros || [])
-    .filter(c => !borrados.has(String(c.id)))
-    .map(c => ({ ...c }));
+  const vistosId = new Set();
+  const vistosClave = new Set();
+  const lista = [];
+  const pushUnico = (c, pendiente) => {
+    if (!c) return;
+    const sid = c.id != null ? String(c.id) : "";
+    if (sid && borrados.has(sid)) return;
+    if (sid && vistosId.has(sid)) return;
+    const clave = _claveCobro(c);
+    if (clave && vistosClave.has(clave)) return;
+    if (sid) vistosId.add(sid);
+    if (clave) vistosClave.add(clave);
+    lista.push(pendiente ? { ...c, _pendiente: true } : { ...c });
+  };
+  for (const c of (f.cobros || [])) pushUnico(c, !!c._pendiente);
   for (const op of (cola.cobros || [])) {
     if (String(op.faena_id) !== String(id)) continue;
     if ((op.op || "create") === "delete") continue;
     if (!String(op.id || "").startsWith("temp_")) continue;
-    lista.push({ ...op, _pendiente: true });
+    pushUnico(op, true);
   }
   lista.sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
   return lista;
@@ -2966,95 +3110,127 @@ function renderPanelCobros(f) {
   }
 }
 
-async function guardarCobroFaena(f) {
-  const id = f && (f.id || f._tempId);
-  if (!id) return;
-  const importe = Number((document.getElementById("cobro-importe")?.value || "").replace(",", ".")) || 0;
-  const fecha = (document.getElementById("cobro-fecha")?.value || fechaHoyIsoLocal()).trim();
-  const nota = (document.getElementById("cobro-nota")?.value || "").trim();
-  if (importe <= 0) { toast("Indica un importe", true); return; }
-  const body = { importe, fecha, nota, origen: "movil" };
-  if (!esIdFaenaTemporal(id)) {
-    try {
-      const r = await fetch(`${getServerUrl()}/faenas/${id}/cobros`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: faenasAbortTimeout(12000)
-      });
-      const d = await r.json();
-      if (d.ok && d.data) {
-        f.cobros = f.cobros || [];
-        f.cobros.unshift(d.data);
-        f.total_cobrado = totalCobradoFaena(f);
-        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-        toast("Cobro guardado");
-        renderPanelCobros(f);
-        renderPanelDatos(f);
-        return;
-      }
-      throw new Error(d.error || "No se pudo guardar");
-    } catch (e) {
-      // cae a cola offline
-    }
+function _pintarCobrosFaenaAhora(f) {
+  if (!f) return;
+  f.total_cobrado = totalCobradoFaena(f);
+  try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
+  if (String(state.faenaActualId) === String(f.id || f._tempId)) {
+    renderPanelCobros(f);
+    renderPanelDatos(f);
+    actualizarHubFaena(f);
   }
-  const tempId = `temp_cobro_${Date.now()}`;
-  const cola = cargarCola();
-  cola.cobros = cola.cobros || [];
-  cola.cobros.push({ op: "create", id: tempId, faena_id: id, ...body });
-  guardarCola(cola);
-  f.cobros = f.cobros || [];
-  f.cobros.unshift({ id: tempId, faena_id: id, ...body, _pendiente: true });
-  toast(esIdFaenaTemporal(id) ? "Cobro guardado para sincronizar" : "Cobro guardado offline");
-  renderPanelCobros(f);
-  renderPanelDatos(f);
 }
 
-async function eliminarCobroFaena(f, cid) {
+function _encolarCobroCreate(faenaId, tempId, body) {
+  const cola = cargarCola();
+  cola.cobros = cola.cobros || [];
+  cola.cobros.push({ op: "create", id: tempId, faena_id: faenaId, ...body });
+  guardarCola(cola);
+}
+
+function _encolarCobroDelete(faenaId, cid) {
+  const cola = cargarCola();
+  cola.cobros = cola.cobros || [];
+  cola.cobros = cola.cobros.filter(op => !(op.op === "create" && String(op.id) === String(cid)));
+  if (!String(cid).startsWith("temp_")) {
+    cola.cobros.push({ op: "delete", id: cid, faena_id: faenaId });
+  }
+  guardarCola(cola);
+}
+
+async function _syncCobroCreateFondo(f, tempId, body) {
+  const id = f && (f.id || f._tempId);
+  if (!id || esIdFaenaTemporal(id)) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}/cobros`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: faenasAbortTimeout(15000)
+    });
+    const d = await r.json();
+    if (!d.ok || !d.data) throw new Error(d.error || "sync");
+    const cola = cargarCola();
+    cola.cobros = (cola.cobros || []).filter(op => String(op.id) !== String(tempId));
+    guardarCola(cola, { silencioso: true, sinFondo: true });
+    f.cobros = f.cobros || [];
+    const idx = f.cobros.findIndex(c => String(c.id) === String(tempId));
+    if (idx >= 0) f.cobros[idx] = d.data;
+    else f.cobros.unshift(d.data);
+    f.total_cobrado = totalCobradoFaena(f);
+    try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
+    if (String(state.faenaActualId) === String(id) && document.getElementById("p-cobros-content")) {
+      renderPanelCobros(f);
+      renderPanelDatos(f);
+    }
+  } catch (e) {
+    // Queda en cola para el sync general
+  }
+}
+
+async function _syncCobroDeleteFondo(faenaId, cid) {
+  if (!faenaId || String(cid).startsWith("temp_") || esIdFaenaTemporal(faenaId)) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/cobros/${cid}`, {
+      method: "DELETE",
+      signal: faenasAbortTimeout(15000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "sync");
+    const cola = cargarCola();
+    cola.cobros = (cola.cobros || []).filter(op =>
+      !((op.op || "") === "delete" && String(op.id) === String(cid) && String(op.faena_id) === String(faenaId))
+    );
+    guardarCola(cola, { silencioso: true, sinFondo: true });
+  } catch (e) {
+    // Queda en cola
+  }
+}
+
+function guardarCobroFaena(f) {
+  const id = f && (f.id || f._tempId);
+  if (!id) return;
+  const importeEl = document.getElementById("cobro-importe");
+  const fechaEl = document.getElementById("cobro-fecha");
+  const notaEl = document.getElementById("cobro-nota");
+  const importe = Number((importeEl?.value || "").replace(",", ".")) || 0;
+  const fecha = (fechaEl?.value || fechaHoyIsoLocal()).trim();
+  const nota = (notaEl?.value || "").trim();
+  if (importe <= 0) { toast("Indica un importe", true); return; }
+  const body = { importe, fecha, nota, origen: "movil" };
+  const tempId = `temp_cobro_${Date.now()}`;
+  _encolarCobroCreate(id, tempId, body);
+  if (importeEl) importeEl.value = "";
+  if (notaEl) notaEl.value = "";
+  if (fechaEl) fechaEl.value = fechaHoyIsoLocal();
+  toast("Cobro guardado");
+  _pintarCobrosFaenaAhora(f);
+  _syncCobroCreateFondo(f, tempId, body);
+}
+
+function eliminarCobroFaena(f, cid) {
   const id = f && (f.id || f._tempId);
   if (!id || cid == null) return;
   if (!confirm("¿Eliminar este cobro a cuenta?")) return;
-  if (!esIdFaenaTemporal(id) && !String(cid).startsWith("temp_")) {
-    try {
-      const r = await fetch(`${getServerUrl()}/faenas/${id}/cobros/${cid}`, {
-        method: "DELETE",
-        signal: faenasAbortTimeout(12000)
-      });
-      const d = await r.json();
-      if (d.ok) {
-        f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
-        f.total_cobrado = totalCobradoFaena(f);
-        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-        toast("Cobro eliminado");
-        renderPanelCobros(f);
-        renderPanelDatos(f);
-        return;
-      }
-      throw new Error(d.error || "No se pudo eliminar");
-    } catch (e) {
-      const cola = cargarCola();
-      cola.cobros = cola.cobros || [];
-      cola.cobros.push({ op: "delete", id: cid, faena_id: id });
-      guardarCola(cola);
-      f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
-      toast("Cobro marcado para eliminar al sincronizar");
-      renderPanelCobros(f);
-      renderPanelDatos(f);
-      return;
-    }
+  if (String(cid).startsWith("temp_")) {
+    eliminarCobroTempFaena(f, cid, true);
+    return;
   }
-  eliminarCobroTempFaena(f, cid);
+  _encolarCobroDelete(id, cid);
+  f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
+  toast("Cobro eliminado");
+  _pintarCobrosFaenaAhora(f);
+  _syncCobroDeleteFondo(id, cid);
 }
 
-function eliminarCobroTempFaena(f, tempId) {
-  if (!confirm("¿Eliminar este cobro pendiente?")) return;
+function eliminarCobroTempFaena(f, tempId, yaConfirmado) {
+  if (!yaConfirmado && !confirm("¿Eliminar este cobro pendiente?")) return;
   const cola = cargarCola();
   cola.cobros = (cola.cobros || []).filter(op => String(op.id) !== String(tempId));
   guardarCola(cola);
   if (f) f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(tempId));
   toast("Cobro eliminado");
-  renderPanelCobros(f);
-  renderPanelDatos(f);
+  _pintarCobrosFaenaAhora(f);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4928,9 +5104,7 @@ function renderFaenas() {
 
 function abrirFaenaDesdeTiempos(event, id) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
-  state.panelActual = 6;
-  abrirFaena(id);
-  irAPanel(6);
+  abrirFaena(id, { seccion: 6 });
 }
 
 function eliminarFaenaDesdeTarjeta(event, id) {
@@ -7790,6 +7964,7 @@ function refrescarPantallaActual() {
   if (!state.faenaActualId) return;
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
   if (f && document.getElementById("faena-overlay")?.classList.contains("open")) {
+    actualizarHubFaena(f);
     renderPanelDatos(f);
     renderPanelPresupuesto(f);
     renderPanelCobros(f);
@@ -7829,7 +8004,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66c";
+  const UI_VER = "66f";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7857,7 +8032,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66c", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66f", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
