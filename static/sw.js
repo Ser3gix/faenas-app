@@ -2,7 +2,7 @@
 // sw.js — Service Worker Faenas móvil
 // ============================================================
 
-const CACHE = "faenas-v66i";
+const CACHE = "faenas-v66j";
 const ARCHIVOS_CACHE = [
   "/static/manifest.json",
   "/static/sw.js"
