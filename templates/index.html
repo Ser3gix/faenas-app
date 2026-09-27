@@ -1014,29 +1014,17 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <h2>Presupuesto</h2>
   </div>
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
-    Igual que en la faena: partidas, materiales e incluir. Jimmi te ayuda con esta faena.
+    Monta primero el presupuesto (partidas y materiales). Cuando esté listo, elige la faena y guárdalo.
   </p>
 
-  <div class="form-box">
-    <div class="form-title">Seleccionar faena</div>
-    <div class="form-grid g1">
-      <div>
-        <label>Faena</label>
-        <select id="pres-faena-sel" onchange="cargarPresupuesto()"></select>
-      </div>
-    </div>
-  </div>
-
   <div class="form-box" id="pres-hub-box" style="padding:14px 16px">
-    <div id="pres-hub-wrap">
-      <div class="empty"><div class="empty-icon">📋</div>Selecciona una faena para ver su presupuesto</div>
-    </div>
+    <div id="pres-hub-wrap"></div>
   </div>
 
   <div class="form-box" style="border-color:var(--wood);background:linear-gradient(135deg,#faf6ee,#f5ede0)">
     <div class="form-title">Jimmi</div>
     <p style="font-size:0.78rem;color:#666;margin-bottom:10px;line-height:1.5">
-      Pregunta por esta faena, precios o cómo montar el presupuesto. Si propone un cambio, confírmalo antes de guardar.
+      Pregunta cómo montar el presupuesto o por precios. Si propone un cambio, confírmalo añadiendo las partidas.
     </p>
     <div id="pres-chat-mensajes" style="
       background:white;border:1px solid var(--sawdust);border-radius:6px;
@@ -1044,11 +1032,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       margin-bottom:10px;display:flex;flex-direction:column;gap:12px;
     ">
       <div style="text-align:center;color:#ccc;font-size:0.82rem;padding:16px 0">
-        Elige una faena y pregunta a Jimmi
+        Pregunta a Jimmi sobre el presupuesto
       </div>
     </div>
     <div style="display:flex;gap:8px">
-      <textarea id="pres-chat-input" placeholder="Ej: ¿Qué partidas le pongo a esta faena? ¿Precio de bisagras?"
+      <textarea id="pres-chat-input" placeholder="Ej: ¿Qué partidas le pongo a un armario? ¿Precio de bisagras?"
         style="flex:1;resize:none;height:64px;font-size:0.85rem"
         onkeydown="if(event.ctrlKey&&event.key==='Enter')enviarConsultaPresupuestoPc()"></textarea>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -1057,7 +1045,21 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
         <button class="btn btn-g" onclick="abrirCorregirJimmi()" style="height:32px;padding:0 14px;font-size:0.7rem">Corregir</button>
       </div>
     </div>
-    <div style="font-size:0.7rem;color:#aaa;margin-top:6px">Ctrl+Enter para enviar · Contexto: faena seleccionada</div>
+    <div style="font-size:0.7rem;color:#aaa;margin-top:6px">Ctrl+Enter para enviar</div>
+  </div>
+
+  <div class="form-box" style="border:2px solid var(--wood)">
+    <div class="form-title">Guardar en faena</div>
+    <div class="form-grid">
+      <div>
+        <label>Faena destino *</label>
+        <select id="pres-faena-sel"></select>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-p" onclick="guardarBorradorEnFaenaPc()">💾 Guardar en faena</button>
+        <button type="button" class="btn btn-s" onclick="vaciarBorradorPresupuestoPc()">Vaciar borrador</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2736,8 +2738,8 @@ function nav(id) {
   if (id === "polyboard") poblarSelectPolyboard();
   if (id === "presupuesto") {
     poblarSelectPresupuesto();
-    const v = document.getElementById("pres-faena-sel")?.value;
-    if (v) cargarPresupuesto();
+    hidratarBorradorPresupuestoPc();
+    pintarPresupuestoSeccionPc();
   }
   if (id === "book") renderBook();
   if (id === "asistente") { poblarSelectAsistente(); cargarContextoJimmi(); }
@@ -3635,9 +3637,10 @@ function eliminarCobroPc(faenaId, cobroId) {
 }
 
 function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
-  const gastos = (state.detalleActual && state.detalleActual.gastos) || [];
+  const enBorrador = typeof esBorradorPresPc === "function" && esBorradorPresPc(f && f.id);
+  const gastos = enBorrador ? [] : ((state.detalleActual && state.detalleActual.gastos) || []);
   const totalGastos = gastos.reduce((s, g) => s + (parseFloat(g.total) || 0), 0);
-  const fid = f.id;
+  const fid = typeof f.id === "string" ? JSON.stringify(f.id) : f.id;
   let lineas = "";
   if (bloquesP.length) {
     lineas = `<table class="presup-tabla">
@@ -3688,6 +3691,16 @@ function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
 function refrescarUiPresupuestoPc(faenaId) {
   const id = faenaId || state.detalleId;
   if (!id) return;
+  if (esBorradorPresPc(id)) {
+    if (typeof pintarPresupuestoSeccionPc === "function") pintarPresupuestoSeccionPc();
+    if (state.presupuestoParcialPc) {
+      renderPresupuestoParcialPc();
+      if (!document.getElementById("m-presupuesto-parcial-pc")?.classList.contains("open")) {
+        abrirModal("m-presupuesto-parcial-pc");
+      }
+    }
+    return;
+  }
   const f = state.faenas.find(x => String(x.id) === String(id)) || (state.terminadas || []).find(x => String(x.id) === String(id));
   if (!f) return;
   const presupuesto = state.detalleActual?.presupuesto || [];
@@ -3701,10 +3714,6 @@ function refrescarUiPresupuestoPc(faenaId) {
   actualizarImporteFaenaLocalPc(id, total);
   if (document.getElementById("m-detalle")?.classList.contains("open")) {
     pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, cobros, docs, fotos, tiemposHtml });
-  }
-  const selPres = document.getElementById("pres-faena-sel")?.value;
-  if (selPres && String(selPres) === String(id) && typeof pintarPresupuestoSeccionPc === "function") {
-    pintarPresupuestoSeccionPc();
   }
   if (state.presupuestoParcialPc) {
     renderPresupuestoParcialPc();
@@ -4751,11 +4760,44 @@ async function generarPdfPedido() {
   } catch(e) { toast("Error de conexión", true); }
 }
 
+const PRES_BORRADOR_ID = "borrador";
+
+function esBorradorPresPc(faenaId) {
+  return String(faenaId || "") === PRES_BORRADOR_ID;
+}
+
+function hidratarBorradorPresupuestoPc() {
+  if (!state.presBorrador) state.presBorrador = { presupuesto: [] };
+  if (!Array.isArray(state.presBorrador.presupuesto)) state.presBorrador.presupuesto = [];
+  try {
+    const raw = localStorage.getItem("pc_pres_borrador");
+    if (raw && !state.presBorrador.presupuesto.length) {
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) state.presBorrador.presupuesto = data;
+      else if (data && Array.isArray(data.presupuesto)) state.presBorrador.presupuesto = data.presupuesto;
+    }
+  } catch (e) {}
+}
+
+function persistirBorradorPresupuestoPc() {
+  try {
+    localStorage.setItem("pc_pres_borrador", JSON.stringify(state.presBorrador?.presupuesto || []));
+  } catch (e) {}
+}
+
+function listaPresupuestoParaPc(faenaId) {
+  if (esBorradorPresPc(faenaId)) {
+    hidratarBorradorPresupuestoPc();
+    return state.presBorrador.presupuesto;
+  }
+  return state.detalleActual?.presupuesto || [];
+}
+
 function poblarSelectPresupuesto() {
   const sel = document.getElementById("pres-faena-sel");
   if (!sel) return;
   const prev = sel.value;
-  sel.innerHTML = '<option value="">— Selecciona una faena —</option>' +
+  sel.innerHTML = '<option value="">— Elige faena al guardar —</option>' +
     state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre || "")}</option>`).join("");
   if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
@@ -4763,49 +4805,73 @@ function poblarSelectPresupuesto() {
 function pintarPresupuestoSeccionPc() {
   const wrap = document.getElementById("pres-hub-wrap");
   if (!wrap) return;
-  const id = document.getElementById("pres-faena-sel")?.value;
-  if (!id) {
-    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Selecciona una faena para ver su presupuesto</div>`;
-    return;
-  }
-  const f = state.faenas.find(x => String(x.id) === String(id))
-    || (state.terminadas || []).find(x => String(x.id) === String(id));
-  if (!f) {
-    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Faena no encontrada</div>`;
-    return;
-  }
-  const lista = (state.detalleActual && String(state.detalleId) === String(id))
-    ? (state.detalleActual.presupuesto || [])
-    : [];
+  hidratarBorradorPresupuestoPc();
+  const lista = state.presBorrador.presupuesto || [];
   const bloques = bloquesDePresupuestoPc(lista);
   const total = totalPresupuestoPc(lista);
-  wrap.innerHTML = htmlPresupuestoDetallePc(f, bloques, total);
+  // Reutiliza el mismo HTML de partidas; faenaId simbólico "borrador"
+  wrap.innerHTML = htmlPresupuestoDetallePc({ id: PRES_BORRADOR_ID }, bloques, total);
 }
 
-async function cargarPresupuesto() {
-  const id = document.getElementById("pres-faena-sel")?.value;
-  const wrap = document.getElementById("pres-hub-wrap");
-  if (!id) {
-    pintarPresupuestoSeccionPc();
+function vaciarBorradorPresupuestoPc() {
+  if (!(state.presBorrador?.presupuesto || []).length) {
+    toast("El borrador ya está vacío");
     return;
   }
-  if (wrap) wrap.innerHTML = `<div class="empty" style="padding:20px;color:#aaa">Cargando presupuesto…</div>`;
-  const rConceptos = await api("GET", `/faenas/${id}/conceptos`);
-  const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
-  let presupuesto = conceptos.presupuesto || [];
-  let gastos = conceptos.gastos || [];
-  if (pendingOps.length) {
-    const merged = aplicarPendingSobreListas(id, [], gastos, presupuesto);
-    gastos = merged.gastos;
-    presupuesto = merged.presupuesto;
+  if (!confirm("¿Vaciar el borrador de presupuesto?")) return;
+  state.presBorrador = { presupuesto: [] };
+  persistirBorradorPresupuestoPc();
+  if (state.presupuestoParcialPc && esBorradorPresPc(state.presupuestoParcialPc.faenaId)) {
+    cerrarPresupuestoParcialPc();
   }
-  state.detalleId = parseInt(id, 10) || id;
-  state.detalleActual = Object.assign({}, state.detalleActual || {}, { presupuesto, gastos });
-  const ia = document.getElementById("ia-faena-index");
-  const as = document.getElementById("asistente-faena-sel");
-  if (ia) ia.value = String(id);
-  if (as) as.value = String(id);
   pintarPresupuestoSeccionPc();
+  toast("Borrador vaciado");
+}
+
+async function guardarBorradorEnFaenaPc() {
+  const fid = document.getElementById("pres-faena-sel")?.value;
+  if (!fid) { toast("Selecciona la faena destino", true); return; }
+  hidratarBorradorPresupuestoPc();
+  const items = state.presBorrador.presupuesto || [];
+  if (!items.length) { toast("No hay líneas en el borrador", true); return; }
+  const faena = state.faenas.find(f => String(f.id) === String(fid));
+  if (!faena) { toast("Faena no encontrada", true); return; }
+  if (!confirm(`¿Guardar ${items.length} línea${items.length !== 1 ? "s" : ""} en la faena ${faena.numero} · ${faena.cliente_nombre || ""}?`)) return;
+
+  let ok = 0;
+  let err = null;
+  const prevInmediato = _apiInmediato;
+  _apiInmediato = true;
+  try {
+    for (const p of items) {
+      const payload = {
+        tipo: p.tipo || "material",
+        descripcion: p.descripcion || "",
+        cantidad: parseFloat(p.cantidad) || 1,
+        precio_unitario: parseFloat(p.precio_unitario) || 0,
+        bloque: String(p.bloque || "").trim(),
+        incluido: Number(p.incluido ?? 1) !== 0 ? 1 : 0
+      };
+      const r = await api("POST", `/faenas/${fid}/presupuesto/item`, payload);
+      if (!r.ok) { err = r.error || "Error al guardar"; break; }
+      ok++;
+    }
+  } finally {
+    _apiInmediato = prevInmediato;
+  }
+  if (err) {
+    toast(`Guardadas ${ok}/${items.length}. ${err}`, true);
+    return;
+  }
+  state.presBorrador = { presupuesto: [] };
+  persistirBorradorPresupuestoPc();
+  if (state.presupuestoParcialPc && esBorradorPresPc(state.presupuestoParcialPc.faenaId)) {
+    cerrarPresupuestoParcialPc();
+  }
+  pintarPresupuestoSeccionPc();
+  await cargarFaenas(true);
+  renderFaenas();
+  toast(`✓ Presupuesto guardado en ${faena.numero} (${ok} líneas)`);
 }
 
 function abrirModalMateriales() {
@@ -4892,7 +4958,7 @@ function cerrarPresupuestoParcialPc() {
 function renderPresupuestoParcialPc() {
   const st = state.presupuestoParcialPc;
   if (!st) return;
-  const lista = state.detalleActual?.presupuesto || [];
+  const lista = listaPresupuestoParaPc(st.faenaId);
   const bloques = bloquesDePresupuestoPc(lista);
   const b = bloques.find(x => String(x.nombre_db || "") === String(st.nombreDb || ""));
   const partidas = b ? (b.partidas || []) : [];
@@ -4936,6 +5002,17 @@ function renderPresupuestoParcialPc() {
 }
 
 async function toggleBloquePresupuestoPc(faenaId, nombreDb, incluido) {
+  if (esBorradorPresPc(faenaId)) {
+    hidratarBorradorPresupuestoPc();
+    const nom = String(nombreDb || "").trim();
+    const inc = incluido ? 1 : 0;
+    for (const p of state.presBorrador.presupuesto) {
+      if (String(p.bloque || "").trim() === nom) p.incluido = inc;
+    }
+    persistirBorradorPresupuestoPc();
+    refrescarUiPresupuestoPc(faenaId);
+    return;
+  }
   const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, {
     nombre: nombreDb || "",
     incluido: incluido ? 1 : 0
@@ -4946,6 +5023,18 @@ async function toggleBloquePresupuestoPc(faenaId, nombreDb, incluido) {
 
 async function borrarBloquePresupuestoPc(faenaId, nombreDb) {
   if (!confirm("¿Eliminar esta partida y todas sus líneas?")) return;
+  if (esBorradorPresPc(faenaId)) {
+    hidratarBorradorPresupuestoPc();
+    const nom = String(nombreDb || "").trim();
+    state.presBorrador.presupuesto = state.presBorrador.presupuesto.filter(
+      p => String(p.bloque || "").trim() !== nom
+    );
+    persistirBorradorPresupuestoPc();
+    cerrarPresupuestoParcialPc();
+    toast("Partida eliminada");
+    refrescarUiPresupuestoPc(faenaId);
+    return;
+  }
   const r = await api("PUT", `/faenas/${faenaId}/presupuesto/bloque`, {
     nombre: nombreDb || "",
     borrar: true
@@ -4957,7 +5046,7 @@ async function borrarBloquePresupuestoPc(faenaId, nombreDb) {
 }
 
 function abrirMaterialesPresupuestoPc(faenaId) {
-  const fid = faenaId || state.presupuestoParcialPc?.faenaId || state.detalleId;
+  const fid = faenaId || state.presupuestoParcialPc?.faenaId || state.detalleId || PRES_BORRADOR_ID;
   if (!fid && !state.presupuestoParcialPc) {
     toast("Abre una partida primero para añadir el material dentro", true);
     return;
@@ -4974,8 +5063,9 @@ function abrirMaterialesPresupuestoPc(faenaId) {
 async function usarMaterialEnPresupuestoPc(nombre, precio) {
   const faenaId = document.getElementById("presupuesto-faena-id")?.value
     || state.presupuestoParcialPc?.faenaId
+    || (document.getElementById("s-presupuesto")?.classList.contains("active") ? PRES_BORRADOR_ID : null)
     || state.detalleId;
-  if (!faenaId) { toast("No hay faena seleccionada", true); return; }
+  if (!faenaId) { toast("Abre una partida primero", true); return; }
   let bloque = "";
   if (state.presupuestoParcialPc) bloque = String(state.presupuestoParcialPc.nombreDb || "");
   else bloque = (document.getElementById("presupuesto-bloque")?.value || "").trim();
@@ -4995,9 +5085,11 @@ async function usarMaterialEnPresupuestoPc(nombre, precio) {
 }
 
 function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
-  document.getElementById("presupuesto-faena-id").value = faenaId;
+  const fid = faenaId != null && faenaId !== "" ? faenaId : PRES_BORRADOR_ID;
+  document.getElementById("presupuesto-faena-id").value = fid;
   document.getElementById("presupuesto-item-id").value = itemId || "";
-  const item = itemId ? (state.detalleActual.presupuesto || []).find(p => String(p.id) === String(itemId)) : null;
+  const lista = listaPresupuestoParaPc(fid);
+  const item = itemId ? (lista || []).find(p => String(p.id) === String(itemId)) : null;
   const bloq = item
     ? String(item.bloque || "")
     : (bloqueNombre != null ? String(bloqueNombre) : String(state.presupuestoParcialPc?.nombreDb || ""));
@@ -5015,11 +5107,8 @@ function abrirPresupuestoItem(faenaId, itemId = null, bloqueNombre) {
 }
 
 async function guardarPresupuestoItem() {
-  const faenaId = document.getElementById("presupuesto-faena-id").value;
+  const faenaId = document.getElementById("presupuesto-faena-id").value || PRES_BORRADOR_ID;
   const itemId = document.getElementById("presupuesto-item-id").value;
-  if (!state.detalleId) state.detalleId = parseInt(faenaId, 10) || faenaId;
-  if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
-  if (!state.detalleActual.presupuesto) state.detalleActual.presupuesto = [];
   let bloque;
   if (state.presupuestoParcialPc) {
     bloque = String(state.presupuestoParcialPc.nombreDb || "");
@@ -5029,14 +5118,47 @@ async function guardarPresupuestoItem() {
   const descripcion = (document.getElementById("presupuesto-desc").value || "").trim();
   if (!descripcion && !bloque) { toast("El concepto o el detalle es obligatorio", true); return; }
   if (!descripcion) { toast("El detalle de la línea es obligatorio", true); return; }
+  const cantidad = parseFloat(document.getElementById("presupuesto-cant").value) || 1;
+  const precio_unitario = parseFloat(document.getElementById("presupuesto-precio").value) || 0;
+  const total = cantidad * precio_unitario;
+  const tipo = document.getElementById("presupuesto-tipo").value || "material";
+
+  if (esBorradorPresPc(faenaId)) {
+    hidratarBorradorPresupuestoPc();
+    const lista = state.presBorrador.presupuesto;
+    const bloques = bloquesDePresupuestoPc(lista);
+    const bAct = bloques.find(x => String(x.nombre_db || "") === String(bloque));
+    const incluido = bAct ? (bAct.incluido ? 1 : 0) : 1;
+    if (itemId) {
+      const p = lista.find(x => String(x.id) === String(itemId));
+      if (p) Object.assign(p, { tipo, descripcion: descripcion || bloque, cantidad, precio_unitario, bloque, incluido, total });
+    } else {
+      lista.push({
+        id: "tmp_pres_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        tipo, descripcion: descripcion || bloque, cantidad, precio_unitario, bloque, incluido, total
+      });
+    }
+    persistirBorradorPresupuestoPc();
+    toast(itemId ? `✓ Línea actualizada: ${total.toFixed(2)} €` : `✓ Línea añadida: ${total.toFixed(2)} €`);
+    cerrarModal("m-presupuesto-item");
+    if (!itemId && !state.presupuestoParcialPc && bloque) {
+      state.presupuestoParcialPc = { faenaId: PRES_BORRADOR_ID, nombreDb: bloque };
+    }
+    refrescarUiPresupuestoPc(PRES_BORRADOR_ID);
+    return;
+  }
+
+  if (!state.detalleId) state.detalleId = parseInt(faenaId, 10) || faenaId;
+  if (!state.detalleActual) state.detalleActual = { gastos: [], presupuesto: [] };
+  if (!state.detalleActual.presupuesto) state.detalleActual.presupuesto = [];
   const lista = state.detalleActual?.presupuesto || [];
   const bloques = bloquesDePresupuestoPc(lista);
   const bAct = bloques.find(x => String(x.nombre_db || "") === String(bloque));
   const payload = {
-    tipo: document.getElementById("presupuesto-tipo").value || "material",
+    tipo,
     descripcion: descripcion || bloque,
-    cantidad: parseFloat(document.getElementById("presupuesto-cant").value) || 1,
-    precio_unitario: parseFloat(document.getElementById("presupuesto-precio").value) || 0,
+    cantidad,
+    precio_unitario,
     bloque,
     incluido: bAct ? (bAct.incluido ? 1 : 0) : 1
   };
@@ -5055,6 +5177,15 @@ async function guardarPresupuestoItem() {
 
 async function eliminarPresupuestoItem(itemId, faenaId) {
   if (!confirm("¿Eliminar esta línea de la partida?")) return false;
+  if (esBorradorPresPc(faenaId)) {
+    hidratarBorradorPresupuestoPc();
+    state.presBorrador.presupuesto = state.presBorrador.presupuesto.filter(x => String(x.id) !== String(itemId));
+    persistirBorradorPresupuestoPc();
+    toast("Línea eliminada");
+    cerrarModal("m-presupuesto-item");
+    refrescarUiPresupuestoPc(faenaId);
+    return true;
+  }
   const r = await api("DELETE", `/presupuestos/${itemId}`);
   if (r.ok) {
     toast("Línea eliminada");
@@ -5375,11 +5506,10 @@ async function enviarConsulta() {
 }
 
 async function enviarConsultaPresupuestoPc() {
-  const fid = document.getElementById("pres-faena-sel")?.value;
-  if (!fid) { toast("Selecciona una faena primero", true); return; }
   const input = document.getElementById("pres-chat-input");
   const pregunta = (input && input.value || "").trim();
   if (!pregunta) return;
+  const fid = document.getElementById("pres-faena-sel")?.value || null;
   await _enviarConsultaJimmiCore({
     pregunta,
     faenaId: fid,
@@ -5387,9 +5517,7 @@ async function enviarConsultaPresupuestoPc() {
     inputEl: input,
     chatId: "pres-chat-mensajes",
     btnId: "pres-btn-consulta",
-    onOk: () => {
-      if (String(state.detalleId) === String(fid)) pintarPresupuestoSeccionPc();
-    }
+    onOk: () => pintarPresupuestoSeccionPc()
   });
 }
 
@@ -5397,7 +5525,7 @@ async function cerrarConversacionJimmiPresupuestoPc() {
   const hist = (chatHistorial || []).slice();
   const contenedor = document.getElementById("pres-chat-mensajes");
   if (contenedor) {
-    contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:16px 0">Elige una faena y pregunta a Jimmi</div>`;
+    contenedor.innerHTML = `<div style="text-align:center;color:#ccc;font-size:0.82rem;padding:16px 0">Pregunta a Jimmi sobre el presupuesto</div>`;
   }
   chatHistorial = [];
   if (hist.length < 2) return;
