@@ -2235,6 +2235,83 @@ def get_gastos(id):
     conn.close()
     return jsonify({"ok": True, "data": filas_a_lista(filas)})
 
+
+def _listar_cobros_faena(conn, faena_id):
+    try:
+        filas = filas_a_lista(conn.execute(
+            "SELECT * FROM cobros_faena WHERE faena_id=? ORDER BY fecha DESC, id DESC",
+            (faena_id,),
+        ).fetchall())
+    except Exception:
+        filas = []
+    total = 0.0
+    for c in filas:
+        total += _to_float_seguro(c.get("importe"))
+    return filas, round(total, 2)
+
+
+@app.route("/api/faenas/<int:id>/cobros", methods=["GET"])
+def listar_cobros(id):
+    conn = get_connection()
+    try:
+        cobros, total = _listar_cobros_faena(conn, id)
+        return jsonify({"ok": True, "data": {"cobros": cobros, "total_cobrado": total}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/faenas/<int:id>/cobros", methods=["POST"])
+def crear_cobro(id):
+    datos = request.json or {}
+    importe = _to_float_seguro(datos.get("importe"))
+    if importe <= 0:
+        return jsonify({"ok": False, "error": "Importe no válido"}), 400
+    fecha = str(datos.get("fecha") or "").strip()
+    nota = str(datos.get("nota") or "").strip()
+    origen = str(datos.get("origen") or "movil").strip() or "movil"
+    conn = get_connection()
+    try:
+        faena = conn.execute("SELECT id FROM faenas WHERE id=?", (id,)).fetchone()
+        if not faena:
+            return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+        if not fecha:
+            from datetime import datetime, timezone
+            fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO cobros_faena (faena_id, importe, fecha, nota, origen) VALUES (?, ?, ?, ?, ?)",
+            (id, round(importe, 2), fecha, nota, origen),
+        )
+        conn.commit()
+        cid = cur.lastrowid
+        fila = conn.execute("SELECT * FROM cobros_faena WHERE id=?", (cid,)).fetchone()
+        return jsonify({"ok": True, "data": fila_a_dict(fila)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/faenas/<int:faena_id>/cobros/<int:cid>", methods=["DELETE"])
+def eliminar_cobro(faena_id, cid):
+    conn = get_connection()
+    try:
+        fila = conn.execute(
+            "SELECT id FROM cobros_faena WHERE id=? AND faena_id=?",
+            (cid, faena_id),
+        ).fetchone()
+        if not fila:
+            return jsonify({"ok": False, "error": "Cobro no encontrado"}), 404
+        conn.execute("DELETE FROM cobros_faena WHERE id=? AND faena_id=?", (cid, faena_id))
+        conn.commit()
+        return jsonify({"ok": True, "data": {"id": cid, "faena_id": faena_id}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route("/api/faenas/<int:id>/conceptos", methods=["GET"])
 def get_conceptos_faena(id):
     conn = get_connection()
@@ -4912,6 +4989,7 @@ def sync_datos():
     anots_por = {}
     presup_por = {}
     gastos_por = {}
+    cobros_por = {}
     fotos_por = {}
     if ids:
         placeholders = ",".join(["?"] * len(ids))
@@ -4931,6 +5009,14 @@ def sync_datos():
                 ids,
             ).fetchall()):
                 gastos_por.setdefault(fila.get("faena_id"), []).append(fila)
+        except Exception:
+            pass
+        try:
+            for fila in filas_a_lista(conn.execute(
+                f"SELECT * FROM cobros_faena WHERE faena_id IN ({placeholders}) ORDER BY fecha DESC, id DESC",
+                ids,
+            ).fetchall()):
+                cobros_por.setdefault(fila.get("faena_id"), []).append(fila)
         except Exception:
             pass
         for fila in filas_a_lista(conn.execute(
@@ -4956,6 +5042,9 @@ def sync_datos():
         faena["anotaciones"] = anots_por.get(fid, [])
         faena["presupuesto"] = presupuesto_lista
         faena["gastos"] = gastos_por.get(fid, [])
+        cobros = cobros_por.get(fid, [])
+        faena["cobros"] = cobros
+        faena["total_cobrado"] = round(sum(_to_float_seguro(c.get("importe")) for c in cobros), 2)
         faena["fotos"] = fotos_por.get(fid, [])
         resultado.append(faena)
     terminadas = []
@@ -5031,6 +5120,91 @@ def sync_anotaciones_eliminar():
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "data": {"eliminadas": eliminadas}})
+
+@app.route("/api/sync/cobros", methods=["POST"])
+def sync_cobros():
+    datos = request.json or {}
+    operaciones = datos.get("operaciones") or datos.get("cobros") or []
+    if not isinstance(operaciones, list):
+        return jsonify({"ok": False, "error": "Faltan operaciones"}), 400
+    conn = get_connection()
+    creados = 0
+    eliminados = 0
+    omitidos = 0
+    creados_detalle = []
+    try:
+        for op in operaciones:
+            if not isinstance(op, dict):
+                continue
+            tipo_op = (op.get("op") or "create").strip().lower()
+            faena_id = _parse_faena_id_seguro(op.get("faena_id"))
+            if tipo_op == "delete":
+                cid = op.get("id")
+                if not faena_id or cid is None or str(cid).startswith("temp_"):
+                    continue
+                try:
+                    cur = conn.execute(
+                        "DELETE FROM cobros_faena WHERE id=? AND faena_id=?",
+                        (int(cid), faena_id),
+                    )
+                    eliminados += cur.rowcount or 0
+                except Exception:
+                    pass
+                continue
+            if not faena_id:
+                continue
+            importe = _to_float_seguro(op.get("importe"))
+            if importe <= 0:
+                continue
+            fecha = str(op.get("fecha") or "").strip()
+            nota = str(op.get("nota") or "").strip()
+            origen = str(op.get("origen") or "movil").strip() or "movil"
+            if not fecha:
+                from datetime import datetime, timezone
+                fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            try:
+                ex = conn.execute(
+                    "SELECT id FROM cobros_faena WHERE faena_id=? AND importe=? AND fecha=? AND nota=? LIMIT 1",
+                    (faena_id, round(importe, 2), fecha, nota),
+                ).fetchone()
+                if ex:
+                    omitidos += 1
+                    ex_id = fila_a_dict(ex).get("id")
+                    creados_detalle.append({
+                        "temp_id": op.get("id") or op.get("temp_id"),
+                        "id": ex_id,
+                        "faena_id": faena_id,
+                    })
+                    continue
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO cobros_faena (faena_id, importe, fecha, nota, origen) VALUES (?, ?, ?, ?, ?)",
+                    (faena_id, round(importe, 2), fecha, nota, origen),
+                )
+                nuevo_id = cur.lastrowid
+                creados_detalle.append({
+                    "temp_id": op.get("id") or op.get("temp_id"),
+                    "id": nuevo_id,
+                    "faena_id": faena_id,
+                })
+                creados += 1
+            except Exception:
+                pass
+        conn.commit()
+        return jsonify({
+            "ok": True,
+            "data": {
+                "creados": creados,
+                "eliminados": eliminados,
+                "omitidos": omitidos,
+                "creados_detalle": creados_detalle,
+            },
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
 
 @app.route("/api/sync/gastos", methods=["POST"])
 @app.route("/sync/gastos", methods=["POST"])

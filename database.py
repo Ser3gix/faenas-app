@@ -852,6 +852,19 @@ def _crear_esquema_sqlite(cursor):
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cobros_faena (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faena_id INTEGER NOT NULL,
+            importe REAL NOT NULL DEFAULT 0,
+            fecha TEXT DEFAULT (datetime('now')),
+            nota TEXT DEFAULT '',
+            origen TEXT DEFAULT 'movil',
+            FOREIGN KEY (faena_id) REFERENCES faenas(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cobros_faena ON cobros_faena(faena_id)")
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS categorias_material (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL UNIQUE,
@@ -1110,6 +1123,19 @@ def _crear_esquema_mysql(cursor):
             fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             KEY idx_tiempos_faena (faena_id),
             KEY idx_tiempos_fin (fin)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS cobros_faena (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            faena_id INT NOT NULL,
+            importe DOUBLE NOT NULL DEFAULT 0,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            nota VARCHAR(2000) NOT NULL DEFAULT '',
+            origen VARCHAR(20) NOT NULL DEFAULT 'movil',
+            KEY idx_cobros_faena (faena_id),
+            CONSTRAINT fk_cobros_faena
+                FOREIGN KEY (faena_id) REFERENCES faenas(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
         """

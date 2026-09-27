@@ -1651,7 +1651,7 @@ function pathEscrituraDiferida(method, path) {
   const p = String(path || "");
   const exempt = ["/config/", "/cursor/", "/secretario/", "/info/", "/polyboard/", "/faenas/sincronizar-pc"];
   if (exempt.some(x => p.startsWith(x) || p === x)) return false;
-  if (/\/(documentos|fotos|archivo-zip|archivar|gastos\/importar-pdf)/.test(p)) return false;
+  if (/\/(documentos|fotos|archivo-zip|archivar|gastos\/importar-pdf|cobros)/.test(p)) return false;
   return true;
 }
 
@@ -2876,17 +2876,20 @@ async function verDetalle(id, opts) {
   let tiemposHtml = cacheMisma
     ? (state.detalleCache.tiemposHtml || `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>`)
     : `<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Cargando…</span></div>`;
+  let cobros = cacheMisma ? (state.detalleCache.cobros || []) : [];
 
   if (forzarRed || String(state.detalleId) !== String(id) || !state.detalleCache) {
-    // Fase 1: conceptos + anotaciones (presupuesto usable al instante)
-    const [rAnot, rConceptos] = await Promise.all([
+    // Fase 1: conceptos + anotaciones + cobros (presupuesto usable al instante)
+    const [rAnot, rConceptos, rCobros] = await Promise.all([
       api("GET", `/faenas/${id}/anotaciones`),
-      api("GET", `/faenas/${id}/conceptos`)
+      api("GET", `/faenas/${id}/conceptos`),
+      api("GET", `/faenas/${id}/cobros`)
     ]);
     anotaciones = rAnot.ok ? rAnot.data : [];
     const conceptos = rConceptos.ok ? rConceptos.data : { presupuesto: [], gastos: [] };
     presupuesto = conceptos.presupuesto || [];
     gastos = conceptos.gastos || [];
+    cobros = (rCobros.ok && rCobros.data) ? (rCobros.data.cobros || []) : [];
     if (pendingOps.length) {
       const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
       anotaciones = merged.anotaciones;
@@ -2894,16 +2897,17 @@ async function verDetalle(id, opts) {
       presupuesto = merged.presupuesto;
     }
     state.detalleId = id;
-    state.detalleActual = { gastos, presupuesto };
+    state.detalleActual = { gastos, presupuesto, cobros };
     state.detalleCache = {
       anotaciones,
       docs,
       fotos,
       tiemposHtml,
+      cobros,
       faenaId: id,
       secundarioPendiente: true
     };
-    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml, cobros });
     abrirModal("m-detalle");
 
     // Fase 2: fotos / documentos / tiempos en segundo plano
@@ -2931,6 +2935,7 @@ async function verDetalle(id, opts) {
         anotaciones: state.detalleCache?.anotaciones || anotaciones,
         presupuesto: state.detalleActual?.presupuesto || presupuesto,
         gastos: state.detalleActual?.gastos || gastos,
+        cobros: state.detalleActual?.cobros || cobros,
         docs: docs2,
         fotos: fotos2,
         tiemposHtml: tiempos2
@@ -2943,6 +2948,7 @@ async function verDetalle(id, opts) {
   anotaciones = state.detalleCache.anotaciones || [];
   presupuesto = state.detalleActual?.presupuesto || [];
   gastos = state.detalleActual?.gastos || [];
+  cobros = state.detalleActual?.cobros || state.detalleCache.cobros || [];
   if (pendingOps.length) {
     const merged = aplicarPendingSobreListas(id, anotaciones, gastos, presupuesto);
     anotaciones = merged.anotaciones;
@@ -2952,14 +2958,14 @@ async function verDetalle(id, opts) {
   tiemposHtml = state.detalleCache.tiemposHtml || tiemposHtml;
 
   state.detalleId = id;
-  state.detalleActual = { gastos, presupuesto };
+  state.detalleActual = { gastos, presupuesto, cobros };
   if (state.detalleCache) state.detalleCache.anotaciones = anotaciones;
-  pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+  pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml, cobros });
   abrirModal("m-detalle");
 }
 
 function pintarDetalleFaenaPc(f, data) {
-  const { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml } = data;
+  const { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml, cobros = [] } = data;
   const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
   const tel = telefonoDeFaena(f) || cliente?.telefono || "";
   const bloquesP = bloquesDePresupuestoPc(presupuesto);
@@ -2993,6 +2999,8 @@ function pintarDetalleFaenaPc(f, data) {
     <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600" id="detalle-importe-val">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
     <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
     ${tiemposHtml}
+    <hr>
+    ${htmlCobrosDetallePc(f, cobros, totalPresupuesto)}
     <hr>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <strong style="font-size:0.85rem">📷 Fotos (${fotos.length})</strong>
@@ -3080,6 +3088,70 @@ function pintarDetalleFaenaPc(f, data) {
       </div>
     `).join("") : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin anotaciones</p>'}
   `;
+}
+
+function fechaHoyIsoLocalPc() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function htmlCobrosDetallePc(f, cobros, totalPresupuesto) {
+  const lista = Array.isArray(cobros) ? cobros : [];
+  const entregado = lista.reduce((s, c) => s + (parseFloat(c.importe) || 0), 0);
+  const pendiente = Math.max(0, (totalPresupuesto || 0) - entregado);
+  const filas = lista.length
+    ? `<table class="gastos-table" style="margin-top:8px">
+        <thead><tr><th>Fecha</th><th>Importe</th><th>Nota</th><th></th></tr></thead>
+        <tbody>
+          ${lista.map(c => `<tr>
+            <td>${String(c.fecha || "").slice(0, 10)}</td>
+            <td><strong>${(parseFloat(c.importe) || 0).toFixed(2)} €</strong></td>
+            <td>${c.nota || "—"}</td>
+            <td><button class="btn btn-d btn-sm" onclick="eliminarCobroPc(${f.id}, ${c.id})">×</button></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`
+    : `<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin cobros a cuenta</p>`;
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong style="font-size:0.85rem">💵 A cuenta</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:6px;align-items:end;margin-bottom:6px">
+      <div>
+        <label style="font-size:0.72rem;color:#888">Importe (€)</label>
+        <input type="number" step="0.01" id="cobro-pc-importe" placeholder="0.00" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:0.72rem;color:#888">Fecha</label>
+        <input type="date" id="cobro-pc-fecha" value="${fechaHoyIsoLocalPc()}" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:0.72rem;color:#888">Nota</label>
+        <input type="text" id="cobro-pc-nota" placeholder="Opcional" style="width:100%">
+      </div>
+      <button class="btn btn-p btn-sm" onclick="guardarCobroPc(${f.id})">Guardar</button>
+    </div>
+    ${filas}
+    <div class="gastos-total">Entregado: ${entregado.toFixed(2)} € · Pendiente: ${pendiente.toFixed(2)} €</div>`;
+}
+
+async function guardarCobroPc(faenaId) {
+  const importe = parseFloat(document.getElementById("cobro-pc-importe")?.value || "0") || 0;
+  const fecha = (document.getElementById("cobro-pc-fecha")?.value || fechaHoyIsoLocalPc()).trim();
+  const nota = (document.getElementById("cobro-pc-nota")?.value || "").trim();
+  if (importe <= 0) { toast("Indica un importe", true); return; }
+  const r = await api("POST", `/faenas/${faenaId}/cobros`, { importe, fecha, nota, origen: "pc" });
+  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
+  toast("Cobro guardado");
+  await verDetalle(faenaId);
+}
+
+async function eliminarCobroPc(faenaId, cobroId) {
+  if (!confirm("¿Eliminar este cobro a cuenta?")) return;
+  const r = await api("DELETE", `/faenas/${faenaId}/cobros/${cobroId}`);
+  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  toast("Cobro eliminado");
+  await verDetalle(faenaId);
 }
 
 function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {

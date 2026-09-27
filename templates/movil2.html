@@ -437,6 +437,27 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   font-size: 0.78rem;
   color: var(--muted);
 }
+.cobros-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: var(--radius);
+}
+.cobros-form .field { margin: 0; }
+.cobros-form .field-full { grid-column: 1 / -1; }
+.cobros-form .btn { width: 100%; margin: 0; }
+.cobros-resumen {
+  padding: 10px 12px;
+  background: var(--paper-dark);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  margin-top: 10px;
+}
+.cobros-resumen strong { font-size: 1.05rem; }
 
 .fase-tabs-mov {
   display: flex;
@@ -1461,10 +1482,11 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="panel-tabs" id="panel-tabs">
       <div class="panel-tab active" data-idx="0" onclick="irAPanel(0)">📋 Datos</div>
       <div class="panel-tab" data-idx="1" onclick="irAPanel(1)">€ Presupuesto</div>
-      <div class="panel-tab" data-idx="2" onclick="irAPanel(2)">📄 Documentos</div>
-      <div class="panel-tab" data-idx="3" onclick="irAPanel(3)">📸 Fotos</div>
-      <div class="panel-tab" data-idx="4" onclick="irAPanel(4)">🧾 Gastos</div>
-      <div class="panel-tab" data-idx="5" onclick="irAPanel(5)">⏱ Tiempos</div>
+      <div class="panel-tab" data-idx="2" onclick="irAPanel(2)">💵 A cuenta</div>
+      <div class="panel-tab" data-idx="3" onclick="irAPanel(3)">📄 Documentos</div>
+      <div class="panel-tab" data-idx="4" onclick="irAPanel(4)">📸 Fotos</div>
+      <div class="panel-tab" data-idx="5" onclick="irAPanel(5)">🧾 Gastos</div>
+      <div class="panel-tab" data-idx="6" onclick="irAPanel(6)">⏱ Tiempos</div>
     </div>
   </div>
 
@@ -1480,22 +1502,27 @@ textarea { resize: vertical; min-height: 80px; }
       <div id="p-presupuesto-content"></div>
     </div>
 
-    <!-- Panel 2: DOCUMENTOS + ANOTACIONES -->
+    <!-- Panel 2: A CUENTA -->
+    <div class="panel" id="p-cobros">
+      <div id="p-cobros-content"></div>
+    </div>
+
+    <!-- Panel 3: DOCUMENTOS + ANOTACIONES -->
     <div class="panel" id="p-documentos">
       <div id="p-documentos-content"></div>
     </div>
 
-    <!-- Panel 3: FOTOS -->
+    <!-- Panel 4: FOTOS -->
     <div class="panel" id="p-fotos">
       <div id="p-fotos-content"></div>
     </div>
 
-    <!-- Panel 4: GASTOS DE FABRICACIÓN + TICKETS -->
+    <!-- Panel 5: GASTOS DE FABRICACIÓN + TICKETS -->
     <div class="panel" id="p-gastos">
       <div id="p-gastos-content"></div>
     </div>
 
-    <!-- Panel 5: TIEMPOS -->
+    <!-- Panel 6: TIEMPOS -->
     <div class="panel" id="p-tiempos">
       <div id="p-tiempos-content"></div>
     </div>
@@ -1746,6 +1773,7 @@ function cargarCola() {
     anotacionesEditar:      JSON.parse(localStorage.getItem("cola_anotacionesEditar") || "[]"),
     anotacionesEliminar:    JSON.parse(localStorage.getItem("cola_anotacionesEliminar") || "[]"),
     gastos:                 JSON.parse(localStorage.getItem("cola_gastos")      || "[]"),
+    cobros:                 JSON.parse(localStorage.getItem("cola_cobros")      || "[]"),
     fotos:                  JSON.parse(localStorage.getItem("cola_fotos")       || "[]"),
     ticketFotos:            JSON.parse(localStorage.getItem("cola_ticket_fotos")|| "[]"),
     tickets:                JSON.parse(localStorage.getItem("cola_tickets")     || "[]"),
@@ -1767,6 +1795,7 @@ function guardarCola(c, opts) {
   localStorage.setItem("cola_anotacionesEditar",       JSON.stringify(c.anotacionesEditar || []));
   localStorage.setItem("cola_anotacionesEliminar",     JSON.stringify(c.anotacionesEliminar || []));
   localStorage.setItem("cola_gastos",                  JSON.stringify(c.gastos || []));
+  localStorage.setItem("cola_cobros",                  JSON.stringify(c.cobros || []));
   // Fotos: no guardar base64 en localStorage si hay blobId (IndexedDB)
   const fotosLite = (c.fotos || []).map(f => {
     if (f && f.blobId && f.data) {
@@ -1938,6 +1967,7 @@ function purgarRegistrosDeFaenasInactivas() {
   cola.ticketFotos = porFaena(cola.ticketFotos);
   cola.anotaciones = porFaena(cola.anotaciones);
   cola.gastos = porFaena(cola.gastos);
+  cola.cobros = porFaena(cola.cobros);
   cola.tickets = porFaena(cola.tickets);
   cola.faenasEditar = (cola.faenasEditar || []).filter(x => faenaIdSigueViva(x && x.id, vivos));
   guardarCola(cola);
@@ -2283,6 +2313,7 @@ function abrirFaena(id) {
   // Renderizar todos los paneles
   renderPanelDatos(f);
   renderPanelPresupuesto(f);
+  renderPanelCobros(f);
   renderPanelDocumentos(f);
   renderPanelFotos(f);
   renderPanelGastos(f);
@@ -2345,12 +2376,14 @@ function irAPanel(idx) {
   const pc = document.getElementById("panel-carousel");
   pc.scrollTo({ left: idx * window.innerWidth, behavior: "smooth" });
   actualizarTabPanel(idx);
-  if (idx === 5 && state.faenaActualId) {
-    const f = faenaDeTiempo(state.faenaActualId);
-    if (f) {
-      if (!document.getElementById("tiempos-panel-tbody")) renderPanelTiempos(f);
-      else refrescarTiemposFaena(f);
-    }
+  if (!state.faenaActualId) return;
+  const f = faenaDeTiempo(state.faenaActualId)
+    || state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId));
+  if (!f) return;
+  if (idx === 2) renderPanelCobros(f);
+  if (idx === 6) {
+    if (!document.getElementById("tiempos-panel-tbody")) renderPanelTiempos(f);
+    else refrescarTiemposFaena(f);
   }
 }
 
@@ -2821,11 +2854,207 @@ function renderPanelDatos(f) {
       <div class="datos-v" style="color:var(--green);font-size:1.1rem">${(() => { const t = totalPresupuestoVisibleFaena(f); return t > 0 ? t.toFixed(2) + " €" : "—"; })()}</div>
     </div>
     <div class="datos-campo">
+      <div class="datos-k">A cuenta</div>
+      <div class="datos-v">${(() => {
+        const cob = totalCobradoFaena(f);
+        const pres = totalPresupuestoVisibleFaena(f);
+        const pend = Math.max(0, pres - cob);
+        return `Entregado: <strong>${cob.toFixed(2)} €</strong> · Pendiente: <strong>${pend.toFixed(2)} €</strong>`;
+      })()}</div>
+    </div>
+    <div class="datos-campo">
       <div class="datos-k">Fecha</div>
       <div class="datos-v">${escHtml(f.fecha_inicio || "—")}</div>
     </div>
   `;
   refrescarTiemposFaena(f);
+}
+
+function totalCobradoFaena(f) {
+  if (!f) return 0;
+  const cobros = cobrosVisiblesFaena(f);
+  if (cobros.length || (f.cobros || []).length) {
+    return Math.round(cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0) * 100) / 100;
+  }
+  return Math.round((Number(f.total_cobrado) || 0) * 100) / 100;
+}
+
+function cobrosVisiblesFaena(f) {
+  const id = f && (f.id || f._tempId);
+  const cola = cargarCola();
+  const borrados = new Set(
+    (cola.cobros || [])
+      .filter(op => (op.op || "") === "delete" && String(op.faena_id) === String(id))
+      .map(op => String(op.id))
+  );
+  const lista = (f.cobros || [])
+    .filter(c => !borrados.has(String(c.id)))
+    .map(c => ({ ...c }));
+  for (const op of (cola.cobros || [])) {
+    if (String(op.faena_id) !== String(id)) continue;
+    if ((op.op || "create") === "delete") continue;
+    if (!String(op.id || "").startsWith("temp_")) continue;
+    lista.push({ ...op, _pendiente: true });
+  }
+  lista.sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+  return lista;
+}
+
+function fechaHoyIsoLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function renderPanelCobros(f) {
+  const box = document.getElementById("p-cobros-content");
+  if (!box || !f) return;
+  const id = f.id || f._tempId;
+  const esTemp = esIdFaenaTemporal(id);
+  const cobros = cobrosVisiblesFaena(f);
+  const entregado = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
+  const presupuesto = totalPresupuestoVisibleFaena(f);
+  const pendiente = Math.max(0, presupuesto - entregado);
+  const filas = cobros.length
+    ? cobros.map(c => {
+        const sid = c.id != null ? String(c.id) : "";
+        const delAttr = c._pendiente
+          ? `data-cobro-temp="${escHtml(sid)}"`
+          : (sid ? `data-cobro-id="${escHtml(sid)}"` : "");
+        return `<tr${c._pendiente ? ' class="pendiente"' : ""}>
+          <td>${escHtml(String(c.fecha || "").slice(0, 10))}</td>
+          <td style="text-align:right">${(Number(c.importe) || 0).toFixed(2)} €</td>
+          <td>${escHtml(c.nota || "")}${c._pendiente ? " · sync" : ""}</td>
+          <td>${delAttr ? `<button type="button" class="btn btn-d btn-del-tiempo" ${delAttr} aria-label="Eliminar">🗑️</button>` : ""}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">Sin cobros a cuenta</td></tr>`;
+  box.innerHTML = `
+    <div class="form-title" style="border:none;margin:0 0 10px;padding:0">A cuenta</div>
+    ${esTemp ? `<div style="font-size:0.84rem;color:var(--muted);margin-bottom:10px">Sincroniza la faena para guardar cobros en la nube.</div>` : ""}
+    <div class="cobros-form">
+      <div class="field"><label>Importe (€)</label><input type="number" inputmode="decimal" step="0.01" id="cobro-importe" placeholder="0.00"></div>
+      <div class="field"><label>Fecha</label><input type="date" id="cobro-fecha" value="${fechaHoyIsoLocal()}"></div>
+      <div class="field field-full"><label>Nota</label><input type="text" id="cobro-nota" placeholder="Opcional" autocomplete="off"></div>
+      <div class="field field-full"><button type="button" class="btn btn-p" id="cobro-guardar-btn">✓ Guardar cobro</button></div>
+    </div>
+    <div class="tiempos-tabla-wrap">
+      <table class="tiempos-tabla">
+        <thead><tr><th>Fecha</th><th>Importe</th><th>Nota</th><th></th></tr></thead>
+        <tbody id="cobros-panel-tbody">${filas}</tbody>
+      </table>
+    </div>
+    <div class="cobros-resumen" id="cobros-panel-resumen">
+      Entregado: <strong>${entregado.toFixed(2)} €</strong>
+      · Presupuesto: <strong>${presupuesto > 0 ? presupuesto.toFixed(2) + " €" : "—"}</strong>
+      · Pendiente: <strong>${pendiente.toFixed(2)} €</strong>
+    </div>`;
+  const btn = document.getElementById("cobro-guardar-btn");
+  if (btn) btn.onclick = () => guardarCobroFaena(f);
+  if (!box._cobrosDelBound) {
+    box._cobrosDelBound = true;
+    box.addEventListener("click", e => {
+      const btnDel = e.target.closest("[data-cobro-id], [data-cobro-temp]");
+      if (!btnDel) return;
+      e.preventDefault();
+      const faena = state.faenas.find(x => String(x.id || x._tempId) === String(state.faenaActualId)) || f;
+      if (btnDel.hasAttribute("data-cobro-id")) eliminarCobroFaena(faena, btnDel.getAttribute("data-cobro-id"));
+      else eliminarCobroTempFaena(faena, btnDel.getAttribute("data-cobro-temp"));
+    });
+  }
+}
+
+async function guardarCobroFaena(f) {
+  const id = f && (f.id || f._tempId);
+  if (!id) return;
+  const importe = Number((document.getElementById("cobro-importe")?.value || "").replace(",", ".")) || 0;
+  const fecha = (document.getElementById("cobro-fecha")?.value || fechaHoyIsoLocal()).trim();
+  const nota = (document.getElementById("cobro-nota")?.value || "").trim();
+  if (importe <= 0) { toast("Indica un importe", true); return; }
+  const body = { importe, fecha, nota, origen: "movil" };
+  if (!esIdFaenaTemporal(id)) {
+    try {
+      const r = await fetch(`${getServerUrl()}/faenas/${id}/cobros`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: faenasAbortTimeout(12000)
+      });
+      const d = await r.json();
+      if (d.ok && d.data) {
+        f.cobros = f.cobros || [];
+        f.cobros.unshift(d.data);
+        f.total_cobrado = totalCobradoFaena(f);
+        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        toast("Cobro guardado");
+        renderPanelCobros(f);
+        renderPanelDatos(f);
+        return;
+      }
+      throw new Error(d.error || "No se pudo guardar");
+    } catch (e) {
+      // cae a cola offline
+    }
+  }
+  const tempId = `temp_cobro_${Date.now()}`;
+  const cola = cargarCola();
+  cola.cobros = cola.cobros || [];
+  cola.cobros.push({ op: "create", id: tempId, faena_id: id, ...body });
+  guardarCola(cola);
+  f.cobros = f.cobros || [];
+  f.cobros.unshift({ id: tempId, faena_id: id, ...body, _pendiente: true });
+  toast(esIdFaenaTemporal(id) ? "Cobro guardado para sincronizar" : "Cobro guardado offline");
+  renderPanelCobros(f);
+  renderPanelDatos(f);
+}
+
+async function eliminarCobroFaena(f, cid) {
+  const id = f && (f.id || f._tempId);
+  if (!id || cid == null) return;
+  if (!confirm("¿Eliminar este cobro a cuenta?")) return;
+  if (!esIdFaenaTemporal(id) && !String(cid).startsWith("temp_")) {
+    try {
+      const r = await fetch(`${getServerUrl()}/faenas/${id}/cobros/${cid}`, {
+        method: "DELETE",
+        signal: faenasAbortTimeout(12000)
+      });
+      const d = await r.json();
+      if (d.ok) {
+        f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
+        f.total_cobrado = totalCobradoFaena(f);
+        localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+        toast("Cobro eliminado");
+        renderPanelCobros(f);
+        renderPanelDatos(f);
+        return;
+      }
+      throw new Error(d.error || "No se pudo eliminar");
+    } catch (e) {
+      const cola = cargarCola();
+      cola.cobros = cola.cobros || [];
+      cola.cobros.push({ op: "delete", id: cid, faena_id: id });
+      guardarCola(cola);
+      f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
+      toast("Cobro marcado para eliminar al sincronizar");
+      renderPanelCobros(f);
+      renderPanelDatos(f);
+      return;
+    }
+  }
+  eliminarCobroTempFaena(f, cid);
+}
+
+function eliminarCobroTempFaena(f, tempId) {
+  if (!confirm("¿Eliminar este cobro pendiente?")) return;
+  const cola = cargarCola();
+  cola.cobros = (cola.cobros || []).filter(op => String(op.id) !== String(tempId));
+  guardarCola(cola);
+  if (f) f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(tempId));
+  toast("Cobro eliminado");
+  renderPanelCobros(f);
+  renderPanelDatos(f);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4699,9 +4928,9 @@ function renderFaenas() {
 
 function abrirFaenaDesdeTiempos(event, id) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
-  state.panelActual = 5;
+  state.panelActual = 6;
   abrirFaena(id);
-  irAPanel(5);
+  irAPanel(6);
 }
 
 function eliminarFaenaDesdeTarjeta(event, id) {
@@ -6796,7 +7025,7 @@ function contarPendientesCola() {
     (c.anotacionesEditar||[]).length + (c.anotacionesEliminar||[]).length +
     c.fotos.length + c.ticketFotos.length + tkt +
     (c.definicionesPendientes||[]).length + (c.faenasEditar||[]).length +
-    (c.gastos||[]).length + (c.tiempos||[]).length +
+    (c.gastos||[]).length + (c.cobros||[]).length + (c.tiempos||[]).length +
     (c.bookPendiente||[]).length + (c.bookEliminar||[]).length +
     (c.faenasEliminar||[]).length + (c.tickets||[]).length +
     (c.presupuestos||[]).length + (c.materialesEliminar||[]).length;
@@ -6810,7 +7039,7 @@ function colaVacia() {
   return {
     clientes: [], faenas: [], anotaciones: [], anotacionesEditar: [], anotacionesEliminar: [],
     fotos: [], ticketFotos: [], tickets: [], faenasEditar: [], definicionesPendientes: [],
-    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: [], presupuestos: [], materialesEliminar: []
+    bookEliminar: [], bookPendiente: [], tiempos: [], faenasEliminar: [], gastos: [], cobros: [], presupuestos: [], materialesEliminar: []
   };
 }
 
@@ -7194,6 +7423,42 @@ async function sincronizar(opts) {
       } catch(e) {}
     }
 
+    if ((cola.cobros||[]).length) {
+      try {
+        const ops = cola.cobros.map(op => ({
+          ...op,
+          faena_id: mapaFaenas[op.faena_id]?.id || op.faena_id
+        }));
+        const r = await fetch(`${API}/sync/cobros`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operaciones: ops }),
+          signal: faenasAbortTimeout(10000)
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.ok) {
+            for (const map of (d.data?.creados_detalle || [])) {
+              const tempId = String(map.temp_id || "");
+              const realId = map.id;
+              for (const faena of state.faenas) {
+                if (!faena.cobros) continue;
+                for (const cobro of faena.cobros) {
+                  if (String(cobro.id) === tempId) {
+                    cobro.id = realId;
+                    delete cobro._pendiente;
+                    if (map.faena_id != null) cobro.faena_id = map.faena_id;
+                  }
+                }
+              }
+            }
+            cola.cobros = [];
+            guardarCola(cola, { silencioso: true, sinFondo: true });
+          }
+        }
+      } catch (e) {}
+    }
+
     if ((cola.tiempos||[]).length) {
       try {
         const sesiones = cola.tiempos.map(t => ({...t, faena_id: mapaFaenas[t.faena_id]?.id || t.faena_id}));
@@ -7315,6 +7580,7 @@ async function sincronizar(opts) {
     colaLimpia.anotacionesEditar = anotsEdOk ? [] : (cola.anotacionesEditar || []);
     colaLimpia.anotacionesEliminar = anotsDelOk ? [] : (cola.anotacionesEliminar || []);
     colaLimpia.gastos = cola.gastos || [];
+    colaLimpia.cobros = cola.cobros || [];
     colaLimpia.tiempos = cola.tiempos || [];
     colaLimpia.tickets = ticketsOk ? [] : (cola.tickets || []);
     colaLimpia.fotos = fotosPend;
@@ -7526,6 +7792,7 @@ function refrescarPantallaActual() {
   if (f && document.getElementById("faena-overlay")?.classList.contains("open")) {
     renderPanelDatos(f);
     renderPanelPresupuesto(f);
+    renderPanelCobros(f);
     renderPanelDocumentos(f);
     renderPanelFotos(f);
     renderPanelGastos(f);
@@ -7562,7 +7829,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66b";
+  const UI_VER = "66c";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7590,7 +7857,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66b", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66c", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
