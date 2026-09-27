@@ -1146,21 +1146,28 @@ def crear_cliente():
 
 @app.route("/api/clientes/<int:id>", methods=["PUT"])
 def editar_cliente(id):
-    datos = request.json
+    datos = request.json or {}
     conn = get_connection()
+    fila = conn.execute("SELECT * FROM clientes WHERE id=?", (id,)).fetchone()
+    if not fila:
+        conn.close()
+        return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+    actual = fila_a_dict(fila)
+    # Solo sobrescribe campos enviados; evita borrar dirección/teléfono si el cliente no los manda
+    nombre = datos["nombre"] if "nombre" in datos else (actual.get("nombre") or "")
+    if not str(nombre or "").strip():
+        conn.close()
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+    telefono = datos["telefono"] if "telefono" in datos else (actual.get("telefono") or "")
+    direccion = datos["direccion"] if "direccion" in datos else (actual.get("direccion") or "")
+    email = datos["email"] if "email" in datos else (actual.get("email") or "")
+    intermediario_id = datos["intermediario_id"] if "intermediario_id" in datos else (actual.get("intermediario_id") or 0)
+    notas = datos["notas"] if "notas" in datos else (actual.get("notas") or "")
     conn.execute("""
         UPDATE clientes
         SET nombre=?, telefono=?, direccion=?, email=?, intermediario_id=?, notas=?
         WHERE id=?
-    """, (
-        datos.get("nombre"),
-        datos.get("telefono", ""),
-        datos.get("direccion", ""),
-        datos.get("email", ""),
-        datos.get("intermediario_id", 0),
-        datos.get("notas", ""),
-        id
-    ))
+    """, (nombre, telefono or "", direccion or "", email or "", intermediario_id or 0, notas or "", id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -1438,7 +1445,20 @@ def _terminar_faena(id):
         extraer_referencia_faena(id)
     except Exception:
         pass
-    return jsonify({"ok": True, "data": {"zip": f"/api/faenas/{id}/archivo-zip", "importe": importe}})
+    zip_local = ""
+    zip_error = ""
+    try:
+        zip_local = _guardar_zip_faena_en_datos(id) or ""
+    except Exception as exc:
+        zip_error = str(exc)
+    data = {
+        "zip": f"/api/faenas/{id}/archivo-zip",
+        "zip_local": zip_local,
+        "importe": importe,
+    }
+    if zip_error and not zip_local:
+        data["zip_error"] = zip_error
+    return jsonify({"ok": True, "data": data})
 
 
 @app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
@@ -1702,28 +1722,34 @@ def sync_tiempos():
         conn.close()
 
 
-@app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
-def descargar_zip_faena(id):
+def _nombre_zip_faena(faena, faena_id):
+    numero = str((faena or {}).get("numero") or faena_id).replace("/", "-").replace("\\", "-")
+    numero = "".join(c for c in numero if c.isalnum() or c in "-_.") or str(faena_id)
+    return f"faena_{numero}.zip"
+
+
+def _construir_zip_faena(faena_id):
+    """Genera el ZIP de una faena. Devuelve (bytes, nombre_archivo) o (None, error)."""
     import zipfile
-    conn = _conn_para_faena(id)
-    faena = fila_a_dict(conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone())
-    if not faena:
+    conn = _conn_para_faena(faena_id)
+    fila = conn.execute("SELECT * FROM faenas WHERE id=?", (faena_id,)).fetchone()
+    if not fila:
         conn.close()
-        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
-    cli = None
+        return None, "Faena no encontrada"
+    faena = fila_a_dict(fila)
+    cli = {}
     try:
         if faena.get("cliente_id") is not None:
-            cli = conn.execute(
+            cli_fila = conn.execute(
                 "SELECT nombre, telefono, direccion FROM clientes WHERE id=?",
                 (faena.get("cliente_id"),),
             ).fetchone()
-            cli = fila_a_dict(cli) if cli else {}
+            cli = fila_a_dict(cli_fila) if cli_fila else {}
     except Exception:
         cli = {}
-    cli = cli or {}
     try:
         pres = filas_a_lista(conn.execute(
-            "SELECT * FROM presupuestos_faena WHERE faena_id=?", (id,)
+            "SELECT * FROM presupuestos_faena WHERE faena_id=?", (faena_id,)
         ).fetchall())
     except Exception:
         pres = []
@@ -1755,10 +1781,10 @@ def descargar_zip_faena(id):
             for b in bloques
         ],
     }
-    fotos = filas_a_lista(conn.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (id,)).fetchall())
+    fotos = filas_a_lista(conn.execute("SELECT * FROM fotos_faena WHERE faena_id=?", (faena_id,)).fetchall())
     archivos = []
     try:
-        archivos = filas_a_lista(conn.execute("SELECT * FROM archivos_faena WHERE faena_id=?", (id,)).fetchall())
+        archivos = filas_a_lista(conn.execute("SELECT * FROM archivos_faena WHERE faena_id=?", (faena_id,)).fetchall())
     except Exception:
         archivos = []
     conn.close()
@@ -1794,11 +1820,45 @@ def descargar_zip_faena(id):
                         zf.writestr(f"documentos/{nombre}", fh.read())
         if lista_docs:
             zf.writestr("documentos/lista.txt", "\n".join(lista_docs) + "\n")
-        zf.writestr("faena.txt", f"{faena.get('numero') or id}\n{faena.get('direccion') or ''}\n")
+        zf.writestr("faena.txt", f"{faena.get('numero') or faena_id}\n{faena.get('direccion') or ''}\n")
         zf.writestr("faena.json", json.dumps(meta, ensure_ascii=False, indent=2))
     buf.seek(0)
-    numero = str(faena.get("numero") or id).replace("/", "-")
-    return send_file(buf, as_attachment=True, download_name=f"faena_{numero}.zip", mimetype="application/zip")
+    return buf.getvalue(), _nombre_zip_faena(faena, faena_id)
+
+
+def _guardar_zip_faena_en_datos(faena_id):
+    """Guarda el ZIP en la carpeta datos/ del PC. Devuelve la ruta absoluta."""
+    contenido, nombre = _construir_zip_faena(faena_id)
+    if contenido is None:
+        raise RuntimeError(nombre or "No se pudo generar el ZIP")
+    os.makedirs(CARPETA_RAIZ, exist_ok=True)
+    destino = os.path.join(CARPETA_RAIZ, nombre)
+    with open(destino, "wb") as fh:
+        fh.write(contenido)
+    # Copia también dentro de la carpeta de la faena si existe
+    try:
+        conn = _conn_para_faena(faena_id)
+        fila = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (faena_id,)).fetchone()
+        conn.close()
+        carpeta = (fila_a_dict(fila) or {}).get("carpeta") if fila else ""
+        if carpeta and os.path.isdir(carpeta):
+            copia = os.path.join(carpeta, nombre)
+            if os.path.abspath(copia) != os.path.abspath(destino):
+                with open(copia, "wb") as fh:
+                    fh.write(contenido)
+    except Exception:
+        pass
+    return os.path.abspath(destino)
+
+
+@app.route("/api/faenas/<int:id>/archivo-zip", methods=["GET"])
+def descargar_zip_faena(id):
+    contenido, nombre = _construir_zip_faena(id)
+    if contenido is None:
+        return jsonify({"ok": False, "error": nombre or "Faena no encontrada"}), 404
+    buf = io.BytesIO(contenido)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=nombre, mimetype="application/zip")
 
 
 @app.route("/api/faenas/desde-zip", methods=["POST"])
@@ -2236,14 +2296,53 @@ def get_gastos(id):
     return jsonify({"ok": True, "data": filas_a_lista(filas)})
 
 
+def _fecha_cobro_norm(valor):
+    s = str(valor or "").strip()
+    return s[:10] if len(s) >= 10 else s
+
+
+def _existe_cobro_faena(conn, faena_id, importe, fecha, nota):
+    fecha_n = _fecha_cobro_norm(fecha)
+    nota_n = str(nota or "").strip()
+    importe_n = round(_to_float_seguro(importe), 2)
+    try:
+        fila = conn.execute(
+            "SELECT id, fecha, importe, nota FROM cobros_faena WHERE faena_id=?",
+            (faena_id,),
+        ).fetchall()
+        for row in filas_a_lista(fila):
+            if (
+                _fecha_cobro_norm(row.get("fecha")) == fecha_n
+                and round(_to_float_seguro(row.get("importe")), 2) == importe_n
+                and str(row.get("nota") or "").strip() == nota_n
+            ):
+                return row
+    except Exception:
+        return None
+    return None
+
+
 def _listar_cobros_faena(conn, faena_id):
     try:
-        filas = filas_a_lista(conn.execute(
+        brutos = filas_a_lista(conn.execute(
             "SELECT * FROM cobros_faena WHERE faena_id=? ORDER BY fecha DESC, id DESC",
             (faena_id,),
         ).fetchall())
     except Exception:
-        filas = []
+        brutos = []
+    # Evita mostrar duplicados históricos (misma fecha/importe/nota)
+    vistos = set()
+    filas = []
+    for c in brutos:
+        clave = (
+            _fecha_cobro_norm(c.get("fecha")),
+            round(_to_float_seguro(c.get("importe")), 2),
+            str(c.get("nota") or "").strip(),
+        )
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        filas.append(c)
     total = 0.0
     for c in filas:
         total += _to_float_seguro(c.get("importe"))
@@ -2268,7 +2367,7 @@ def crear_cobro(id):
     importe = _to_float_seguro(datos.get("importe"))
     if importe <= 0:
         return jsonify({"ok": False, "error": "Importe no válido"}), 400
-    fecha = str(datos.get("fecha") or "").strip()
+    fecha = _fecha_cobro_norm(datos.get("fecha"))
     nota = str(datos.get("nota") or "").strip()
     origen = str(datos.get("origen") or "movil").strip() or "movil"
     conn = get_connection()
@@ -2279,6 +2378,9 @@ def crear_cobro(id):
         if not fecha:
             from datetime import datetime, timezone
             fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        ya = _existe_cobro_faena(conn, id, importe, fecha, nota)
+        if ya:
+            return jsonify({"ok": True, "data": ya, "duplicado": True})
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO cobros_faena (faena_id, importe, fecha, nota, origen) VALUES (?, ?, ?, ?, ?)",
@@ -5042,7 +5144,19 @@ def sync_datos():
         faena["anotaciones"] = anots_por.get(fid, [])
         faena["presupuesto"] = presupuesto_lista
         faena["gastos"] = gastos_por.get(fid, [])
-        cobros = cobros_por.get(fid, [])
+        cobros_raw = cobros_por.get(fid, [])
+        vistos_c = set()
+        cobros = []
+        for c in cobros_raw:
+            clave = (
+                _fecha_cobro_norm(c.get("fecha")),
+                round(_to_float_seguro(c.get("importe")), 2),
+                str(c.get("nota") or "").strip(),
+            )
+            if clave in vistos_c:
+                continue
+            vistos_c.add(clave)
+            cobros.append(c)
         faena["cobros"] = cobros
         faena["total_cobrado"] = round(sum(_to_float_seguro(c.get("importe")) for c in cobros), 2)
         faena["fotos"] = fotos_por.get(fid, [])
@@ -5156,23 +5270,19 @@ def sync_cobros():
             importe = _to_float_seguro(op.get("importe"))
             if importe <= 0:
                 continue
-            fecha = str(op.get("fecha") or "").strip()
+            fecha = _fecha_cobro_norm(op.get("fecha"))
             nota = str(op.get("nota") or "").strip()
             origen = str(op.get("origen") or "movil").strip() or "movil"
             if not fecha:
                 from datetime import datetime, timezone
                 fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             try:
-                ex = conn.execute(
-                    "SELECT id FROM cobros_faena WHERE faena_id=? AND importe=? AND fecha=? AND nota=? LIMIT 1",
-                    (faena_id, round(importe, 2), fecha, nota),
-                ).fetchone()
+                ex = _existe_cobro_faena(conn, faena_id, importe, fecha, nota)
                 if ex:
                     omitidos += 1
-                    ex_id = fila_a_dict(ex).get("id")
                     creados_detalle.append({
                         "temp_id": op.get("id") or op.get("temp_id"),
-                        "id": ex_id,
+                        "id": ex.get("id"),
                         "faena_id": faena_id,
                     })
                     continue
