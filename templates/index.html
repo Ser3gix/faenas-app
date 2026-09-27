@@ -782,7 +782,6 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <button data-nav="clientes" onclick="nav('clientes')">Clientes</button>
     <button data-nav="intermediarios" onclick="nav('intermediarios')">Intermediarios</button>
     <button data-nav="materiales" onclick="nav('materiales')">Materiales</button>
-    <button data-nav="polyboard" onclick="nav('polyboard')">PolyBoard</button>
     <button data-nav="optimizador" onclick="nav('optimizador')">Optimizador</button>
     <button data-nav="presupuesto" onclick="nav('presupuesto')">Presupuesto</button>
     <button data-nav="book" onclick="nav('book')">Book</button>
@@ -972,58 +971,42 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div id="lista-materiales"></div>
 </div>
 
-<!-- ===== POLYBOARD ===== -->
-<div id="s-polyboard" class="section">
-  <div class="sec-header"><h2>PolyBoard — Pedido de tableros</h2></div>
-
-  <div class="form-box">
-    <div class="form-title">📂 Cargar TXT de PolyBoard</div>
-    <p style="font-size:0.82rem;color:#666;margin-bottom:12px">
-      Pulsa el botón para seleccionar el archivo TXT generado por PolyBoard.
-      Se abrirá el explorador de archivos directamente en tu carpeta de faenas.
-    </p>
-    <div class="form-grid">
-      <div>
-        <label>Faena asociada (opcional)</label>
-        <select id="pb-faena-sel"></select>
-      </div>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-p" onclick="cargarPolyboard()">📂 Seleccionar TXT</button>
-    </div>
-    <div id="pb-ruta" style="font-size:0.72rem;color:#aaa;margin-top:8px"></div>
-  </div>
-
-  <div id="pb-resultado" style="display:none">
-    <div class="sec-header" style="margin-top:8px">
-      <h2 style="font-size:1rem">Tabla de piezas</h2>
-      <div class="btn-row">
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;text-transform:none;letter-spacing:0;color:var(--accent);cursor:pointer">
-          <input type="checkbox" id="pb-excluir-sep" checked onchange="renderTablaPolyboard()">
-          Excluir "Separacion"
-        </label>
-        <button class="btn btn-p btn-sm" onclick="generarPdfPedido()">📄 Generar PDF pedido</button>
-      </div>
-    </div>
-    <div id="pb-tabla"></div>
-  </div>
-</div>
-
 <!-- ===== OPTIMIZADOR TABLEROS / CANTO ===== -->
 <div id="s-optimizador" class="section">
   <div class="sec-header"><h2>Optimizador — Corte, canto y costes</h2></div>
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
-    Carga un TXT de PolyBoard (o reutiliza el de la sección PolyBoard), configura tarifas y calcula tableros, metros de canto y esquemas de corte.
+    Carga el TXT de despiece, revisa piezas y cantos, configura tarifas y calcula tableros, metros de canto y esquemas.
   </p>
 
   <div class="form-box">
     <div class="form-title">Despiece</div>
-    <div class="btn-row" style="flex-wrap:wrap">
-      <button type="button" class="btn btn-p" onclick="cargarOptimizadorTxt()">Seleccionar TXT</button>
-      <button type="button" class="btn btn-s" onclick="usarDespiecePolyboardEnOptimizador()">Usar despiece de PolyBoard</button>
+    <div class="form-grid">
+      <div>
+        <label>Faena asociada (opcional, para el PDF)</label>
+        <select id="opt-faena-sel"></select>
+      </div>
+    </div>
+    <div class="btn-row" style="flex-wrap:wrap;margin-top:10px">
+      <label class="btn btn-p" style="cursor:pointer;margin:0">
+        Seleccionar TXT
+        <input type="file" id="opt-file-input" accept=".txt,text/plain" style="display:none" onchange="cargarOptimizadorDesdeInput(this)">
+      </label>
+      <button type="button" class="btn btn-s" onclick="document.getElementById('opt-file-input').click()">Elegir archivo</button>
     </div>
     <div id="opt-ruta" style="font-size:0.72rem;color:#aaa;margin-top:8px"></div>
     <div id="opt-resumen-piezas" style="font-size:0.8rem;color:var(--muted);margin-top:6px"></div>
+  </div>
+
+  <div id="opt-piezas-box" style="display:none">
+    <div class="form-box">
+      <div class="sec-header" style="margin:0 0 10px 0">
+        <h2 style="font-size:1rem;margin:0">Tabla de piezas</h2>
+        <div class="btn-row">
+          <button type="button" class="btn btn-s btn-sm" onclick="generarPdfOptimizadorPc()">PDF pedido</button>
+        </div>
+      </div>
+      <div id="opt-tabla"></div>
+    </div>
   </div>
 
   <div class="form-box">
@@ -2783,13 +2766,12 @@ function nav(id) {
   if (id === "materiales") {
     asegurarMaterialesPc().then(() => rellenarFaenasTicketDestino());
   }
-  if (id === "polyboard") poblarSelectPolyboard();
   if (id === "optimizador") {
+    poblarSelectOptimizador();
     if (optDatos && Object.keys(optDatos).length) {
+      renderTablaOptimizador();
       renderConfigTablerosOptimizador();
       actualizarResumenOptimizador();
-    } else if (pbDatos && Object.keys(pbDatos).length) {
-      usarDespiecePolyboardEnOptimizador(true);
     }
   }
   if (id === "presupuesto") {
@@ -4758,67 +4740,144 @@ async function procesarTextoManual() {
   } else toast(d.error || "Error al procesar", true);
 }
 
-// ===== POLYBOARD =====
-let pbDatos = {};
-function poblarSelectPolyboard() {
-  const sel = document.getElementById("pb-faena-sel");
-  sel.innerHTML = '<option value="">— Sin asignar —</option>' + state.faenas.map(f => `<option value="${f.id}">${f.numero} · ${f.cliente_nombre}</option>`).join("");
+// ===== OPTIMIZADOR TABLEROS / CANTO =====
+let optDatos = {};
+let optResultado = null;
+// Compat: algunas rutas antiguas usaban pbDatos
+let pbDatos = optDatos;
+
+function poblarSelectOptimizador() {
+  const sel = document.getElementById("opt-faena-sel");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    state.faenas.map(f => `<option value="${f.id}">${esc(f.numero)} · ${esc(f.cliente_nombre || "")}</option>`).join("");
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
-async function cargarPolyboard() {
-  const faenaId = document.getElementById("pb-faena-sel").value;
-  const r = await api("POST", "/polyboard/procesar", { ruta_txt: "", faena_id: faenaId });
-  if (!r.ok) { toast(r.error, true); return; }
-  pbDatos = r.data.piezas;
-  document.getElementById("pb-ruta").textContent = "📄 " + r.data.ruta;
-  document.getElementById("pb-resultado").style.display = "block";
-  renderTablaPolyboard(); toast("✓ Despiece cargado");
+function poblarSelectPolyboard() { poblarSelectOptimizador(); }
+
+function aplicarDespieceOptimizador(piezas, ruta) {
+  optDatos = piezas || {};
+  pbDatos = optDatos;
+  optResultado = null;
+  document.getElementById("opt-ruta").textContent = ruta ? ("📄 " + ruta) : "";
+  document.getElementById("opt-resultado").style.display = "none";
+  document.getElementById("opt-resultado").innerHTML = "";
+  const box = document.getElementById("opt-piezas-box");
+  if (box) box.style.display = Object.keys(optDatos).length ? "" : "none";
+  renderTablaOptimizador();
+  renderConfigTablerosOptimizador();
+  actualizarResumenOptimizador();
 }
-function renderTablaPolyboard() {
-  const excluirSep = document.getElementById("pb-excluir-sep").checked;
-  const el = document.getElementById("pb-tabla");
-  if (!pbDatos || Object.keys(pbDatos).length === 0) { el.innerHTML = '<div class="empty"><div class="empty-icon">🪵</div>No hay piezas cargadas</div>'; return; }
+
+async function cargarOptimizadorDesdeInput(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("archivo", file, file.name);
+  toast("Cargando despiece…");
+  try {
+    const r = await fetch(API + "/polyboard/procesar", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || "No se pudo cargar", true); return; }
+    aplicarDespieceOptimizador(d.data.piezas || {}, d.data.ruta || file.name);
+    toast("✓ Despiece cargado");
+  } catch (e) {
+    toast("Error al subir el archivo", true);
+  } finally {
+    input.value = "";
+  }
+}
+
+function renderTablaOptimizador() {
+  const excluirSep = document.getElementById("opt-excluir-sep")?.checked;
+  const el = document.getElementById("opt-tabla");
+  const box = document.getElementById("opt-piezas-box");
+  if (!el) return;
+  if (!optDatos || !Object.keys(optDatos).length) {
+    if (box) box.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+  if (box) box.style.display = "";
   let html = "";
-  for (const [material, piezas] of Object.entries(pbDatos)) {
-    if (excluirSep && material.toLowerCase().includes("separac")) continue;
-    const totalPiezas = piezas.reduce((s, p) => s + p.cantidad, 0);
-    html += `<div class="pb-mat-header">📦 ${material.toUpperCase()}</div><div class="pb-resumen">${piezas.length} referencia${piezas.length !== 1 ? "s" : ""} · ${totalPiezas} pieza${totalPiezas !== 1 ? "s" : ""} en total</div><table class="pb-table"><thead><tr><th>Cant.</th><th>Largo</th><th>CD</th><th>CI</th><th>Ancho</th><th>CA</th><th>CB</th><th class="col-pieza">Pieza</th></tr></thead><tbody>`;
+  for (const [material, piezas] of Object.entries(optDatos)) {
+    if (excluirSep && String(material).toLowerCase().includes("separac")) continue;
+    const matJs = JSON.stringify(material);
+    const totalPiezas = piezas.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0);
+    html += `<div class="pb-mat-header">📦 ${esc(String(material).toUpperCase())}</div>
+      <div class="pb-resumen">${piezas.length} referencia${piezas.length !== 1 ? "s" : ""} · ${totalPiezas} pieza${totalPiezas !== 1 ? "s" : ""}</div>
+      <table class="pb-table"><thead><tr>
+        <th>Cant.</th><th>Largo</th><th>CD</th><th>CI</th><th>Ancho</th><th>CA</th><th>CB</th><th class="col-pieza">Pieza</th>
+      </tr></thead><tbody>`;
     piezas.forEach((p, idx) => {
-      html += `<tr><td contenteditable="true" onblur="editarCampo('${material}',${idx},'cantidad',this.textContent)">${p.cantidad}</td><td contenteditable="true" onblur="editarCampo('${material}',${idx},'largo',this.textContent)">${p.largo}</td><td class="canto-cell ${p.canto_der ? 'canto-on' : ''}" onclick="toggleCanto('${material}',${idx},'canto_der',this)">${p.canto_der ? "✔" : "–"}</td><td class="canto-cell ${p.canto_izq ? 'canto-on' : ''}" onclick="toggleCanto('${material}',${idx},'canto_izq',this)">${p.canto_izq ? "✔" : "–"}</td><td contenteditable="true" onblur="editarCampo('${material}',${idx},'ancho',this.textContent)">${p.ancho}</td><td class="canto-cell ${p.canto_arr ? 'canto-on' : ''}" onclick="toggleCanto('${material}',${idx},'canto_arr',this)">${p.canto_arr ? "✔" : "–"}</td><td class="canto-cell ${p.canto_ab ? 'canto-on' : ''}" onclick="toggleCanto('${material}',${idx},'canto_ab',this)">${p.canto_ab ? "✔" : "–"}</td><td class="col-pieza" contenteditable="true" onblur="editarCampo('${material}',${idx},'pieza',this.textContent)">${p.pieza}</td></tr>`;
+      html += `<tr>
+        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"cantidad",this.textContent)'>${p.cantidad}</td>
+        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"largo",this.textContent)'>${p.largo}</td>
+        <td class="canto-cell ${p.canto_der ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_der",this)'>${p.canto_der ? "✔" : "–"}</td>
+        <td class="canto-cell ${p.canto_izq ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_izq",this)'>${p.canto_izq ? "✔" : "–"}</td>
+        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"ancho",this.textContent)'>${p.ancho}</td>
+        <td class="canto-cell ${p.canto_arr ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_arr",this)'>${p.canto_arr ? "✔" : "–"}</td>
+        <td class="canto-cell ${p.canto_ab ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_ab",this)'>${p.canto_ab ? "✔" : "–"}</td>
+        <td class="col-pieza" contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"pieza",this.textContent)'>${esc(p.pieza || "")}</td>
+      </tr>`;
     });
     html += `</tbody></table>`;
   }
   el.innerHTML = html || '<div class="empty"><div class="empty-icon">🪵</div>No hay materiales para mostrar</div>';
 }
-function toggleCanto(material, idx, campo, celda) {
-  pbDatos[material][idx][campo] = pbDatos[material][idx][campo] ? 0 : 1;
-  const activo = pbDatos[material][idx][campo];
+
+function toggleCantoOpt(material, idx, campo, celda) {
+  if (!optDatos[material] || !optDatos[material][idx]) return;
+  optDatos[material][idx][campo] = optDatos[material][idx][campo] ? 0 : 1;
+  const activo = optDatos[material][idx][campo];
   celda.textContent = activo ? "✔" : "–";
   celda.classList.toggle("canto-on", !!activo);
 }
-function editarCampo(material, idx, campo, valor) {
-  const v = valor.trim();
-  if (campo === "pieza") pbDatos[material][idx][campo] = v;
-  else { const num = parseInt(v); if (!isNaN(num)) pbDatos[material][idx][campo] = num; }
+function editarCampoOpt(material, idx, campo, valor) {
+  if (!optDatos[material] || !optDatos[material][idx]) return;
+  const v = String(valor || "").trim();
+  if (campo === "pieza") optDatos[material][idx][campo] = v;
+  else {
+    const num = parseInt(v, 10);
+    if (!isNaN(num)) optDatos[material][idx][campo] = num;
+  }
+  actualizarResumenOptimizador();
 }
-async function generarPdfPedido() {
-  const faenaId = document.getElementById("pb-faena-sel").value || null;
-  const excluirSep = document.getElementById("pb-excluir-sep").checked;
+
+async function generarPdfOptimizadorPc() {
+  if (!optDatos || !Object.keys(optDatos).length) {
+    toast("Carga un TXT primero", true);
+    return;
+  }
+  const faenaId = document.getElementById("opt-faena-sel")?.value || null;
+  const excluirSep = document.getElementById("opt-excluir-sep")?.checked;
   const excluir = excluirSep ? ["Separacion", "Separación", "separacion"] : [];
   toast("Generando PDF...");
   try {
     const response = await fetch(API + "/polyboard/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ piezas: pbDatos, faena_id: faenaId, excluir_materiales: excluir })
+      body: JSON.stringify({ piezas: optDatos, faena_id: faenaId ? parseInt(faenaId, 10) : null, excluir_materiales: excluir })
     });
-    if (!response.ok) { const err = await response.json(); toast(err.error || "Error generando PDF", true); return; }
-    const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `pedido_tableros.pdf`; a.click(); URL.revokeObjectURL(url); toast("✓ PDF generado — revisa tus descargas");
-  } catch(e) { toast("Error de conexión", true); }
+    if (!response.ok) {
+      let err = {};
+      try { err = await response.json(); } catch (e) {}
+      toast(err.error || "Error generando PDF", true);
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pedido_tableros.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("✓ PDF generado — revisa tus descargas");
+  } catch (e) {
+    toast("Error de conexión", true);
+  }
 }
-
-// ===== OPTIMIZADOR TABLEROS / CANTO =====
-let optDatos = {};
-let optResultado = null;
 
 function materialesVisiblesOptimizador() {
   const excluirSep = document.getElementById("opt-excluir-sep")?.checked;
@@ -4867,35 +4926,6 @@ function renderConfigTablerosOptimizador() {
       </div>
     </div>`;
   }).join("");
-}
-
-function usarDespiecePolyboardEnOptimizador(silencioso) {
-  if (!pbDatos || !Object.keys(pbDatos).length) {
-    if (!silencioso) toast("No hay despiece en PolyBoard. Carga un TXT allí o aquí.", true);
-    return;
-  }
-  optDatos = clonarJSON(pbDatos);
-  optResultado = null;
-  const rutaEl = document.getElementById("opt-ruta");
-  if (rutaEl) rutaEl.textContent = "Usando despiece de la sección PolyBoard";
-  const res = document.getElementById("opt-resultado");
-  if (res) { res.style.display = "none"; res.innerHTML = ""; }
-  renderConfigTablerosOptimizador();
-  actualizarResumenOptimizador();
-  if (!silencioso) toast("✓ Despiece de PolyBoard cargado en Optimizador");
-}
-
-async function cargarOptimizadorTxt() {
-  const r = await api("POST", "/polyboard/procesar", { ruta_txt: "" });
-  if (!r.ok) { toast(r.error || "No se pudo cargar", true); return; }
-  optDatos = r.data.piezas || {};
-  optResultado = null;
-  document.getElementById("opt-ruta").textContent = "📄 " + (r.data.ruta || "");
-  document.getElementById("opt-resultado").style.display = "none";
-  document.getElementById("opt-resultado").innerHTML = "";
-  renderConfigTablerosOptimizador();
-  actualizarResumenOptimizador();
-  toast("✓ Despiece cargado");
 }
 
 function leerTarifasOptimizadorPc() {
@@ -4979,7 +5009,7 @@ function renderResultadoOptimizadorPc(data) {
 
 async function calcularOptimizadorPc() {
   if (!optDatos || !Object.keys(optDatos).length) {
-    toast("Carga un TXT o usa el despiece de PolyBoard", true);
+    toast("Selecciona un TXT de despiece primero", true);
     return;
   }
   const btn = document.getElementById("opt-btn-calcular");
@@ -5000,6 +5030,7 @@ async function calcularOptimizadorPc() {
 }
 
 document.getElementById("opt-excluir-sep")?.addEventListener("change", () => {
+  renderTablaOptimizador();
   renderConfigTablerosOptimizador();
   actualizarResumenOptimizador();
 });
