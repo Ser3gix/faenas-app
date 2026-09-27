@@ -411,10 +411,20 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   color: var(--muted);
   background: var(--paper-dark);
 }
+.tiempos-tabla td:nth-child(3),
+.tiempos-tabla th:nth-child(3) { text-align: right; }
 .tiempos-tabla td:last-child,
-.tiempos-tabla th:last-child { text-align: right; }
+.tiempos-tabla th:last-child { text-align: center; width: 44px; }
 .tiempos-tabla tr:last-child td { border-bottom: none; }
 .tiempos-tabla .pendiente { color: var(--muted); font-style: italic; }
+.tiempos-tabla .btn-del-tiempo {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9rem;
+}
 .tiempos-panel-total {
   padding: 10px 12px;
   background: var(--paper-dark);
@@ -2490,22 +2500,30 @@ function pintarTablaTiemposFaena(f) {
   const cache = (state.tiemposPorFaena && state.tiemposPorFaena[String(id)]) || { sesiones: [], totales: [] };
   const colaSes = sesionesColaFaena(id);
   const vistas = [...(cache.sesiones || []), ...colaSes]
-    .filter(s => s && s.fin)
+    .filter(s => s && String(s.fin || "").trim())
     .sort((a, b) => {
       const ta = new Date(a.inicio || 0).getTime();
       const tb = new Date(b.inicio || 0).getTime();
       return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
   if (!vistas.length) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Sin tiempos registrados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">Sin tiempos registrados</td></tr>`;
   } else {
     tbody.innerHTML = vistas.map(s => {
       const pend = s._pendiente ? ' class="pendiente"' : "";
       const marca = s._pendiente ? " · sync" : "";
+      const sid = s.id != null ? String(s.id) : "";
+      const claveCola = s._pendiente
+        ? encodeURIComponent(`${s.inicio || ""}|${s.fin || ""}|${s.categoria || ""}`)
+        : "";
+      const delAttr = s._pendiente
+        ? `data-tiempo-cola="${claveCola}"`
+        : (sid ? `data-tiempo-id="${escHtml(sid)}"` : "");
       return `<tr${pend}>
         <td>${escHtml(formatoFechaTiempo(s.inicio))}</td>
         <td>${escHtml(labelCatTiempo(s.categoria))}${marca}</td>
         <td>${escHtml(formatoDuracionMinutos(s.minutos))}</td>
+        <td>${delAttr ? `<button type="button" class="btn btn-d btn-del-tiempo" ${delAttr} aria-label="Eliminar">🗑️</button>` : ""}</td>
       </tr>`;
     }).join("");
   }
@@ -2549,56 +2567,131 @@ function renderPanelTiempos(f) {
     <div class="tiempos-tabla-wrap">
       <table class="tiempos-tabla">
         <thead>
-          <tr><th>Fecha</th><th>Tipo</th><th>Duración</th></tr>
+          <tr><th>Fecha</th><th>Tipo</th><th>Duración</th><th></th></tr>
         </thead>
         <tbody id="tiempos-panel-tbody">
-          <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Cargando…</td></tr>
+          <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">Cargando…</td></tr>
         </tbody>
       </table>
     </div>
     <div class="tiempos-panel-total" id="tiempos-panel-total">Total: <strong>0.0 h</strong></div>`;
   initBarraTiempos();
+  if (!box._tiemposDelBound) {
+    box._tiemposDelBound = true;
+    box.addEventListener("click", e => {
+      const btn = e.target.closest("[data-tiempo-id], [data-tiempo-cola]");
+      if (!btn) return;
+      e.preventDefault();
+      const faena = faenaDeTiempo(state.faenaActualId);
+      if (!faena) return;
+      if (btn.hasAttribute("data-tiempo-id")) {
+        eliminarSesionTiempo(faena, btn.getAttribute("data-tiempo-id"));
+      } else {
+        eliminarSesionTiempoCola(faena, btn.getAttribute("data-tiempo-cola"));
+      }
+    });
+  }
+  pintarTablaTiemposFaena(f);
   refrescarTiemposFaena(f);
 }
 
+async function eliminarSesionTiempo(f, tid) {
+  const id = f && (f.id || f._tempId);
+  if (!id || tid == null || tid === "") return;
+  if (!confirm("¿Eliminar este tiempo del registro?")) return;
+  try {
+    const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos/${tid}`, {
+      method: "DELETE",
+      signal: faenasAbortTimeout(12000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "No se pudo eliminar");
+    const cache = (state.tiemposPorFaena || {})[String(id)];
+    if (cache && Array.isArray(cache.sesiones)) {
+      cache.sesiones = cache.sesiones.filter(s => String(s.id) !== String(tid));
+      const totMap = {};
+      for (const s of cache.sesiones) {
+        if (!String(s.fin || "").trim()) continue;
+        totMap[s.categoria] = (totMap[s.categoria] || 0) + Number(s.minutos || 0);
+      }
+      cache.totales = Object.keys(totMap).map(categoria => ({ categoria, minutos: totMap[categoria] }));
+      state.tiemposPorFaena[String(id)] = cache;
+    }
+    toast("Tiempo eliminado");
+    refrescarTiemposFaena(f);
+  } catch (e) {
+    toast(e.message || "Error al eliminar", true);
+  }
+}
+
+function eliminarSesionTiempoCola(f, claveEncoded) {
+  const id = f && (f.id || f._tempId);
+  if (!id) return;
+  if (!confirm("¿Eliminar este tiempo pendiente de sync?")) return;
+  let clave = "";
+  try { clave = decodeURIComponent(claveEncoded || ""); } catch (e) { clave = String(claveEncoded || ""); }
+  const cola = cargarCola();
+  const antes = (cola.tiempos || []).length;
+  cola.tiempos = (cola.tiempos || []).filter(t => {
+    if (String(t.faena_id) !== String(id)) return true;
+    const k = `${t.inicio || ""}|${t.fin || ""}|${t.categoria || ""}`;
+    return k !== clave;
+  });
+  guardarCola(cola);
+  if ((cola.tiempos || []).length === antes) {
+    toast("No se encontró el tiempo en la cola", true);
+    return;
+  }
+  toast("Tiempo eliminado de la cola");
+  refrescarTiemposFaena(f, { sinRed: true });
+}
+
+let _tiemposFetchSeq = 0;
 async function refrescarTiemposFaena(f, opts) {
   initBarraTiempos();
   const id = f && (f.id || f._tempId);
+  const seq = ++_tiemposFetchSeq;
   const sels = [document.getElementById("tiempos-panel-sel")].filter(Boolean);
   const plays = [document.getElementById("tiempos-panel-play")].filter(Boolean);
   const totEls = [document.getElementById("tiempos-panel-tot")].filter(Boolean);
   const activo = leerTiempoActivo();
   const totMap = minutosColaFaena(id);
   if (f && !esIdFaenaTemporal(id) && !(opts && opts.sinRed)) {
-    try {
-      const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: faenasAbortTimeout(8000) });
-      const d = await r.json();
-      if (d.ok && d.data) {
-        state.tiemposPorFaena = state.tiemposPorFaena || {};
-        state.tiemposPorFaena[String(id)] = {
-          sesiones: d.data.sesiones || [],
-          totales: d.data.totales || []
-        };
-        for (const t of (d.data.totales || [])) {
-          totMap[t.categoria] = (totMap[t.categoria] || 0) + Number(t.minutos || 0);
+    let cargado = false;
+    for (let intento = 0; intento < 2 && !cargado; intento++) {
+      try {
+        const r = await fetch(`${getServerUrl()}/faenas/${id}/tiempos`, { signal: faenasAbortTimeout(25000) });
+        const d = await r.json();
+        if (seq !== _tiemposFetchSeq) return;
+        if (d.ok && d.data) {
+          state.tiemposPorFaena = state.tiemposPorFaena || {};
+          state.tiemposPorFaena[String(id)] = {
+            sesiones: Array.isArray(d.data.sesiones) ? d.data.sesiones : [],
+            totales: Array.isArray(d.data.totales) ? d.data.totales : []
+          };
+          cargado = true;
         }
+      } catch (e) {
+        if (intento === 0) await new Promise(res => setTimeout(res, 600));
       }
-    } catch (e) {}
-  } else {
-    const cache = (state.tiemposPorFaena || {})[String(id)] || {};
-    for (const t of (cache.totales || [])) {
-      totMap[t.categoria] = (totMap[t.categoria] || 0) + Number(t.minutos || 0);
     }
+  }
+  if (seq !== _tiemposFetchSeq) return;
+  const cache = (state.tiemposPorFaena || {})[String(id)] || {};
+  for (const t of (cache.totales || [])) {
+    totMap[t.categoria] = (totMap[t.categoria] || 0) + Number(t.minutos || 0);
   }
   const catGuardada = localStorage.getItem("tiempo_cat_" + id) || "trabajo";
   const catSel = (activo && String(activo.faena_id) === String(id)) ? activo.categoria : catGuardada;
   const catOk = CATS_TIEMPO.some(c => c.id === catSel) ? catSel : "trabajo";
   for (const sel of sels) {
+    if (!document.getElementById(sel.id)) continue;
     sel.value = catOk;
     sel.disabled = !!(activo && String(activo.faena_id) === String(id));
   }
   const mins = totMap[catOk] || 0;
   for (const totEl of totEls) {
+    if (!document.body.contains(totEl)) continue;
     if (activo && String(activo.faena_id) !== String(id)) {
       const otra = faenaDeTiempo(activo.faena_id);
       totEl.textContent = "En " + (otra?.numero || "otra faena");
@@ -2608,6 +2701,7 @@ async function refrescarTiemposFaena(f, opts) {
   }
   const enMarcha = !!activo;
   for (const play of plays) {
+    if (!document.body.contains(play)) continue;
     play.textContent = enMarcha ? "■" : "▶";
     play.className = "btn tiempos-play " + (enMarcha ? "btn-d" : "btn-p");
     play.setAttribute("aria-label", enMarcha ? "Parar" : "Iniciar");
@@ -7468,7 +7562,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66a";
+  const UI_VER = "66b";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7496,7 +7590,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66a", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66b", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
