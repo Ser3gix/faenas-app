@@ -910,7 +910,7 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
 }
-.ticket-art-faena { display: none; }
+.ticket-art-faena { display: block; }
 .ticket-show-faena .ticket-art-faena { display: block; }
 .ticket-art-body-actions {
   display: flex;
@@ -1267,7 +1267,7 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
     <div class="form-box" id="ticket-paso2" style="display:none">
       <div class="form-title">Paso 2 — Procesar ticket</div>
-      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Jimmi analiza el ticket. Después revisas la lista y eliges faena o almacén.</p>
+      <p style="font-size:0.88rem;color:#666;margin-bottom:10px;line-height:1.6">Jimmi analiza el ticket. Después revisas la lista y eliges destino por material: Materiales o una faena.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-p" id="btn-ai-ticket" onclick="procesarTicketConIA()">🤖 Pedir a Jimmi</button>
         <button class="btn btn-s btn-inline" type="button" onclick="cancelarTicket()">↺ Resetear ticket</button>
@@ -1275,17 +1275,18 @@ textarea { resize: vertical; min-height: 80px; }
       <div id="ticket-ai-estado" style="display:none;margin-top:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
     </div>
     <div class="form-box" id="ticket-paso3" style="display:none">
-      <div class="form-title">Paso 3 — Revisar materiales <span style="font-size:0.7rem;font-weight:500;color:#999">v64</span></div>
+      <div class="form-title">Paso 3 — Revisar materiales <span style="font-size:0.7rem;font-weight:500;color:#999">v65y</span></div>
       <div class="field">
-        <label>Destino</label>
+        <label>Destino global</label>
         <select id="ticket-destino" onchange="actualizarDestinoTicket()">
-          <option value="almacen">Almacén de materiales</option>
-          <option value="faena">Gastos de una faena</option>
+          <option value="mixto" selected>Por material (Materiales o faena)</option>
+          <option value="almacen">Todos → Materiales</option>
+          <option value="faena">Todos → una faena</option>
         </select>
       </div>
       <div class="field" id="ticket-destino-faena-wrap" style="display:none">
         <label>Faena</label>
-        <select id="ticket-destino-faena"></select>
+        <select id="ticket-destino-faena" onchange="actualizarDestinoTicket()"></select>
       </div>
       <div class="field" id="ticket-art-select-wrap" style="display:none">
         <label>Materiales detectados</label>
@@ -5070,9 +5071,14 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto = null) {
         const cantidad = Number(a.cantidad || 0) || 0;
         const precio = Number(a.precio_unitario || a.precio || 0) || 0;
         const total = Number(a.total || (cantidad * precio)) || 0;
-        const faena_id = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
-          ? (faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null)
+        const raw = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
+          ? null
           : String(a.faena_id).trim();
+        let faena_id = "materiales";
+        if (raw && raw !== "materiales" && raw !== "almacen" && raw !== "almacén") faena_id = raw;
+        else if (faenaPorDefecto !== null && faenaPorDefecto !== undefined && String(faenaPorDefecto)) {
+          faena_id = String(faenaPorDefecto);
+        }
         return {
           nombre,
           unidad,
@@ -5090,15 +5096,18 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto = null) {
 }
 
 function _ticketOpcionesFaena(valueSeleccionado) {
-  const base = '<option value="">— Sin faena —</option>';
-  const opciones = (state.faenas || []).map(f => {
+  const sel = String(valueSeleccionado || "").trim();
+  const esMat = !sel || sel === "materiales" || sel === "almacen" || sel === "almacén";
+  let html = `<option value="materiales"${esMat ? " selected" : ""}>Materiales</option>`;
+  html += (state.faenas || []).map(f => {
     const id = String(f.id || f._tempId || "");
+    if (!id) return "";
     const num = f.numero ? `${f.numero} · ` : "";
     const cli = f.cliente_nombre || "";
-    const selected = String(valueSeleccionado || "") === id ? " selected" : "";
+    const selected = !esMat && String(sel) === id ? " selected" : "";
     return `<option value="${id}"${selected}>${escHtml(num + cli)}</option>`;
   }).join("");
-  return base + opciones;
+  return html;
 }
 
 let ticketAnalisisStore = {};
@@ -5113,9 +5122,9 @@ function _ticketSetData(containerId, data) {
   if (wrap) wrap._analisisData = data;
 }
 
-function _ticketMostrarFaenaEnTarjetas(containerId) {
-  if (containerId !== "ticket-tabla-wrap") return !!containerId;
-  return (document.getElementById("ticket-destino")?.value || "almacen") === "faena";
+function _ticketMostrarFaenaEnTarjetas(_containerId) {
+  // Siempre: cada material elige Materiales o una faena
+  return true;
 }
 
 function _fmtEurTicket(n) {
@@ -5171,8 +5180,8 @@ function _ticketArtBodyHtml(a, i, mostrarFaena) {
       <label>Proveedor</label>
       <input type="text" data-k="proveedor" value="${proveedor}" autocomplete="off" style="min-height:34px;font-size:14px;padding:4px 8px">
     </div>
-    <div class="ticket-art-field ticket-art-faena" style="${mostrarFaena ? "" : "display:none"}">
-      <label>Faena</label>
+    <div class="ticket-art-field ticket-art-faena">
+      <label>Destino</label>
       <select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select>
     </div>
     <div class="ticket-art-body-actions">
@@ -5424,7 +5433,11 @@ function _leerTablaAnalisisTicket(containerId = "ticket-tabla-wrap", datosRefere
         precio_unitario: Number(a.precio_unitario || 0) || 0,
         total: Number(a.total || 0) || ((Number(a.cantidad || 0) || 0) * (Number(a.precio_unitario || 0) || 0)),
         unidad: String(a.unidad || "ud").trim() || "ud",
-        faena_id: a.faena_id ? String(a.faena_id) : null
+        faena_id: (() => {
+          const v = String(a.faena_id || "").trim();
+          if (!v || v === "materiales" || v === "almacen" || v === "almacén") return "materiales";
+          return v;
+        })()
       }));
     return {
       proveedor: data.proveedor || (referencia && referencia.proveedor) || "",
@@ -5457,7 +5470,11 @@ function _leerArticuloDesdeBody(body) {
     cantidad,
     precio_unitario: precio,
     total: Number.isFinite(totalNum) ? totalNum : cantidad * precio,
-    faena_id: val("faena_id") || null
+    faena_id: (() => {
+      const v = String(val("faena_id") || "").trim();
+      if (!v || v === "materiales" || v === "almacen" || v === "almacén") return "materiales";
+      return v;
+    })()
   };
 }
 
@@ -5521,7 +5538,7 @@ function anadirTicketArticuloLista(containerId) {
     cantidad: 1,
     precio_unitario: 0,
     total: 0,
-    faena_id: data.faenaPorDefecto || null
+    faena_id: data.faenaPorDefecto || "materiales"
   });
   data.abiertoIdx = "all";
   _ticketSetData(containerId, data);
@@ -5804,6 +5821,11 @@ async function procesarTicketConIA() {
       } catch (eHide) {}
       document.getElementById("ticket-paso3").style.display = "block";
       rellenarFaenasTicketDestino();
+      try {
+        const destSel = document.getElementById("ticket-destino");
+        if (destSel) destSel.value = "mixto";
+        actualizarDestinoTicket();
+      } catch (eDest) {}
       if (!n) toast("Sin materiales detectados", true);
       try {
         document.getElementById("ticket-art-select-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -5833,17 +5855,13 @@ async function procesarTicketConIA() {
 function rellenarFaenasTicketDestino() {
   const sel = document.getElementById("ticket-destino-faena");
   if (!sel) return;
-  sel.innerHTML = state.faenas.map(f =>
+  sel.innerHTML = (state.faenas || []).map(f =>
     `<option value="${f.id || f._tempId}">${escHtml(f.numero)} · ${escHtml(f.cliente_nombre||"")}</option>`
   ).join("");
 }
 
-function actualizarDestinoTicket() {
-  const dest = document.getElementById("ticket-destino")?.value || "almacen";
-  const wrap = document.getElementById("ticket-destino-faena-wrap");
-  if (wrap) wrap.style.display = dest === "faena" ? "block" : "none";
-  const tabla = document.getElementById("ticket-tabla-wrap");
-  if (tabla) tabla.classList.toggle("ticket-show-faena", dest === "faena");
+function poblarSelectFaenasTicket() {
+  rellenarFaenasTicketDestino();
 }
 
 async function mostrarCruceTicket(articulos) {
@@ -5868,32 +5886,60 @@ async function mostrarCruceTicket(articulos) {
   }
 }
 
+function actualizarDestinoTicket() {
+  const dest = document.getElementById("ticket-destino")?.value || "mixto";
+  const wrap = document.getElementById("ticket-destino-faena-wrap");
+  if (wrap) wrap.style.display = dest === "faena" ? "block" : "none";
+  if (dest === "faena") rellenarFaenasTicketDestino();
+  try { _sincronizarArticulosDesdeDom("ticket-tabla-wrap"); } catch (eSync) {}
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) tabla.classList.toggle("ticket-show-faena", true);
+  const data = _ticketGetData("ticket-tabla-wrap");
+  if (!data || !Array.isArray(data.articulos)) return;
+  if (dest === "almacen") {
+    data.articulos.forEach(a => { a.faena_id = "materiales"; });
+  } else if (dest === "faena") {
+    const fid = document.getElementById("ticket-destino-faena")?.value || "";
+    if (fid) data.articulos.forEach(a => { a.faena_id = fid; });
+  }
+  _ticketSetData("ticket-tabla-wrap", data);
+  if (tabla) _pintarListaAnalisisTicket(tabla);
+}
+
 async function cargarJsonTicketMovil() {
   const datos = _leerTablaAnalisisTicket();
   if (!datos) { toast("No hay análisis para guardar", true); return; }
-  const articulos = datos.articulos || [];
+  const articulos = (datos.articulos || []).map(a => {
+    const v = String(a.faena_id || "").trim();
+    const esMat = !v || v === "materiales" || v === "almacen" || v === "almacén";
+    return { ...a, faena_id: esMat ? "materiales" : v };
+  });
   if (!articulos.length) { toast("No se encontraron artículos", true); return; }
-  const dest = document.getElementById("ticket-destino")?.value || "almacen";
-  let faenaId = null;
-  if (dest === "faena") {
-    faenaId = document.getElementById("ticket-destino-faena")?.value || "";
-    if (!faenaId) { toast("Elige una faena", true); return; }
-    articulos.forEach(a => { if (!a.faena_id) a.faena_id = faenaId; });
-    datos.articulos = articulos;
-  } else {
-    articulos.forEach(a => { a.faena_id = null; });
-    datos.articulos = articulos;
+  const destGlobal = document.getElementById("ticket-destino")?.value || "mixto";
+  if (destGlobal === "faena") {
+    const fid = document.getElementById("ticket-destino-faena")?.value || "";
+    if (!fid && articulos.every(a => a.faena_id === "materiales")) {
+      toast("Elige una faena o un destino en cada material", true);
+      return;
+    }
+    if (fid) articulos.forEach(a => { if (a.faena_id === "materiales") a.faena_id = fid; });
   }
+  datos.articulos = articulos;
+  const algunoFaena = articulos.some(a => a.faena_id && a.faena_id !== "materiales");
   try {
     const r = await fetch(`${getServerUrl()}/secretario/aplicar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo: dest === "faena" ? "ticket" : "almacen", faena_id: faenaId, data: datos })
+      body: JSON.stringify({
+        tipo: algunoFaena ? "ticket" : "almacen",
+        faena_id: null,
+        data: datos
+      })
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "No se pudo guardar");
     const resumen = d.data || {};
-    toast(`Guardado: ${resumen.gastos_creados || 0} gastos, ${resumen.materiales_creados || 0} materiales, ${resumen.precios_actualizados || 0} precios`);
+    toast(`Guardado: ${resumen.gastos_creados || 0} en faenas, ${resumen.materiales_creados || 0} materiales nuevos, ${resumen.precios_actualizados || 0} precios`);
     cancelarTicket(false);
   } catch (e) {
     toast(e.message || "Error al guardar", true);
@@ -7235,7 +7281,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "65x";
+  const UI_VER = "65y";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {

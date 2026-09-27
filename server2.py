@@ -966,6 +966,7 @@ def get_ip():
     url_publica = f"{PUBLIC_BASE_URL}/movil2" if PUBLIC_BASE_URL else url_local
     return jsonify({"ok": True, "data": {"ip": ip_final, "url": url_publica, "url_local": url_local, "url_publica": PUBLIC_BASE_URL, "todas": ips}})
 
+
 @app.route("/api/info/ocr", methods=["GET"])
 def get_ocr_info():
     ruta = ""
@@ -2825,7 +2826,16 @@ def _normalizar_json_materiales_con_ia(texto_crudo, tipo="ticket", api_key=None,
 
 
 def _normalizar_articulo(art):
-    faena_item = _parse_faena_id_seguro(art.get("faena_id")) if isinstance(art, dict) else None
+    raw_faena = art.get("faena_id") if isinstance(art, dict) else None
+    solo_materiales = False
+    faena_item = None
+    if isinstance(art, dict) and "faena_id" in art:
+        s = str(raw_faena if raw_faena is not None else "").strip().lower()
+        if s in {"", "materiales", "almacen", "almacén", "none", "null"}:
+            solo_materiales = True
+            faena_item = None
+        else:
+            faena_item = _parse_faena_id_seguro(raw_faena)
     cantidad = _to_float_seguro(art.get("cantidad") if isinstance(art, dict) else 0)
     precio = _to_float_seguro(art.get("precio_unitario") if isinstance(art, dict) else 0)
     total = _to_float_seguro(art.get("total") if isinstance(art, dict) else 0)
@@ -2839,16 +2849,33 @@ def _normalizar_articulo(art):
         "unidad": str(art.get("unidad") or "ud").strip() or "ud",
         "categoria": str(art.get("categoria") or "").strip(),
         "definicion": str(art.get("definicion") or "").strip(),
+        "proveedor": str(art.get("proveedor") or "").strip(),
         "faena_id": faena_item,
+        "_solo_materiales": solo_materiales,
     }
 
 
 def _parse_faena_id_seguro(valor):
     try:
+        if isinstance(valor, str) and valor.strip().lower() in {
+            "", "materiales", "almacen", "almacén", "none", "null"
+        }:
+            return None
         faena_id = int(valor or 0)
         return faena_id if faena_id > 0 else None
     except Exception:
         return None
+
+
+def _faena_gasto_de_articulo(art_norm, faena_global):
+    """Destino de gasto por línea: faena concreta, o None = solo lista de materiales."""
+    if not isinstance(art_norm, dict):
+        return faena_global
+    if art_norm.get("_solo_materiales"):
+        return None
+    if art_norm.get("faena_id"):
+        return art_norm.get("faena_id")
+    return faena_global
 
 
 def _parse_bool_seguro(valor, por_defecto=True):
@@ -2942,7 +2969,7 @@ def _persistir_resultado_ia_en_nube(faena_id, origen, data):
                         )
                     resumen["precios_actualizados"] += 1
 
-                faena_linea = _parse_faena_id_seguro(a.get("faena_id")) or faena_id_ok
+                faena_linea = _faena_gasto_de_articulo(a, faena_id_ok)
                 if faena_linea:
                     conn.execute(
                         "INSERT INTO gastos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total, ticket_foto) VALUES (?, ?, ?, ?, ?, ?, ?)",
