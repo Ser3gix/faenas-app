@@ -1218,7 +1218,7 @@ textarea { resize: vertical; min-height: 80px; }
 <!-- ═══════════ HEADER ═══════════ -->
 <header>
   <span style="font-size:1.3rem">🪵</span>
-  <h1>Faenas <small id="ui-ver-label" style="font-size:0.65rem;font-weight:600;opacity:0.55">65v</small></h1>
+  <h1>Faenas</h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
   <span class="sync-ind ok" id="sync-ind" title="Estado de sincronización">Al día</span>
   <span id="sesion-badge">0</span>
@@ -3385,18 +3385,6 @@ let camaraDestinoTicket = false;
 let camaraDestinoGastoIa = null;
 let _capturaTicketActiva = false;
 
-// #region agent log
-function _dbgCam(hypothesisId, location, message, data) {
-  const payload = { sessionId: "5d25d7", runId: "gastos-ref", hypothesisId, location, message, data: Object.assign({ api: (typeof getServerUrl === "function" ? getServerUrl() : ""), host: String((typeof location !== "undefined" && location.host) || "") }, data || {}), timestamp: Date.now() };
-  try {
-    fetch("http://127.0.0.1:7619/ingest/c0c9228e-ad85-49b6-b82f-413e3067b4be", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5d25d7" }, body: JSON.stringify(payload) }).catch(() => {});
-  } catch (e0) {}
-  try {
-    const base = (typeof getServerUrl === "function") ? getServerUrl() : ((location.origin || "") + "/api");
-    fetch(`${String(base).replace(/\/$/, "")}/_debug_agent_log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
-  } catch (e1) {}
-}
-// #endregion
 
 function cerrarCamara() {
   const overlay = document.getElementById("camara-overlay");
@@ -3420,9 +3408,6 @@ async function abrirCamaraInApp() {
   const gum = (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function")
     ? (c) => navigator.mediaDevices.getUserMedia(c)
     : null;
-  // #region agent log
-  _dbgCam("B", "movil2.html:abrirCamaraInApp", "inicio", { hasGum: !!gum, secure: !!window.isSecureContext, proto: location.protocol, host: String(location.hostname || ""), destTicket: !!camaraDestinoTicket, destGasto: String(camaraDestinoGastoIa || "") });
-  // #endregion
   if (!gum) throw new Error("NO_GUM");
 
   overlay.classList.add("open");
@@ -3446,14 +3431,8 @@ async function abrirCamaraInApp() {
     overlay.classList.remove("open");
     const name = lastErr && lastErr.name ? String(lastErr.name) : "";
     const msg = (lastErr && lastErr.message) || name || "No se pudo abrir la cámara";
-    // #region agent log
-    _dbgCam("B", "movil2.html:abrirCamaraInApp", "gum falló", { name, msg: String(msg).slice(0, 120) });
-    // #endregion
     throw new Error(msg);
   }
-  // #region agent log
-  _dbgCam("B", "movil2.html:abrirCamaraInApp", "gum OK", { tracks: (camaraStream.getTracks && camaraStream.getTracks().length) || 0 });
-  // #endregion
   video.setAttribute("playsinline", "true");
   video.setAttribute("webkit-playsinline", "true");
   video.controls = false;
@@ -3466,9 +3445,6 @@ async function abrirCamaraInApp() {
 /** Cámara nativa del móvil (file+capture). El click debe ir en el mismo gesto del usuario (antes de cualquier await). */
 function abrirCamaraNativaArchivo(onFile) {
   return new Promise((resolve) => {
-    // #region agent log
-    _dbgCam("A", "movil2.html:abrirCamaraNativaArchivo", "click nativo", { destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
-    // #endregion
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -3479,9 +3455,6 @@ function abrirCamaraNativaArchivo(onFile) {
     const terminar = (file) => {
       if (hecho) return;
       hecho = true;
-      // #region agent log
-      _dbgCam("A", "movil2.html:abrirCamaraNativaArchivo", "change/cancel", { hasFile: !!file, size: file ? (file.size || 0) : 0, type: file ? String(file.type || "") : "" });
-      // #endregion
       setTimeout(() => { try { input.remove(); } catch (e) {} }, 800);
       resolve(file || null);
       if (file && typeof onFile === "function") onFile(file);
@@ -3501,35 +3474,20 @@ function tieneGetUserMedia() {
 
 async function abrirCamaraConFallback(onFileNativo) {
   const hasGum = tieneGetUserMedia();
-  // #region agent log
-  _dbgCam("A", "movil2.html:abrirCamaraConFallback", "entrada", { hasGum, secure: !!window.isSecureContext, destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
-  // #endregion
   // Sin GUM: click nativo YA (mismo gesto). No hacer await a abrirCamaraInApp antes.
   if (!hasGum) {
     const file = await abrirCamaraNativaArchivo();
     if (file && typeof onFileNativo === "function") await onFileNativo(file);
     else if (!file) toast("No se pudo abrir la cámara", true);
-    // #region agent log
-    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo nativo (sin gum)", { hasFile: !!file });
-    // #endregion
     return file ? "nativa" : "cancel";
   }
   try {
     await abrirCamaraInApp();
-    // #region agent log
-    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo inapp", { destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
-    // #endregion
     return "inapp";
   } catch (e) {
-    // #region agent log
-    _dbgCam("A", "movil2.html:abrirCamaraConFallback", "gum falló → nativo", { err: String((e && e.message) || e || "").slice(0, 120) });
-    // #endregion
     const file = await abrirCamaraNativaArchivo();
     if (file && typeof onFileNativo === "function") await onFileNativo(file);
     else if (!file) toast((e && e.message) || "No se pudo abrir la cámara", true);
-    // #region agent log
-    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo nativo tras gum", { hasFile: !!file });
-    // #endregion
     return file ? "nativa" : "cancel";
   }
 }
@@ -3564,9 +3522,6 @@ async function dispararCamara() {
   canvas.getContext("2d").drawImage(video, 0, 0);
   const paraTicket = camaraDestinoTicket;
   const gastoIaFaena = camaraDestinoGastoIa;
-  // #region agent log
-  _dbgCam("D", "movil2.html:dispararCamara", "disparo", { paraTicket: !!paraTicket, gastoIaFaena: String(gastoIaFaena || ""), w: video.videoWidth, h: video.videoHeight });
-  // #endregion
   cerrarCamara();
   const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
   if (!blob) { toast("No se pudo hacer la foto", true); return; }
@@ -3814,10 +3769,16 @@ function renderPanelGastos(f) {
 
   const htmlGastos = gastos.length
     ? `<div style="margin-bottom:6px;display:flex;justify-content:space-between;font-size:0.78rem;color:#888"><span>${gastos.length} gasto${gastos.length!==1?"s":""}</span><span style="color:var(--red);font-weight:600">Total: ${total.toFixed(2)} €</span></div>
-       ${gastos.map(g => `<div class="gasto-item" onclick="abrirGastoFabricacion('${faenaId}','${g.id}')" style="cursor:pointer" title="Pulsa para editar o eliminar">
-         <div class="gasto-desc">${escHtml(g.descripcion||"—")} <span class="badge b-gray" style="font-size:0.58rem">${escHtml(g.tipo||"gasto")}</span></div>
-         <div style="text-align:right">
+       ${gastos.map(g => `<div class="gasto-item" style="align-items:center">
+         <div class="gasto-desc" style="flex:1;min-width:0;cursor:pointer" onclick="abrirGastoFabricacion('${faenaId}','${g.id}')" title="Editar">
+           ${escHtml(g.descripcion||"—")} <span class="badge b-gray" style="font-size:0.58rem">${escHtml(g.tipo||"gasto")}</span>
+         </div>
+         <div style="text-align:right;flex-shrink:0">
            <div class="gasto-precio">${parseFloat(g.total||0).toFixed(2)} €</div>
+           <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px">
+             <button type="button" class="btn btn-s btn-inline" style="padding:2px 8px;font-size:0.72rem" onclick="event.stopPropagation();abrirGastoFabricacion('${faenaId}','${g.id}')">✏️</button>
+             <button type="button" class="btn btn-d btn-inline" style="padding:2px 8px;font-size:0.72rem" onclick="event.stopPropagation();eliminarGastoFabricacion('${faenaId}','${g.id}')">🗑️</button>
+           </div>
          </div>
        </div>`).join("")}`
     : `<div class="presup-empty">Sin gastos de fabricación.<br><small>Añade aquí jambas, herrajes, cortes, montaje y demás costes.</small></div>`;
@@ -3955,10 +3916,6 @@ async function procesarGastoDocumento(faenaId, file) {
 }
 
 async function capturarFotoGastoIA(faenaId) {
-  // Mismo flujo que Tickets en Render (tomarFotoDirecta): getUserMedia + overlay in-app.
-  // #region agent log
-  _dbgCam("E", "movil2.html:capturarFotoGastoIA", "tap Foto gastos (=flujo tickets)", { faenaId: String(faenaId || ""), uiVer: localStorage.getItem("faenas_ui_ver"), hasGum: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) });
-  // #endregion
   camaraDestinoTicket = false;
   camaraDestinoGastoIa = String(faenaId || "");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -3981,14 +3938,8 @@ async function capturarFotoGastoIA(faenaId) {
     video.srcObject = camaraStream;
     try { await video.play(); } catch (ePlay) {}
     document.getElementById("camara-overlay").classList.add("open");
-    // #region agent log
-    _dbgCam("C", "movil2.html:capturarFotoGastoIA", "overlay abierto", { faenaId: String(faenaId || "") });
-    // #endregion
   } catch (e) {
     camaraDestinoGastoIa = null;
-    // #region agent log
-    _dbgCam("C", "movil2.html:capturarFotoGastoIA", "gum falló → galería", { err: String((e && e.message) || e || "").slice(0, 120) });
-    // #endregion
     toast("Activa el permiso de cámara o usa Galería", true);
     seleccionarFotoGastoIA(faenaId);
   }
@@ -4045,10 +3996,18 @@ async function guardarGastoIA(faenaId) {
   }
 }
 
+function _buscarGastoFabricacion(f, gastoId) {
+  if (!f || gastoId == null || gastoId === "") return null;
+  const sid = String(gastoId);
+  const enReales = (f.gastos_reales || []).find(g => String(g.id) === sid);
+  if (enReales) return enReales;
+  return (f.gastos || []).find(g => String(g.id) === sid) || null;
+}
+
 function abrirGastoFabricacion(faenaId, gastoId = "") {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (!f) return;
-  const gasto = (f.gastos || []).find(g => String(g.id) === String(gastoId));
+  const gasto = _buscarGastoFabricacion(f, gastoId);
   document.getElementById("gasto-fab-faena-id").value = faenaId;
   document.getElementById("gasto-fab-id").value = gasto?.id || "";
   document.getElementById("gasto-fab-title").textContent = gasto ? "🧾 Editar gasto" : "🧾 Nuevo gasto";
@@ -4081,6 +4040,8 @@ async function guardarGastoFabricacion() {
     if (f) {
       const idx = (f.gastos || []).findIndex(g => String(g.id) === String(gastoId));
       if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo, cantidad, precio_unitario, total: cantidad * precio_unitario };
+      const idxR = (f.gastos_reales || []).findIndex(g => String(g.id) === String(gastoId));
+      if (idxR >= 0) f.gastos_reales[idxR] = { ...f.gastos_reales[idxR], descripcion, tipo, cantidad, precio_unitario, total: cantidad * precio_unitario };
       renderPanelGastos(f);
     }
     renderFaenas();
@@ -4147,6 +4108,7 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
     const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
     if (f) {
       f.gastos = (f.gastos || []).filter(g => String(g.id) !== String(gastoId));
+      f.gastos_reales = (f.gastos_reales || []).filter(g => String(g.id) !== String(gastoId));
       renderPanelGastos(f);
     }
     renderFaenas();
@@ -4176,6 +4138,7 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
   if (f) {
     f.gastos = (f.gastos || []).filter(g => String(g.id) !== String(gastoId));
+    f.gastos_reales = (f.gastos_reales || []).filter(g => String(g.id) !== String(gastoId));
     renderPanelGastos(f);
   }
   renderFaenas();
@@ -5308,11 +5271,11 @@ function _pintarListaAnalisisTicket(wrap) {
   if (!data) return;
   wrap._analisisData = data;
   const articulos = data.articulos || [];
-  let idx = Number(data.abiertoIdx);
-  if (!Number.isFinite(idx) || idx < 0 || idx >= articulos.length) idx = articulos.length ? 0 : -1;
-  data.abiertoIdx = idx;
+  // Mostrar todos los materiales (antes solo el primero y el resto quedaba oculto en Gastos).
+  data.abiertoIdx = articulos.length ? "all" : -1;
   _ticketSetData(containerId, data);
-  _rellenarSelectMaterialesTicket(containerId);
+  const wrapSel = document.getElementById("ticket-art-select-wrap");
+  if (wrapSel) wrapSel.style.display = "none";
 
   const mostrarFaena = _ticketMostrarFaenaEnTarjetas(containerId);
   const prov = escHtml(data.proveedor || "");
@@ -5325,19 +5288,25 @@ function _pintarListaAnalisisTicket(wrap) {
         <button type="button" class="btn btn-s" data-ticket-art-add="1">+ Añadir material</button>
       </div>`;
   } else {
-    const a = articulos[idx];
-    const nombre = escHtml(a.nombre || "(sin nombre)");
-    wrap.innerHTML = `
-      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""} · <strong>${articulos.length}</strong> material${articulos.length !== 1 ? "es" : ""}</div>
-      <div class="ticket-art-card" data-ticket-art-wrap="${idx}">
+    const cards = articulos.map((a, i) => {
+      const nombre = escHtml(a.nombre || "(sin nombre)");
+      const cant = Number(a.cantidad || 0);
+      const total = Number(a.total || (cant * Number(a.precio_unitario || 0)));
+      const cat = escHtml(a.categoria || a.unidad || "");
+      return `<div class="ticket-art-row-item open" data-ticket-art-wrap="${i}">
         <div class="ticket-art-row-head">
           <div class="ticket-art-row-main">
-            <div class="ticket-art-row-title">${idx + 1}. ${nombre}</div>
-            <div class="ticket-art-row-sub">Elige otro en la lista de arriba</div>
+            <div class="ticket-art-row-title">${i + 1}. ${nombre}</div>
+            <div class="ticket-art-row-sub">${cat ? `${cat} · ` : ""}cant. ${cant}</div>
           </div>
+          <div class="ticket-art-row-precio">${_fmtEurTicket(total)}</div>
         </div>
-        <div class="ticket-art-row-body">${_ticketArtBodyHtml(a, idx, mostrarFaena)}</div>
-      </div>
+        <div class="ticket-art-row-body">${_ticketArtBodyHtml(a, i, mostrarFaena)}</div>
+      </div>`;
+    }).join("");
+    wrap.innerHTML = `
+      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""} · <strong>${articulos.length}</strong> material${articulos.length !== 1 ? "es" : ""}</div>
+      <div class="ticket-art-list">${cards}</div>
       <div class="ticket-art-actions">
         <button type="button" class="btn btn-s" data-ticket-art-add="1">+ Añadir material</button>
       </div>`;
@@ -5379,16 +5348,6 @@ function _pintarListaAnalisisTicket(wrap) {
         }
       }
       _sincronizarArticulosDesdeDom(cid);
-      // Actualiza la etiqueta del select sin redibujar el formulario
-      try {
-        const data = _ticketGetData(cid);
-        const sel = document.getElementById("ticket-art-select");
-        if (data && sel && sel.selectedOptions[0] && data.articulos[data.abiertoIdx]) {
-          const a = data.articulos[data.abiertoIdx];
-          const i = Number(data.abiertoIdx);
-          sel.selectedOptions[0].textContent = `${i + 1}. ${a.nombre || "(sin nombre)"} — ${_fmtEurTicket(a.total)}`;
-        }
-      } catch (eLab) {}
     });
     wrap.addEventListener("change", () => {
       _sincronizarArticulosDesdeDom(wrap.id || "ticket-tabla-wrap");
@@ -5400,12 +5359,14 @@ function _sincronizarArticulosDesdeDom(containerId) {
   const wrap = document.getElementById(containerId);
   const data = _ticketGetData(containerId) || (wrap && wrap._analisisData);
   if (!wrap || !data) return;
-  const body = wrap.querySelector(".ticket-art-row-body");
-  const art = _leerArticuloDesdeBody(body);
-  const idx = Number(data.abiertoIdx);
-  if (art && Number.isFinite(idx) && idx >= 0) {
-    data.articulos[idx] = art;
-  }
+  wrap.querySelectorAll("[data-ticket-art-wrap]").forEach(el => {
+    const i = Number(el.getAttribute("data-ticket-art-wrap"));
+    const body = el.querySelector(".ticket-art-row-body");
+    const art = _leerArticuloDesdeBody(body);
+    if (art && Number.isFinite(i) && i >= 0 && Array.isArray(data.articulos)) {
+      data.articulos[i] = art;
+    }
+  });
   _ticketSetData(containerId, data);
   if (containerId === "ticket-tabla-wrap") {
     ticketAnalisisActual = {
@@ -5427,7 +5388,7 @@ function _renderTablaAnalisisTicket(data, containerId = "ticket-tabla-wrap", fae
     fecha: normalizado.fecha || "",
     faenaPorDefecto: faenaPorDefecto !== null && faenaPorDefecto !== undefined ? String(faenaPorDefecto) : null,
     articulos: articulos.map(a => ({ ...a })),
-    abiertoIdx: articulos.length ? 0 : -1
+    abiertoIdx: articulos.length ? "all" : -1
   };
   _ticketSetData(containerId, payload);
   if (containerId === "ticket-tabla-wrap") {
@@ -5529,7 +5490,7 @@ function eliminarTicketArticuloDesplegado(containerId, idx) {
   if (!wrap || !data || !Number.isFinite(idx)) return;
   if (!confirm("¿Eliminar este material de la lista?")) return;
   data.articulos.splice(idx, 1);
-  data.abiertoIdx = data.articulos.length ? Math.min(idx, data.articulos.length - 1) : -1;
+  data.abiertoIdx = data.articulos.length ? "all" : -1;
   _ticketSetData(containerId, data);
   if (containerId === "ticket-tabla-wrap") {
     ticketAnalisisActual = {
@@ -5562,7 +5523,7 @@ function anadirTicketArticuloLista(containerId) {
     total: 0,
     faena_id: data.faenaPorDefecto || null
   });
-  data.abiertoIdx = data.articulos.length - 1;
+  data.abiertoIdx = "all";
   _ticketSetData(containerId, data);
   _pintarListaAnalisisTicket(wrap);
 }
@@ -7274,11 +7235,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "65v";
-  // #region agent log
-  _dbgCam("I", "movil2.html:init", "arranque", { uiVerLs: localStorage.getItem("faenas_ui_ver"), uiVerCode: UI_VER, apiBase: String(window.FAENAS_API_BASE || ""), apiResolved: getServerUrl() });
-  // #endregion
-  try { sessionStorage.removeItem("faenas_cam_ctx"); } catch (eCtx) {}
+  const UI_VER = "65x";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7306,7 +7263,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=65v", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=65x", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
@@ -7352,16 +7309,6 @@ async function init() {
   }
 }
 
-window.addEventListener("error", (ev) => {
-  // #region agent log
-  try { _dbgCam("BOOT", "movil2.html:window.error", "js error", { msg: String((ev && ev.message) || ""), file: String((ev && ev.filename) || "").slice(-80), line: ev && ev.lineno }); } catch (e) {}
-  // #endregion
-});
-window.addEventListener("unhandledrejection", (ev) => {
-  // #region agent log
-  try { _dbgCam("BOOT", "movil2.html:unhandledrejection", "promise reject", { msg: String((ev && ev.reason && (ev.reason.message || ev.reason)) || ev.reason || "").slice(0, 200) }); } catch (e) {}
-  // #endregion
-});
 init();
 </script>
 </body>

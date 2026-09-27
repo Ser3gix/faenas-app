@@ -1287,6 +1287,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     </div>
     <div class="btn-row">
       <button class="btn btn-p" onclick="guardarGasto()">Guardar gasto</button>
+      <button class="btn btn-d" id="gasto-eliminar-btn" onclick="eliminarGastoDesdeModal()" style="display:none">🗑️ Eliminar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-gasto')">Cancelar</button>
     </div>
   </div>
@@ -3467,6 +3468,8 @@ function abrirGasto(faenaId) {
   document.getElementById("g-desc").value = "";
   document.getElementById("g-cant").value = "1";
   document.getElementById("g-precio").value = "";
+  const btnElim = document.getElementById("gasto-eliminar-btn");
+  if (btnElim) btnElim.style.display = "none";
   abrirModal("m-gasto");
 }
 function abrirEditarGasto(gastoId, faenaId) {
@@ -3479,6 +3482,8 @@ function abrirEditarGasto(gastoId, faenaId) {
   document.getElementById("g-tipo").value = gasto.tipo || "otro";
   document.getElementById("g-cant").value = gasto.cantidad ?? 1;
   document.getElementById("g-precio").value = gasto.precio_unitario ?? 0;
+  const btnElim = document.getElementById("gasto-eliminar-btn");
+  if (btnElim) btnElim.style.display = "inline-flex";
   cerrarModal("m-detalle");
   abrirModal("m-gasto");
 }
@@ -3504,8 +3509,23 @@ async function guardarGasto() {
 async function eliminarGasto(id, faenaId) {
   if (!confirm("¿Eliminar este gasto?")) return;
   const r = await api("DELETE", `/gastos/${id}`);
-  if (r.ok) verDetalle(faenaId);
+  if (r.ok) {
+    toast("✓ Gasto eliminado");
+    verDetalle(faenaId);
+  }
   else toast(r.error, true);
+}
+async function eliminarGastoDesdeModal() {
+  const faenaId = document.getElementById("gasto-faena-id").value;
+  const gastoId = document.getElementById("gasto-id").value;
+  if (!gastoId) return;
+  if (!confirm("¿Eliminar este gasto?")) return;
+  const r = await api("DELETE", `/gastos/${gastoId}`);
+  if (r.ok) {
+    toast("✓ Gasto eliminado");
+    cerrarModal("m-gasto");
+    await verDetalle(parseInt(faenaId));
+  } else toast(r.error, true);
 }
 
 // ===== CLIENTES =====
