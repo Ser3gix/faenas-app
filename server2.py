@@ -5904,6 +5904,33 @@ def polyboard_pdf():
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error generando PDF: {str(e)}"}), 500
 
+
+@app.route("/api/polyboard/optimizar", methods=["POST"])
+def polyboard_optimizar():
+    """Optimiza corte, metros de canto y costes a partir del despiece PolyBoard."""
+    datos = request.json or {}
+    piezas = datos.get("piezas") or {}
+    if not piezas:
+        return jsonify({"ok": False, "error": "No hay piezas para optimizar"}), 400
+    opciones = {
+        "margen_borde": datos.get("margen_borde", 10),
+        "espesor_sierra": datos.get("espesor_sierra", 4),
+        "permitir_rotacion": bool(datos.get("permitir_rotacion", False)),
+        "stock_tableros": datos.get("stock_tableros", 50),
+        "precio_corte_ml": datos.get("precio_corte_ml", 0.50),
+        "precio_cantear_ml": datos.get("precio_cantear_ml", 0.75),
+        "precio_material_canto_ml": datos.get("precio_material_canto_ml", 0.40),
+        "tableros": datos.get("tableros") or {},
+        "excluir_materiales": datos.get("excluir_materiales") or ["Separacion", "Separación", "separacion"],
+        "generar_esquemas": bool(datos.get("generar_esquemas", True)),
+    }
+    try:
+        from polyboard_optimizar import optimizar_despiece
+        resultado = optimizar_despiece(piezas, opciones)
+        return jsonify({"ok": True, "data": resultado})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error al optimizar: {str(e)}"}), 500
+
 # -------------------- PRESUPUESTO --------------------
 def leer_presupuesto_txt(ruta_txt):
     if not ruta_txt or not os.path.exists(ruta_txt):
