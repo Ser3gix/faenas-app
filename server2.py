@@ -1578,6 +1578,25 @@ def listar_tiempos(id):
         conn.close()
 
 
+@app.route("/api/faenas/<int:faena_id>/tiempos/<int:tid>", methods=["DELETE"])
+def eliminar_tiempo(faena_id, tid):
+    conn = get_connection()
+    try:
+        fila = conn.execute(
+            "SELECT id, faena_id FROM tiempos_faena WHERE id=? AND faena_id=?",
+            (tid, faena_id),
+        ).fetchone()
+        if not fila:
+            return jsonify({"ok": False, "error": "Tiempo no encontrado"}), 404
+        conn.execute("DELETE FROM tiempos_faena WHERE id=? AND faena_id=?", (tid, faena_id))
+        conn.commit()
+        return jsonify({"ok": True, "data": {"id": tid, "faena_id": faena_id}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
 @app.route("/api/faenas/<int:id>/tiempos/iniciar", methods=["POST"])
 def iniciar_tiempo(id):
     datos = request.json or {}
