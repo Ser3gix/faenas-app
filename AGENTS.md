@@ -18,6 +18,7 @@ Mantener los cambios pequeños, locales y alineados con lo que se pidió explíc
 - [context_builder.py](context_builder.py) prepara el contexto para Ollama.
 - [ollama_client.py](ollama_client.py) gestiona las consultas al modelo local.
 - [polyboard.py](polyboard.py) lee TXT de PolyBoard y genera PDF.
+- [polyboard_optimizar.py](polyboard_optimizar.py) optimiza corte, canto y costes (sección Optimizador del PC).
 
 ## Validación
 - No hay un sistema formal de tests en el repositorio.
