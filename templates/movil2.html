@@ -4579,37 +4579,28 @@ function renderPanelGastos(f) {
            </div>
          </div>
        </div>`).join("")}`
-    : `<div class="presup-empty">Sin gastos de fabricación.<br><small>Añade aquí jambas, herrajes, cortes, montaje y demás costes.</small></div>`;
+    : `<div class="presup-empty">Sin gastos de fabricación.</div>`;
 
   document.getElementById("p-gastos-content").innerHTML = `
     <div class="section-sep">
-      🧾 Gastos de fabricación
-      <button class="btn btn-p btn-inline" onclick="abrirGastoFabricacion('${faenaId}')">+ Gasto</button>
-    </div>
-    <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
-      Aquí metes tus costes de fabricación. No son presupuesto: son lo que te cuesta producir la faena.
-    </div>
-    ${pendientesGastos.length ? `<div class="pending-badge">⏳ ${pendientesGastos.length} gasto${pendientesGastos.length!==1?"s":""} pendiente${pendientesGastos.length!==1?"s":""} de sincronizar</div>` : ""}
-    <div class="section-sep" style="margin-top:6px">
-      💶 Costes de fabricación
-    </div>
-    ${htmlGastos}
-
-    <div class="section-sep" style="margin-top:16px">
-      🤖 Procesar ticket o factura con IA
+      🤖 Procesar ticket
       <div style="display:flex;gap:6px">
         <button class="btn btn-s btn-inline" onclick="capturarFotoGastoIA('${faenaId}')">📷 Foto</button>
         <button class="btn btn-s btn-inline" onclick="seleccionarFotoGastoIA('${faenaId}')">🖼️ Galería</button>
       </div>
-    </div>
-    <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
-      Igual que en Tickets: analiza al instante y guarda como gasto de esta faena, con el campo de faena ya cargado.
     </div>
     <div id="gasto-ia-estado-${faenaId}" style="display:none;margin-bottom:10px;font-size:0.85rem;text-align:center;padding:6px 0"></div>
     <div id="gasto-ia-box-${faenaId}" style="display:none;margin-bottom:16px">
       <div id="gasto-ia-tabla-${faenaId}"></div>
       <button class="btn btn-p" style="margin-top:8px" onclick="guardarGastoIA('${faenaId}')">✓ Guardar en gastos</button>
     </div>
+
+    <div class="section-sep" style="margin-top:10px">
+      🧾 Gastos
+      <button class="btn btn-p btn-inline" onclick="abrirGastoFabricacion('${faenaId}')">+ Gasto</button>
+    </div>
+    ${pendientesGastos.length ? `<div class="pending-badge">⏳ ${pendientesGastos.length} gasto${pendientesGastos.length!==1?"s":""} pendiente${pendientesGastos.length!==1?"s":""} de sincronizar</div>` : ""}
+    ${htmlGastos}
   `;
 }
 
@@ -8123,7 +8114,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66k";
+  const UI_VER = "66l";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8151,7 +8142,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66k", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66l", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
