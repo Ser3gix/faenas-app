@@ -29,6 +29,7 @@ from database import (
     generar_numero_faena, crear_carpeta_faena,
     fila_a_dict, filas_a_lista, listar_anotaciones_faena, insertar_anotacion_faena,
     CATEGORIAS_MATERIAL_DEFECTO,
+    _completar_datos_faenas_en_clientes, _usar_mysql,
 )
 from object_storage import r2_activo, r2_listo, r2_error, subir_bytes, borrar_objeto, descargar_bytes, clave_objeto, url_publica, probar_conexion, reiniciar_cliente
 from secretario import (
@@ -1111,6 +1112,11 @@ def editar_intermediario(id):
 @app.route("/api/clientes", methods=["GET"])
 def get_clientes():
     conn = get_connection()
+    try:
+        _completar_datos_faenas_en_clientes(conn.cursor(), mysql=_usar_mysql())
+        conn.commit()
+    except Exception:
+        pass
     filas = conn.execute("""
         SELECT c.*, i.nombre AS intermediario_nombre
         FROM clientes c
@@ -1168,6 +1174,20 @@ def editar_cliente(id):
         SET nombre=?, telefono=?, direccion=?, email=?, intermediario_id=?, notas=?
         WHERE id=?
     """, (nombre, telefono or "", direccion or "", email or "", intermediario_id or 0, notas or "", id))
+    # Propagar dirección a faenas del cliente que la tengan vacía
+    dir_limpia = (direccion or "").strip()
+    if dir_limpia:
+        try:
+            conn.execute(
+                """
+                UPDATE faenas
+                SET direccion=?
+                WHERE cliente_id=? AND TRIM(COALESCE(direccion, '')) = ''
+                """,
+                (dir_limpia, id),
+            )
+        except Exception:
+            pass
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -1379,19 +1399,39 @@ def crear_faena():
 
 @app.route("/api/faenas/<int:id>", methods=["PUT"])
 def editar_faena(id):
-    datos = request.json
+    datos = request.json or {}
     conn = get_connection()
+    fila = conn.execute("SELECT id, cliente_id FROM faenas WHERE id=?", (id,)).fetchone()
+    if not fila:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    direccion = datos.get("direccion", "")
     conn.execute("""
         UPDATE faenas
         SET direccion=?, tipo_trabajo=?, importe=?, fecha_inicio=?
         WHERE id=?
     """, (
-        datos.get("direccion", ""),
+        direccion,
         datos.get("tipo_trabajo", ""),
         datos.get("importe", 0),
         datos.get("fecha_inicio", ""),
         id
     ))
+    # Si el cliente no tiene dirección, rellenarla con la de la faena
+    dir_limpia = (direccion or "").strip()
+    cliente_id = fila["cliente_id"]
+    if cliente_id and dir_limpia:
+        try:
+            cli = conn.execute(
+                "SELECT direccion FROM clientes WHERE id=?", (cliente_id,)
+            ).fetchone()
+            if cli and not str(cli["direccion"] or "").strip():
+                conn.execute(
+                    "UPDATE clientes SET direccion=? WHERE id=?",
+                    (dir_limpia, cliente_id),
+                )
+        except Exception:
+            pass
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

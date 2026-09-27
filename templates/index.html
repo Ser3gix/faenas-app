@@ -1853,8 +1853,8 @@ function pathEscrituraDiferida(method, path) {
   const exempt = ["/config/", "/cursor/", "/secretario/", "/info/", "/polyboard/", "/faenas/sincronizar-pc"];
   if (exempt.some(x => p.startsWith(x) || p === x)) return false;
   if (/\/(documentos|fotos|archivo-zip|archivar|gastos\/importar-pdf|cobros)/.test(p)) return false;
-  // Borrar cliente debe ir a la API al momento (duplicados, sin cola)
-  if (method === "DELETE" && /^\/clientes\/[^/]+$/.test(p)) return false;
+  // Clientes: siempre a la API al momento (tabla alineada con la nube / móvil)
+  if (/^\/clientes(\/|$)/.test(p)) return false;
   return true;
 }
 
@@ -2922,6 +2922,11 @@ function renderClientes() {
     <tbody>${lista.map(c => {
       const trabajos = todasFaenas.filter(f => String(f.cliente_id) === String(c.id));
       const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
+      let dir = String(c.direccion || "").trim();
+      if (!dir) {
+        const fConDir = trabajos.find(f => String(f.direccion || "").trim());
+        dir = fConDir ? String(fConDir.direccion || "").trim() : "";
+      }
       const extra = [
         c.email || "",
         c.intermediario_nombre && c.intermediario_id !== 0 ? c.intermediario_nombre : "",
@@ -2933,7 +2938,7 @@ function renderClientes() {
           ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtmlPc(extra)}</div>` : ""}
         </td>
         <td>${c.telefono ? `<a href="tel:${escHtmlPc(c.telefono)}" style="color:var(--green)">${escHtmlPc(c.telefono)}</a>` : "—"}</td>
-        <td style="font-size:0.8rem;color:var(--muted)">${escHtmlPc(c.direccion || "—")}</td>
+        <td style="font-size:0.8rem;color:var(--muted)">${escHtmlPc(dir || "—")}</td>
         <td>${trabajos.length}</td>
         <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
         <td class="acciones">

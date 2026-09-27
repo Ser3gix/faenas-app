@@ -1395,6 +1395,57 @@ def _completar_datos_cliente_en_faenas(cursor, mysql=False):
         print(f"completar datos cliente en faenas: {exc}")
 
 
+def _completar_datos_faenas_en_clientes(cursor, mysql=False):
+    """Si el cliente no tiene dirección, la toma de su faena más reciente que sí la tenga."""
+    try:
+        if mysql:
+            cursor.execute(
+                """
+                UPDATE clientes c
+                INNER JOIN (
+                    SELECT f.cliente_id, f.direccion
+                    FROM faenas f
+                    INNER JOIN (
+                        SELECT cliente_id, MAX(id) AS max_id
+                        FROM faenas
+                        WHERE TRIM(COALESCE(direccion, '')) <> ''
+                        GROUP BY cliente_id
+                    ) u ON u.max_id = f.id
+                ) x ON x.cliente_id = c.id
+                SET c.direccion = TRIM(x.direccion)
+                WHERE TRIM(COALESCE(c.direccion, '')) = ''
+                """
+            )
+            n = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+        else:
+            cursor.execute(
+                """
+                UPDATE clientes
+                SET direccion = (
+                    SELECT TRIM(f.direccion)
+                    FROM faenas f
+                    WHERE f.cliente_id = clientes.id
+                      AND TRIM(COALESCE(f.direccion, '')) != ''
+                    ORDER BY f.id DESC
+                    LIMIT 1
+                )
+                WHERE TRIM(COALESCE(direccion, '')) = ''
+                  AND EXISTS (
+                    SELECT 1 FROM faenas f
+                    WHERE f.cliente_id = clientes.id
+                      AND TRIM(COALESCE(f.direccion, '')) != ''
+                  )
+                """
+            )
+            n = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+        if n:
+            print(f"✓ Clientes completados con dirección de faenas: {n}")
+        return n
+    except Exception as exc:
+        print(f"completar datos faenas en clientes: {exc}")
+        return 0
+
+
 def inicializar_db():
     os.makedirs(CARPETA_RAIZ, exist_ok=True)
     if _usar_mysql():
@@ -1405,9 +1456,11 @@ def inicializar_db():
         if _usar_mysql():
             _crear_esquema_mysql(cursor)
             _completar_datos_cliente_en_faenas(cursor, mysql=True)
+            _completar_datos_faenas_en_clientes(cursor, mysql=True)
         else:
             _crear_esquema_sqlite(cursor)
             _completar_datos_cliente_en_faenas(cursor, mysql=False)
+            _completar_datos_faenas_en_clientes(cursor, mysql=False)
         conn.commit()
     finally:
         conn.close()
