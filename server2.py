@@ -1492,12 +1492,68 @@ def _tiempo_activo(conn, faena_id=None):
         return None
 
 
+def _clave_sesion_tiempo(faena_id, categoria, inicio, fin):
+    return (
+        int(faena_id or 0),
+        str(categoria or "").strip(),
+        str(inicio or "").strip(),
+        str(fin or "").strip(),
+    )
+
+
+def _existe_sesion_tiempo(conn, faena_id, categoria, inicio, fin):
+    fila = conn.execute(
+        "SELECT id FROM tiempos_faena WHERE faena_id=? AND categoria=? AND inicio=? AND fin=? LIMIT 1",
+        (faena_id, categoria, inicio, fin),
+    ).fetchone()
+    return fila is not None
+
+
+def _deduplicar_tiempos(conn, faena_id=None):
+    """Deja una sola fila por (faena_id, categoria, inicio, fin); conserva el id más bajo."""
+    if faena_id:
+        filas = filas_a_lista(conn.execute(
+            "SELECT id, faena_id, categoria, inicio, fin FROM tiempos_faena WHERE faena_id=? ORDER BY id ASC",
+            (faena_id,),
+        ).fetchall())
+    else:
+        filas = filas_a_lista(conn.execute(
+            "SELECT id, faena_id, categoria, inicio, fin FROM tiempos_faena ORDER BY id ASC"
+        ).fetchall())
+    vistos = set()
+    borrar = []
+    for f in filas:
+        clave = _clave_sesion_tiempo(f.get("faena_id"), f.get("categoria"), f.get("inicio"), f.get("fin"))
+        if clave in vistos:
+            borrar.append(int(f.get("id")))
+        else:
+            vistos.add(clave)
+    for tid in borrar:
+        conn.execute("DELETE FROM tiempos_faena WHERE id=?", (tid,))
+    return {"conservados": len(vistos), "eliminados": len(borrar)}
+
+
 @app.route("/api/tiempos/activo", methods=["GET"])
 def tiempos_activo():
     conn = get_connection()
     try:
         fila = _tiempo_activo(conn)
         return jsonify({"ok": True, "data": _fila_tiempo(fila)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/tiempos/limpiar-duplicados", methods=["POST"])
+def limpiar_duplicados_tiempos():
+    datos = request.json or {}
+    faena_id = _parse_faena_id_seguro(datos.get("faena_id")) if datos.get("faena_id") is not None else None
+    conn = get_connection()
+    try:
+        resumen = _deduplicar_tiempos(conn, faena_id)
+        conn.commit()
+        return jsonify({"ok": True, "data": resumen})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         conn.close()
 
@@ -1597,6 +1653,7 @@ def sync_tiempos():
         return jsonify({"ok": False, "error": "Faltan sesiones"}), 400
     conn = get_connection()
     creados = 0
+    omitidos = 0
     try:
         for it in items:
             if not isinstance(it, dict):
@@ -1609,6 +1666,9 @@ def sync_tiempos():
             fin = str(it.get("fin") or "")
             if not inicio or not fin:
                 continue
+            if _existe_sesion_tiempo(conn, faena_id, categoria, inicio, fin):
+                omitidos += 1
+                continue
             minutos = _to_float_seguro(it.get("minutos"))
             conn.execute(
                 "INSERT INTO tiempos_faena (faena_id, categoria, inicio, fin, minutos, origen) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1616,7 +1676,7 @@ def sync_tiempos():
             )
             creados += 1
         conn.commit()
-        return jsonify({"ok": True, "data": {"creados": creados}})
+        return jsonify({"ok": True, "data": {"creados": creados, "omitidos": omitidos}})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
