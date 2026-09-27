@@ -275,6 +275,117 @@ textarea { resize: vertical; min-height: 70px; }
 .det-k { color: var(--muted); font-size: 0.72rem; }
 .det-v { color: var(--ink); font-weight: 500; max-width: 60%; text-align: right; }
 
+/* DETALLE FAENA — hub + secciones (PC) */
+#m-detalle .modal.pc-detalle-modal {
+  max-width: 920px;
+  width: 96%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 22px 16px;
+}
+#m-detalle .pc-detalle-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.pc-faena-hub {
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.pc-faena-hub.oculto { display: none; }
+.pc-faena-hub-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pc-faena-hub-meta {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.pc-faena-hub-dir {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.pc-faena-hub-importes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.pc-faena-hub-importes .hub-imp { color: var(--green); }
+.pc-faena-hub-wa {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #25D366;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pc-faena-hub-wa.visible { display: inline-flex; }
+.pc-faena-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.pc-faena-menu.oculto { display: none; }
+.pc-faena-menu-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 14px 10px;
+  border: 1px solid var(--sawdust);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pc-faena-menu-btn:hover { background: var(--paper-dark); }
+.pc-faena-menu-btn .mi { font-size: 1.25rem; line-height: 1; }
+.pc-faena-seccion-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sawdust);
+}
+.pc-faena-seccion-bar.visible { display: flex; }
+.pc-faena-seccion-titulo {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 0;
+}
+.pc-faena-seccion-body { display: none; }
+.pc-faena-seccion-body.visible { display: block; }
+
 /* PROMPT BOX */
 .prompt-box {
   background: #1a1208;
@@ -1179,9 +1290,9 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
 <!-- Modal Detalle Faena -->
 <div class="overlay" id="m-detalle">
-  <div class="modal" style="max-width:680px">
-    <div id="detalle-contenido"></div>
-    <div class="btn-row" style="margin-top:16px">
+  <div class="modal pc-detalle-modal">
+    <div id="detalle-contenido" class="pc-detalle-scroll"></div>
+    <div class="btn-row" style="margin-top:12px;flex-shrink:0">
       <button class="btn btn-s" onclick="cerrarModal('m-detalle')">Cerrar</button>
     </div>
   </div>
@@ -1370,7 +1481,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <div><label>Teléfono</label><input id="ec-tel" placeholder="600 000 000"></div>
       <div><label>Email</label><input id="ec-email" placeholder="correo@email.com"></div>
     </div>
-    <div class="form-grid g1"><div><label>Notas</label><textarea id="ec-notas" placeholder="Dirección, referencias..."></textarea></div></div>
+    <div class="form-grid g1"><div><label>Dirección</label><input id="ec-dir" placeholder="Calle, número, ciudad..."></div></div>
+    <div class="form-grid">
+      <div><label>Intermediario</label><select id="ec-inter"></select></div>
+    </div>
+    <div class="form-grid g1"><div><label>Notas</label><textarea id="ec-notas" placeholder="Referencias..."></textarea></div></div>
     <div class="btn-row">
       <button class="btn btn-p" onclick="guardarEditarCliente()">Guardar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-editar-cliente')">Cancelar</button>
@@ -1387,10 +1502,11 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <div><label>Teléfono</label><input id="c-tel" placeholder="600 000 000"></div>
       <div><label>Email</label><input id="c-email" placeholder="correo@email.com"></div>
     </div>
+    <div class="form-grid g1"><div><label>Dirección</label><input id="c-dir" placeholder="Calle, número, ciudad..."></div></div>
     <div class="form-grid">
       <div><label>Intermediario</label><select id="c-inter"></select></div>
     </div>
-    <div class="form-grid g1"><div><label>Notas</label><textarea id="c-notas" placeholder="Dirección, referencias..."></textarea></div></div>
+    <div class="form-grid g1"><div><label>Notas</label><textarea id="c-notas" placeholder="Referencias..."></textarea></div></div>
     <div class="btn-row">
       <button class="btn btn-p" onclick="crearCliente()">Guardar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-cliente')">Cancelar</button>
@@ -1630,7 +1746,9 @@ let state = {
   categorias: [], filtroCat: "",
   faseVista: "en_proceso",
   detalleId: null,
-  detalleActual: { gastos: [], presupuesto: [] }
+  detalleActual: { gastos: [], presupuesto: [] },
+  vistaDetallePc: "menu",
+  seccionDetallePc: 0
 };
 
 // ===== SESIÓN TEMPORAL (PC) =====
@@ -1652,6 +1770,8 @@ function pathEscrituraDiferida(method, path) {
   const exempt = ["/config/", "/cursor/", "/secretario/", "/info/", "/polyboard/", "/faenas/sincronizar-pc"];
   if (exempt.some(x => p.startsWith(x) || p === x)) return false;
   if (/\/(documentos|fotos|archivo-zip|archivar|gastos\/importar-pdf|cobros)/.test(p)) return false;
+  // Borrar cliente debe ir a la API al momento (duplicados, sin cola)
+  if (method === "DELETE" && /^\/clientes\/[^/]+$/.test(p)) return false;
   return true;
 }
 
@@ -2598,14 +2718,28 @@ function toast(msg, error = false) {
 }
 
 // ===== POBLAR SELECTS =====
+function buscarClientePorIdPc(id) {
+  if (id == null || id === "") return null;
+  const clave = String(id);
+  return (state.clientes || []).find(c => String(c.id) === clave) || null;
+}
+
 function direccionDeFaena(f) {
-  return (f && (f.direccion || f.cliente_direccion)) || "";
+  if (!f) return "";
+  const propia = String(f.direccion || "").trim();
+  if (propia) return propia;
+  const deCliente = String(f.cliente_direccion || "").trim();
+  if (deCliente) return deCliente;
+  const c = buscarClientePorIdPc(f.cliente_id);
+  return String((c && c.direccion) || "").trim();
 }
 
 function telefonoDeFaena(f) {
   if (!f) return "";
-  const cliente = (state.clientes || []).find(c => String(c.id) === String(f.cliente_id));
-  return f.cliente_telefono || f.cliente_tel || f.telefono || cliente?.telefono || "";
+  const propio = String(f.cliente_telefono || f.cliente_tel || f.telefono || "").trim();
+  if (propio) return propio;
+  const c = buscarClientePorIdPc(f.cliente_id);
+  return String((c && c.telefono) || "").trim();
 }
 
 function rellenarDatosClienteNuevaFaena() {
@@ -2621,10 +2755,13 @@ function rellenarDatosClienteNuevaFaena() {
 function poblarSelects() {
   const sc = document.getElementById("f-cliente");
   if (sc) sc.innerHTML = state.clientes.map(c => `<option value="${c.id}">${c.nombre}</option>`).join("");
+  const optsInter = state.intermediarios.map(i => `<option value="${i.id}">${i.id === 0 ? "— Directo —" : i.nombre}</option>`).join("");
   const si = document.getElementById("f-inter");
-  if (si) si.innerHTML = state.intermediarios.map(i => `<option value="${i.id}">${i.id === 0 ? "— Directo —" : i.nombre}</option>`).join("");
+  if (si) si.innerHTML = optsInter;
   const sci = document.getElementById("c-inter");
-  if (sci) sci.innerHTML = state.intermediarios.map(i => `<option value="${i.id}">${i.id === 0 ? "— Directo —" : i.nombre}</option>`).join("");
+  if (sci) sci.innerHTML = optsInter;
+  const eci = document.getElementById("ec-inter");
+  if (eci) eci.innerHTML = optsInter;
 }
 
 function poblarSelectsPrompts() {
@@ -2688,18 +2825,19 @@ function renderFaenas() {
 // ===== RENDER CLIENTES =====
 function renderClientes() {
   const q = document.getElementById("q-cliente").value.toLowerCase();
-  const lista = state.clientes.filter(c => !q || c.nombre.toLowerCase().includes(q));
+  const lista = state.clientes.filter(c => !q || (c.nombre || "").toLowerCase().includes(q));
   const el = document.getElementById("lista-clientes");
   if (!lista.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">👤</div>No hay clientes</div>`;
     return;
   }
+  const todasFaenas = [...(state.faenas || []), ...(state.terminadas || [])];
   el.innerHTML = `<div class="table-wrap"><table class="data-table">
     <thead><tr>
-      <th>Nombre</th><th>Teléfono</th><th>Faenas</th><th>Total</th><th>Acciones</th>
+      <th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Faenas</th><th>Total</th><th>Acciones</th>
     </tr></thead>
     <tbody>${lista.map(c => {
-      const trabajos = state.faenas.filter(f => f.cliente_id === c.id);
+      const trabajos = todasFaenas.filter(f => String(f.cliente_id) === String(c.id));
       const total = trabajos.reduce((s, f) => s + (f.importe || 0), 0);
       const extra = [
         c.email || "",
@@ -2708,16 +2846,39 @@ function renderClientes() {
       ].filter(Boolean).join(" · ");
       return `<tr>
         <td>
-          <strong>${c.nombre}</strong>
-          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>` : ""}
+          <strong>${escHtmlPc(c.nombre || "")}</strong>
+          ${extra ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtmlPc(extra)}</div>` : ""}
         </td>
-        <td>${c.telefono ? `<a href="tel:${c.telefono}" style="color:var(--green)">${c.telefono}</a>` : "—"}</td>
+        <td>${c.telefono ? `<a href="tel:${escHtmlPc(c.telefono)}" style="color:var(--green)">${escHtmlPc(c.telefono)}</a>` : "—"}</td>
+        <td style="font-size:0.8rem;color:var(--muted)">${escHtmlPc(c.direccion || "—")}</td>
         <td>${trabajos.length}</td>
         <td style="font-variant-numeric:tabular-nums;color:${total > 0 ? "var(--green)" : "var(--muted)"}">${total > 0 ? total.toFixed(2) + " €" : "—"}</td>
-        <td class="acciones"><button class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">Editar</button></td>
+        <td class="acciones">
+          <button type="button" class="btn btn-s btn-sm" onclick="abrirEditarCliente(${c.id})">Editar</button>
+          <button type="button" class="btn btn-d btn-sm" onclick="eliminarClientePc(${c.id})">Eliminar</button>
+        </td>
       </tr>`;
     }).join("")}</tbody>
   </table></div>`;
+}
+
+async function eliminarClientePc(id) {
+  const c = (state.clientes || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  const todasFaenas = [...(state.faenas || []), ...(state.terminadas || [])];
+  const n = todasFaenas.filter(f => String(f.cliente_id) === String(id)).length;
+  if (n > 0) {
+    toast(`No se puede eliminar: tiene ${n} faena${n !== 1 ? "s" : ""} asociada${n !== 1 ? "s" : ""}`, true);
+    return;
+  }
+  if (!confirm(`¿Eliminar el cliente "${c.nombre || ""}"?`)) return;
+  const r = await api("DELETE", `/clientes/${id}`);
+  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  state.clientes = (state.clientes || []).filter(x => String(x.id) !== String(id));
+  try { localStorage.setItem("pc_clientes_cache", JSON.stringify(state.clientes)); } catch (e) {}
+  toast("✓ Cliente eliminado");
+  renderClientes();
+  poblarSelects();
 }
 
 // ===== RENDER INTERMEDIARIOS =====
@@ -2897,6 +3058,9 @@ async function verDetalle(id, opts) {
       presupuesto = merged.presupuesto;
     }
     state.detalleId = id;
+    state.vistaDetallePc = "menu";
+    state.seccionDetallePc = 0;
+    state._detalleShellFaenaId = null;
     state.detalleActual = { gastos, presupuesto, cobros };
     state.detalleCache = {
       anotaciones,
@@ -2964,55 +3128,157 @@ async function verDetalle(id, opts) {
   abrirModal("m-detalle");
 }
 
-function pintarDetalleFaenaPc(f, data) {
-  const { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml, cobros = [] } = data;
-  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
-  const tel = telefonoDeFaena(f) || cliente?.telefono || "";
-  const bloquesP = bloquesDePresupuestoPc(presupuesto);
-  const totalPresupuesto = bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
-  const totalGastos = gastos.reduce((s, g) => s + (g.total || 0), 0);
-  const fList = state.faenas.find(x => String(x.id) === String(f.id)) || (state.terminadas || []).find(x => String(x.id) === String(f.id));
-  if (fList) {
-    fList.importe = totalPresupuesto;
-    fList.total_incluido = totalPresupuesto;
-  }
-  try { renderFaenas(); } catch (e) {}
-  const esDirecto = f.intermediario_id === 0;
-  function formatBytes(b) {
-    if (b < 1024) return b + " B";
-    if (b < 1048576) return (b/1024).toFixed(1) + " KB";
-    return (b/1048576).toFixed(1) + " MB";
-  }
-  function iconoArchivo(ext) {
-    const map = { ".pdf": "📄", ".txt": "📝", ".pol": "🪵", ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".doc": "📃", ".docx": "📃", ".xls": "📊", ".xlsx": "📊" };
-    return map[ext] || "📎";
-  }
-  document.getElementById("detalle-contenido").innerHTML = `
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center">
-      <div>🔨 <span class="num-faena">${f.numero}</span>
-      &nbsp; <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : f.intermediario_nombre}</span></div>
+const SECCIONES_FAENA_PC = [
+  "Datos", "Presupuesto", "A cuenta", "Documentos", "Fotos", "Gastos", "Tiempos", "Anotaciones"
+];
+
+function telefonoWhatsAppPc(tel) {
+  let d = String(tel || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.length === 9 && /^[6789]/.test(d)) d = "34" + d;
+  if (d.length < 10) return "";
+  return d;
+}
+
+function formatBytesDetallePc(b) {
+  if (b < 1024) return b + " B";
+  if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+  return (b / 1048576).toFixed(1) + " MB";
+}
+
+function iconoArchivoDetallePc(ext) {
+  const map = { ".pdf": "📄", ".txt": "📝", ".pol": "🪵", ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".doc": "📃", ".docx": "📃", ".xls": "📊", ".xlsx": "📊" };
+  return map[ext] || "📎";
+}
+
+function totalPresupuestoDesdeDataPc(presupuesto) {
+  const bloquesP = bloquesDePresupuestoPc(presupuesto || []);
+  return bloquesP.reduce((s, b) => s + (b.incluido ? (parseFloat(b.total_incluido) || parseFloat(b.total) || 0) : 0), 0);
+}
+
+function construirShellDetallePc(f) {
+  const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
+  const shell = document.getElementById("detalle-contenido");
+  if (!shell) return;
+  shell.innerHTML = `
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>🔨 <span class="num-faena" id="pc-det-num">${escHtmlPc(f.numero || "")}</span>
+      &nbsp; <span class="badge ${esDirecto ? "b-direct" : "b-inter"}" id="pc-det-badge">${esDirecto ? "Directo" : escHtmlPc(f.intermediario_nombre || "—")}</span>
+      &nbsp; <span id="pc-det-cliente" style="font-weight:600">${escHtmlPc(f.cliente_nombre || "—")}</span></div>
       <button class="btn btn-s btn-sm" onclick="cerrarModal('m-detalle');abrirEditarFaena(${f.id})">✏️ Editar</button>
     </div>
-    <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${f.tipo_trabajo || "—"}</span></div>
-    <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${f.cliente_nombre}${tel ? `<br><a href="tel:${tel}" style="color:var(--green);font-size:0.78rem">📞 ${tel}</a>` : ""}</span></div>
-    <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${direccionDeFaena(f) || "—"}</span></div>
-    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600" id="detalle-importe-val">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
-    <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${f.fecha_inicio || "—"}</span></div>
-    ${tiemposHtml}
-    <hr>
-    ${htmlCobrosDetallePc(f, cobros, totalPresupuesto)}
-    <hr>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">📷 Fotos (${fotos.length})</strong>
+    <div class="pc-faena-hub" id="pc-detalle-hub">
+      <div class="pc-faena-hub-top">
+        <div class="pc-faena-hub-meta" id="pc-hub-meta"></div>
+        <a class="pc-faena-hub-wa" id="pc-hub-wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+      <div class="pc-faena-hub-dir" id="pc-hub-dir"></div>
+      <div class="pc-faena-hub-importes" id="pc-hub-importes"></div>
     </div>
-    ${fotos.length ? `
+    <div class="pc-faena-menu" id="pc-detalle-menu">
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(0)"><span class="mi">📋</span>Datos</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(1)"><span class="mi">€</span>Presupuesto</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(2)"><span class="mi">💵</span>A cuenta</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(3)"><span class="mi">📄</span>Documentos</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(4)"><span class="mi">📷</span>Fotos</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(5)"><span class="mi">🧾</span>Gastos</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(6)"><span class="mi">⏱</span>Tiempos</button>
+      <button type="button" class="pc-faena-menu-btn" onclick="irASeccionPc(7)"><span class="mi">📝</span>Anotaciones</button>
+    </div>
+    <div class="pc-faena-seccion-bar" id="pc-detalle-seccion-bar">
+      <button type="button" class="btn btn-s btn-sm" onclick="volverAlMenuDetallePc()">← Secciones</button>
+      <div class="pc-faena-seccion-titulo" id="pc-detalle-seccion-titulo"></div>
+    </div>
+    <div class="pc-faena-seccion-body" id="pc-detalle-seccion-body"></div>
+  `;
+}
+
+function escHtmlPc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function actualizarHubDetallePc(f, data) {
+  const presupuesto = data.presupuesto || [];
+  const cobros = data.cobros || [];
+  const totalPresupuesto = totalPresupuestoDesdeDataPc(presupuesto);
+  const entregado = cobros.reduce((s, c) => s + (parseFloat(c.importe) || 0), 0);
+  const esDirecto = !f.intermediario_id || f.intermediario_id === 0;
+  const meta = document.getElementById("pc-hub-meta");
+  const dirEl = document.getElementById("pc-hub-dir");
+  const impEl = document.getElementById("pc-hub-importes");
+  const waEl = document.getElementById("pc-hub-wa");
+  const badge = document.getElementById("pc-det-badge");
+  const numEl = document.getElementById("pc-det-num");
+  const cliEl = document.getElementById("pc-det-cliente");
+  if (numEl) numEl.textContent = f.numero || "";
+  if (cliEl) cliEl.textContent = f.cliente_nombre || "—";
+  if (badge) {
+    badge.className = "badge " + (esDirecto ? "b-direct" : "b-inter");
+    badge.textContent = esDirecto ? "Directo" : (f.intermediario_nombre || "—");
+  }
+  if (meta) {
+    meta.innerHTML = `${escHtmlPc(f.tipo_trabajo || "—")} · <span class="badge ${esDirecto ? "b-direct" : "b-inter"}">${esDirecto ? "Directo" : escHtmlPc(f.intermediario_nombre || "—")}</span>`;
+  }
+  if (dirEl) {
+    const dir = direccionDeFaena(f) || "";
+    dirEl.textContent = dir || "—";
+    dirEl.style.display = dir ? "" : "none";
+  }
+  if (impEl) {
+    const totTxt = totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—";
+    const cobTxt = entregado > 0 ? entregado.toFixed(2) + " €" : "0,00 €";
+    impEl.innerHTML = `<span class="hub-imp">${totTxt}</span><span>A cta ${cobTxt}</span>`;
+  }
+  if (waEl) {
+    const tel = telefonoDeFaena(f);
+    const wa = telefonoWhatsAppPc(tel);
+    if (wa) {
+      waEl.href = "https://wa.me/" + wa;
+      waEl.classList.add("visible");
+    } else {
+      waEl.href = "#";
+      waEl.classList.remove("visible");
+    }
+  }
+  const hub = document.getElementById("pc-detalle-hub");
+  if (hub) {
+    const showHub = state.vistaDetallePc === "menu" || state.seccionDetallePc === 0;
+    hub.classList.toggle("oculto", !showHub);
+  }
+}
+
+function htmlDatosDetallePc(f, data) {
+  const cliente = state.clientes.find(c => String(c.id) === String(f.cliente_id));
+  const tel = telefonoDeFaena(f) || cliente?.telefono || "";
+  const totalPresupuesto = totalPresupuestoDesdeDataPc(data.presupuesto || []);
+  return `
+    <div class="det-row"><span class="det-k">Tipo de trabajo</span><span class="det-v">${escHtmlPc(f.tipo_trabajo || "—")}</span></div>
+    <div class="det-row"><span class="det-k">Cliente</span><span class="det-v">${escHtmlPc(f.cliente_nombre || "—")}${tel ? `<br><span style="color:var(--green);font-size:0.78rem">📞 ${escHtmlPc(tel)}</span>` : ""}</span></div>
+    <div class="det-row"><span class="det-k">Dirección</span><span class="det-v">${escHtmlPc(direccionDeFaena(f) || "—")}</span></div>
+    <div class="det-row"><span class="det-k">Importe</span><span class="det-v" style="color:var(--green);font-weight:600" id="detalle-importe-val">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</span></div>
+    <div class="det-row"><span class="det-k">Fecha inicio</span><span class="det-v">${escHtmlPc(f.fecha_inicio || "—")}</span></div>
+  `;
+}
+
+function htmlFotosDetallePc(f, fotos) {
+  const lista = Array.isArray(fotos) ? fotos : [];
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong style="font-size:0.85rem">📷 Fotos (${lista.length})</strong>
+    </div>
+    ${lista.length ? `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:8px">
-        ${fotos.map(foto => `
+        ${lista.map(foto => `
           <div style="position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:1px solid var(--sawdust)">
-            <img src="${foto.data}" alt="${foto.nombre}"
+            <img src="${foto.data}" alt="${escHtmlPc(foto.nombre)}"
                  style="width:100%;height:100%;object-fit:cover;cursor:pointer"
-                 onclick="verFotoPC('${foto.data}','${foto.nombre}')">
-            <button onclick="eliminarFotoPC(${f.id},'${foto.nombre}')"
+                 onclick="verFotoPC('${foto.data}','${String(foto.nombre || "").replace(/'/g, "\\'")}')">
+            <button onclick="eliminarFotoPC(${f.id},'${String(foto.nombre || "").replace(/'/g, "\\'")}')"
                     style="position:absolute;top:4px;right:4px;background:rgba(139,32,32,0.85);color:white;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:0.75rem;display:flex;align-items:center;justify-content:center">×</button>
           </div>
         `).join("")}
@@ -3020,66 +3286,77 @@ function pintarDetalleFaenaPc(f, data) {
     ` : (state.detalleCache && state.detalleCache.secundarioPendiente
       ? '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Cargando fotos…</p>'
       : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin fotos — súbelas desde el móvil</p>')}
-    <hr>
-    <div class="btn-row" style="margin:0;gap:6px">
+  `;
+}
+
+function htmlDocumentosDetallePc(f, docs) {
+  const lista = Array.isArray(docs) ? docs : [];
+  return `
+    <div class="btn-row" style="margin:0 0 8px;gap:6px">
       <button class="btn btn-s btn-sm" onclick="document.getElementById('doc-upload-${f.id}').click()">+ Añadir</button>
       <input id="doc-upload-${f.id}" type="file" multiple style="display:none" onchange="subirDocumento(${f.id}, this)">
     </div>
-    ${docs.length ? `
+    ${lista.length ? `
       <div style="border:1px solid var(--sawdust);border-radius:6px;overflow:hidden;margin-bottom:8px">
-        ${docs.map(d => `
+        ${lista.map(d => `
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--sawdust);font-size:0.8rem;background:white">
-            <span style="font-size:1.1rem">${iconoArchivo(d.extension)}</span>
+            <span style="font-size:1.1rem">${iconoArchivoDetallePc(d.extension)}</span>
             <div style="flex:1;min-width:0">
-              <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.nombre}</div>
-              <div style="font-size:0.68rem;color:#aaa">${formatBytes(d.tamaño)}</div>
+              <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtmlPc(d.nombre)}</div>
+              <div style="font-size:0.68rem;color:#aaa">${formatBytesDetallePc(d.tamaño)}</div>
             </div>
-            <button class="btn btn-s btn-sm" onclick="abrirDocumento(${f.id},'${d.nombre}')">Descargar</button>
-            <button class="btn btn-p btn-sm" onclick="analizarDocumentoFaena(${f.id},'${String(d.nombre||"").replace(/'/g, "\\'")}')">Analizar</button>
-            <button class="btn btn-d btn-sm" onclick="eliminarDocumento(${f.id},'${d.nombre}')">×</button>
+            <button class="btn btn-s btn-sm" onclick="abrirDocumento(${f.id},'${String(d.nombre || "").replace(/'/g, "\\'")}')">Descargar</button>
+            <button class="btn btn-p btn-sm" onclick="analizarDocumentoFaena(${f.id},'${String(d.nombre || "").replace(/'/g, "\\'")}')">Analizar</button>
+            <button class="btn btn-d btn-sm" onclick="eliminarDocumento(${f.id},'${String(d.nombre || "").replace(/'/g, "\\'")}')">×</button>
           </div>
         `).join("")}
       </div>
     ` : (state.detalleCache && state.detalleCache.secundarioPendiente
       ? '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Cargando documentos…</p>'
       : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin documentos</p>')}
-    <hr>
-    <div id="detalle-presupuesto-wrap">
-    ${htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto)}
-    </div>
-    <hr>
+  `;
+}
+
+function htmlGastosDetallePc(f, gastos) {
+  const lista = Array.isArray(gastos) ? gastos : [];
+  const totalGastos = lista.reduce((s, g) => s + (g.total || 0), 0);
+  return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">Gastos de fabricación (${gastos.length})</strong>
+      <strong style="font-size:0.85rem">Gastos de fabricación (${lista.length})</strong>
       <button class="btn btn-s btn-sm" onclick="cerrarModal('m-detalle');abrirGasto(${f.id})">+ Gasto</button>
     </div>
-    ${gastos.length ? `
+    ${lista.length ? `
       <table class="gastos-table">
         <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
         <tbody>
-          ${gastos.map(g => `<tr>
-            <td>${g.descripcion}</td>
-            <td><span class="badge b-gray">${g.tipo}</span></td>
+          ${lista.map(g => `<tr>
+            <td>${escHtmlPc(g.descripcion)}</td>
+            <td><span class="badge b-gray">${escHtmlPc(g.tipo)}</span></td>
             <td>${g.cantidad}</td>
             <td>${parseFloat(g.precio_unitario).toFixed(2)} €</td>
             <td><strong>${parseFloat(g.total).toFixed(2)} €</strong></td>
             <td><div class="btn-row" style="margin:0;gap:4px;justify-content:flex-end"><button class="btn btn-s btn-sm" onclick="abrirEditarGasto(${g.id}, ${f.id})">✏️</button><button class="btn btn-d btn-sm" onclick="eliminarGasto(${g.id}, ${f.id})">×</button></div></td>
-          </tr>
-           `).join("")}
+          </tr>`).join("")}
         </tbody>
-       </table>
+      </table>
       <div class="gastos-total">Total gastos: ${totalGastos.toFixed(2)} €</div>
     ` : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin gastos registrados</p>'}
-    <hr>
+  `;
+}
+
+function htmlAnotacionesDetallePc(f, anotaciones) {
+  const lista = Array.isArray(anotaciones) ? anotaciones : [];
+  return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:0.85rem">Anotaciones (${anotaciones.length})</strong>
-      <button class="btn btn-s btn-sm" onclick="nuevaAnotacion(${f.id})">+ Nota</button>
+      <strong style="font-size:0.85rem">Anotaciones (${lista.length})</strong>
+      <button class="btn btn-s btn-sm" onclick="abrirAnotacion(${f.id})">+ Nota</button>
     </div>
-    ${anotaciones.length ? anotaciones.map(a => `
+    ${lista.length ? lista.map(a => `
       <div style="background:var(--paper-dark);border-radius:4px;padding:10px 12px;margin-bottom:8px;font-size:0.8rem;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1">
-          <span class="badge b-gray" style="margin-bottom:4px">${a.tipo}</span>
-          <div style="margin-top:4px;line-height:1.5">${a.contenido}</div>
-          <div style="font-size:0.68rem;color:#aaa;margin-top:4px">${a.fecha || ""}</div>
+          <span class="badge b-gray" style="margin-bottom:4px">${escHtmlPc(a.tipo)}</span>
+          <div style="margin-top:4px;line-height:1.5">${escHtmlPc(a.contenido)}</div>
+          <div style="font-size:0.68rem;color:#aaa;margin-top:4px">${escHtmlPc(a.fecha || "")}</div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button class="btn btn-s btn-sm" onclick='editarAnotacion(${a.id}, ${JSON.stringify(a.tipo)}, ${JSON.stringify(a.contenido)}, ${f.id})'>✏️</button>
@@ -3088,6 +3365,104 @@ function pintarDetalleFaenaPc(f, data) {
       </div>
     `).join("") : '<p style="font-size:0.82rem;color:#aaa;margin:8px 0">Sin anotaciones</p>'}
   `;
+}
+
+function htmlTiemposDetallePc(tiemposHtml) {
+  return `<div style="margin-bottom:8px"><strong style="font-size:0.85rem">⏱ Tiempos</strong></div>${tiemposHtml || '<div class="det-row"><span class="det-k">Tiempos</span><span class="det-v">Sin registrar</span></div>'}`;
+}
+
+function htmlSeccionDetallePc(idx, f, data) {
+  const presupuesto = data.presupuesto || [];
+  const bloquesP = bloquesDePresupuestoPc(presupuesto);
+  const totalPresupuesto = totalPresupuestoDesdeDataPc(presupuesto);
+  switch (Number(idx)) {
+    case 0: return htmlDatosDetallePc(f, data);
+    case 1: return `<div id="detalle-presupuesto-wrap">${htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto)}</div>`;
+    case 2: return htmlCobrosDetallePc(f, data.cobros || [], totalPresupuesto);
+    case 3: return htmlDocumentosDetallePc(f, data.docs || []);
+    case 4: return htmlFotosDetallePc(f, data.fotos || []);
+    case 5: return htmlGastosDetallePc(f, data.gastos || []);
+    case 6: return htmlTiemposDetallePc(data.tiemposHtml);
+    case 7: return htmlAnotacionesDetallePc(f, data.anotaciones || []);
+    default: return "";
+  }
+}
+
+function mostrarHubFaenaResumenPc(visible) {
+  const hub = document.getElementById("pc-detalle-hub");
+  if (hub) hub.classList.toggle("oculto", !visible);
+}
+
+function volverAlMenuDetallePc() {
+  state.vistaDetallePc = "menu";
+  const menu = document.getElementById("pc-detalle-menu");
+  const bar = document.getElementById("pc-detalle-seccion-bar");
+  const body = document.getElementById("pc-detalle-seccion-body");
+  if (menu) menu.classList.remove("oculto");
+  if (bar) bar.classList.remove("visible");
+  if (body) {
+    body.classList.remove("visible");
+    body.innerHTML = "";
+  }
+  mostrarHubFaenaResumenPc(true);
+  const f = state._detallePaintFaena;
+  const data = state._detallePaintData;
+  if (f && data) actualizarHubDetallePc(f, data);
+}
+
+function irASeccionPc(idx) {
+  const i = Number(idx);
+  if (!Number.isFinite(i) || i < 0 || i >= SECCIONES_FAENA_PC.length) return;
+  const f = state._detallePaintFaena;
+  const data = state._detallePaintData;
+  if (!f || !data) return;
+  state.vistaDetallePc = "panel";
+  state.seccionDetallePc = i;
+  const menu = document.getElementById("pc-detalle-menu");
+  const bar = document.getElementById("pc-detalle-seccion-bar");
+  const titulo = document.getElementById("pc-detalle-seccion-titulo");
+  const body = document.getElementById("pc-detalle-seccion-body");
+  if (menu) menu.classList.add("oculto");
+  if (bar) bar.classList.add("visible");
+  if (titulo) titulo.textContent = SECCIONES_FAENA_PC[i] || "";
+  if (body) {
+    body.classList.add("visible");
+    body.innerHTML = htmlSeccionDetallePc(i, f, data);
+  }
+  mostrarHubFaenaResumenPc(i === 0);
+  if (i === 0) actualizarHubDetallePc(f, data);
+}
+
+function pintarDetalleFaenaPc(f, data) {
+  const { presupuesto = [], gastos = [], cobros = [] } = data;
+  const totalPresupuesto = totalPresupuestoDesdeDataPc(presupuesto);
+  const fList = state.faenas.find(x => String(x.id) === String(f.id)) || (state.terminadas || []).find(x => String(x.id) === String(f.id));
+  if (fList) {
+    fList.importe = totalPresupuesto;
+    fList.total_incluido = totalPresupuesto;
+  }
+  try { renderFaenas(); } catch (e) {}
+
+  const shellOk = document.getElementById("pc-detalle-hub");
+  const cambioFaena = String(state._detalleShellFaenaId) !== String(f.id);
+  if (!shellOk || cambioFaena) {
+    state._detalleShellFaenaId = f.id;
+    if (cambioFaena || state.vistaDetallePc == null) {
+      state.vistaDetallePc = "menu";
+      state.seccionDetallePc = 0;
+    }
+    construirShellDetallePc(f);
+  }
+
+  state._detallePaintFaena = f;
+  state._detallePaintData = data;
+  actualizarHubDetallePc(f, data);
+
+  if (state.vistaDetallePc === "panel") {
+    irASeccionPc(state.seccionDetallePc);
+  } else {
+    volverAlMenuDetallePc();
+  }
 }
 
 function fechaHoyIsoLocalPc() {
@@ -3135,23 +3510,76 @@ function htmlCobrosDetallePc(f, cobros, totalPresupuesto) {
     <div class="gastos-total">Entregado: ${entregado.toFixed(2)} € · Pendiente: ${pendiente.toFixed(2)} €</div>`;
 }
 
-async function guardarCobroPc(faenaId) {
-  const importe = parseFloat(document.getElementById("cobro-pc-importe")?.value || "0") || 0;
-  const fecha = (document.getElementById("cobro-pc-fecha")?.value || fechaHoyIsoLocalPc()).trim();
-  const nota = (document.getElementById("cobro-pc-nota")?.value || "").trim();
-  if (importe <= 0) { toast("Indica un importe", true); return; }
-  const r = await api("POST", `/faenas/${faenaId}/cobros`, { importe, fecha, nota, origen: "pc" });
-  if (!r.ok) { toast(r.error || "No se pudo guardar", true); return; }
-  toast("Cobro guardado");
-  await verDetalle(faenaId);
+function _repintarCobrosDetallePc(faenaId) {
+  const f = state.faenas.find(x => String(x.id) === String(faenaId))
+    || (state.terminadas || []).find(x => String(x.id) === String(faenaId));
+  if (!f || !document.getElementById("m-detalle")?.classList.contains("open")) return;
+  const cobros = (state.detalleActual && state.detalleActual.cobros) || [];
+  pintarDetalleFaenaPc(f, {
+    anotaciones: state.detalleCache?.anotaciones || [],
+    presupuesto: state.detalleActual?.presupuesto || [],
+    gastos: state.detalleActual?.gastos || [],
+    cobros,
+    docs: state.detalleCache?.docs || [],
+    fotos: state.detalleCache?.fotos || [],
+    tiemposHtml: state.detalleCache?.tiemposHtml || ""
+  });
 }
 
-async function eliminarCobroPc(faenaId, cobroId) {
+function guardarCobroPc(faenaId) {
+  const importeEl = document.getElementById("cobro-pc-importe");
+  const fechaEl = document.getElementById("cobro-pc-fecha");
+  const notaEl = document.getElementById("cobro-pc-nota");
+  const importe = parseFloat(importeEl?.value || "0") || 0;
+  const fecha = (fechaEl?.value || fechaHoyIsoLocalPc()).trim();
+  const nota = (notaEl?.value || "").trim();
+  if (importe <= 0) { toast("Indica un importe", true); return; }
+  const tempId = `tmp_cobro_${Date.now()}`;
+  const nuevo = { id: tempId, faena_id: faenaId, importe, fecha, nota, origen: "pc", _temp: true };
+  if (!state.detalleActual) state.detalleActual = {};
+  state.detalleActual.cobros = [nuevo, ...(state.detalleActual.cobros || [])];
+  if (state.detalleCache) state.detalleCache.cobros = state.detalleActual.cobros;
+  if (importeEl) importeEl.value = "";
+  if (notaEl) notaEl.value = "";
+  if (fechaEl) fechaEl.value = fechaHoyIsoLocalPc();
+  toast("Cobro guardado");
+  _repintarCobrosDetallePc(faenaId);
+  (async () => {
+    const r = await api("POST", `/faenas/${faenaId}/cobros`, { importe, fecha, nota, origen: "pc" });
+    if (!r.ok) {
+      state.detalleActual.cobros = (state.detalleActual.cobros || []).filter(c => String(c.id) !== String(tempId));
+      if (state.detalleCache) state.detalleCache.cobros = state.detalleActual.cobros;
+      toast(r.error || "No se pudo guardar en la nube", true);
+      _repintarCobrosDetallePc(faenaId);
+      return;
+    }
+    const real = r.data || {};
+    state.detalleActual.cobros = (state.detalleActual.cobros || []).map(c =>
+      String(c.id) === String(tempId) ? real : c
+    );
+    if (state.detalleCache) state.detalleCache.cobros = state.detalleActual.cobros;
+    _repintarCobrosDetallePc(faenaId);
+  })();
+}
+
+function eliminarCobroPc(faenaId, cobroId) {
   if (!confirm("¿Eliminar este cobro a cuenta?")) return;
-  const r = await api("DELETE", `/faenas/${faenaId}/cobros/${cobroId}`);
-  if (!r.ok) { toast(r.error || "No se pudo eliminar", true); return; }
+  const prev = (state.detalleActual && state.detalleActual.cobros) ? [...state.detalleActual.cobros] : [];
+  if (!state.detalleActual) state.detalleActual = {};
+  state.detalleActual.cobros = prev.filter(c => String(c.id) !== String(cobroId));
+  if (state.detalleCache) state.detalleCache.cobros = state.detalleActual.cobros;
   toast("Cobro eliminado");
-  await verDetalle(faenaId);
+  _repintarCobrosDetallePc(faenaId);
+  if (String(cobroId).startsWith("tmp_")) return;
+  (async () => {
+    const r = await api("DELETE", `/faenas/${faenaId}/cobros/${cobroId}`);
+    if (!r.ok) {
+      state.detalleActual.cobros = prev;
+      if (state.detalleCache) state.detalleCache.cobros = prev;
+      toast(r.error || "No se pudo eliminar en la nube", true);
+      _repintarCobrosDetallePc(faenaId);
+    }
+  })();
 }
 
 function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
@@ -3195,6 +3623,7 @@ function refrescarUiPresupuestoPc(faenaId) {
   if (!f) return;
   const presupuesto = state.detalleActual?.presupuesto || [];
   const gastos = state.detalleActual?.gastos || [];
+  const cobros = state.detalleActual?.cobros || state.detalleCache?.cobros || [];
   const anotaciones = state.detalleCache?.anotaciones || [];
   const docs = state.detalleCache?.docs || [];
   const fotos = state.detalleCache?.fotos || [];
@@ -3202,7 +3631,7 @@ function refrescarUiPresupuestoPc(faenaId) {
   const total = totalPresupuestoPc(presupuesto);
   actualizarImporteFaenaLocalPc(id, total);
   if (document.getElementById("m-detalle")?.classList.contains("open")) {
-    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, docs, fotos, tiemposHtml });
+    pintarDetalleFaenaPc(f, { anotaciones, presupuesto, gastos, cobros, docs, fotos, tiemposHtml });
   }
   if (state.presupuestoParcialPc) {
     renderPresupuestoParcialPc();
@@ -3373,37 +3802,74 @@ function abrirEditarFaena(id) {
 }
 async function guardarEditarFaena() {
   const id = document.getElementById("ef-id").value;
+  const direccion = (document.getElementById("ef-dir").value || "").trim();
   const r = await api("PUT", `/faenas/${id}`, {
-    direccion: document.getElementById("ef-dir").value,
+    direccion,
     tipo_trabajo: document.getElementById("ef-tipo").value,
     importe: parseFloat(document.getElementById("ef-importe").value) || 0,
     fecha_inicio: document.getElementById("ef-fecha").value
   });
-  if (r.ok) { toast("✓ Faena actualizada"); cerrarModal("m-editar-faena"); await cargarFaenas(); renderFaenas(); verDetalle(parseInt(id)); }
-  else toast(r.error, true);
+  if (!r.ok) { toast(r.error, true); return; }
+  // Mantener dirección del cliente alineada con móvil (faena + ficha cliente)
+  const f = state.faenas.find(x => String(x.id) === String(id))
+    || (state.terminadas || []).find(x => String(x.id) === String(id));
+  if (f && f.cliente_id) {
+    const c = buscarClientePorIdPc(f.cliente_id);
+    await api("PUT", `/clientes/${f.cliente_id}`, {
+      nombre: (c && c.nombre) || f.cliente_nombre || "",
+      telefono: (c && c.telefono) || f.cliente_telefono || "",
+      direccion,
+      email: (c && c.email) || "",
+      intermediario_id: (c && c.intermediario_id != null) ? c.intermediario_id : 0,
+      notas: (c && c.notas) || ""
+    });
+  }
+  toast("✓ Faena actualizada");
+  cerrarModal("m-editar-faena");
+  await Promise.all([cargarFaenas(true), cargarClientes(true)]);
+  renderFaenas();
+  verDetalle(parseInt(id, 10) || id);
 }
 
 // ===== EDITAR CLIENTE =====
 function abrirEditarCliente(id) {
-  const c = state.clientes.find(x => x.id === id);
+  const c = state.clientes.find(x => String(x.id) === String(id));
   if (!c) return;
+  poblarSelects();
   document.getElementById("ec-id").value = c.id;
   document.getElementById("ec-nombre").value = c.nombre || "";
   document.getElementById("ec-tel").value = c.telefono || "";
   document.getElementById("ec-email").value = c.email || "";
+  document.getElementById("ec-dir").value = c.direccion || "";
   document.getElementById("ec-notas").value = c.notas || "";
+  const eci = document.getElementById("ec-inter");
+  if (eci) eci.value = String(c.intermediario_id != null ? c.intermediario_id : 0);
   abrirModal("m-editar-cliente");
 }
 async function guardarEditarCliente() {
   const id = document.getElementById("ec-id").value;
-  const r = await api("PUT", `/clientes/${id}`, {
-    nombre: document.getElementById("ec-nombre").value,
-    telefono: document.getElementById("ec-tel").value,
-    email: document.getElementById("ec-email").value,
-    notas: document.getElementById("ec-notas").value
-  });
-  if (r.ok) { toast("✓ Cliente actualizado"); cerrarModal("m-editar-cliente"); await cargarClientes(); renderClientes(); }
-  else toast(r.error, true);
+  const nombre = (document.getElementById("ec-nombre").value || "").trim();
+  if (!nombre) { toast("El nombre es obligatorio", true); return; }
+  const body = {
+    nombre,
+    telefono: (document.getElementById("ec-tel").value || "").trim(),
+    direccion: (document.getElementById("ec-dir").value || "").trim(),
+    email: (document.getElementById("ec-email").value || "").trim(),
+    intermediario_id: parseInt(document.getElementById("ec-inter")?.value || "0", 10) || 0,
+    notas: (document.getElementById("ec-notas").value || "").trim()
+  };
+  const r = await api("PUT", `/clientes/${id}`, body);
+  if (r.ok) {
+    toast("✓ Cliente actualizado");
+    cerrarModal("m-editar-cliente");
+    await Promise.all([cargarClientes(true), cargarFaenas(true)]);
+    renderClientes();
+    renderFaenas();
+    poblarSelects();
+    if (state.detalleId) {
+      try { await verDetalle(state.detalleId, { soloLocal: false }); } catch (e) {}
+    }
+  } else toast(r.error, true);
 }
 
 // ===== ACCIONES FAENAS =====
@@ -3423,19 +3889,20 @@ async function crearFaena() {
   else toast(r.error, true);
 }
 async function terminarFaena(id) {
-  if (!confirm("¿Terminar esta faena? Se guarda en el PC y se descarga un ZIP.")) {
+  if (!confirm("¿Terminar esta faena? Se guardará el ZIP en la carpeta datos.")) {
     renderFaenas();
     return;
   }
   const r = await api("POST", `/faenas/${id}/archivar`);
   if (!r.ok) { toast(r.error, true); return; }
-  const enlace = document.createElement("a");
-  enlace.href = API + `/faenas/${id}/archivo-zip`;
-  enlace.download = "";
-  document.body.appendChild(enlace);
-  enlace.click();
-  enlace.remove();
-  toast("Faena terminada. Guarda el ZIP en el PC.");
+  const zipLocal = (r.data && r.data.zip_local) || "";
+  if (zipLocal) {
+    toast("Faena terminada. ZIP en: " + zipLocal);
+  } else if (r.data && r.data.zip_error) {
+    toast("Faena terminada, pero no se pudo guardar el ZIP: " + r.data.zip_error, true);
+  } else {
+    toast("Faena terminada.");
+  }
   if (String(state.detalleId) === String(id)) {
     cerrarModal("m-detalle");
     state.detalleId = null;
@@ -3602,8 +4069,26 @@ async function eliminarGastoDesdeModal() {
 
 // ===== CLIENTES =====
 async function crearCliente() {
-  const r = await api("POST", "/clientes", { nombre: document.getElementById("c-nombre").value, telefono: document.getElementById("c-tel").value, email: document.getElementById("c-email").value, intermediario_id: parseInt(document.getElementById("c-inter").value) || 0, notas: document.getElementById("c-notas").value });
-  if (r.ok) { toast("✓ Cliente guardado"); cerrarModal("m-cliente"); document.getElementById("c-nombre").value = ""; document.getElementById("c-tel").value = ""; document.getElementById("c-email").value = ""; document.getElementById("c-notas").value = ""; await cargarClientes(); renderClientes(); poblarSelects(); }
+  const r = await api("POST", "/clientes", {
+    nombre: document.getElementById("c-nombre").value,
+    telefono: document.getElementById("c-tel").value,
+    direccion: (document.getElementById("c-dir")?.value || "").trim(),
+    email: document.getElementById("c-email").value,
+    intermediario_id: parseInt(document.getElementById("c-inter").value) || 0,
+    notas: document.getElementById("c-notas").value
+  });
+  if (r.ok) {
+    toast("✓ Cliente guardado");
+    cerrarModal("m-cliente");
+    document.getElementById("c-nombre").value = "";
+    document.getElementById("c-tel").value = "";
+    if (document.getElementById("c-dir")) document.getElementById("c-dir").value = "";
+    document.getElementById("c-email").value = "";
+    document.getElementById("c-notas").value = "";
+    await cargarClientes(true);
+    renderClientes();
+    poblarSelects();
+  }
   else toast(r.error, true);
 }
 
