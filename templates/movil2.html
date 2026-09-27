@@ -1218,7 +1218,7 @@ textarea { resize: vertical; min-height: 80px; }
 <!-- ═══════════ HEADER ═══════════ -->
 <header>
   <span style="font-size:1.3rem">🪵</span>
-  <h1>Faenas</h1>
+  <h1>Faenas <small id="ui-ver-label" style="font-size:0.65rem;font-weight:600;opacity:0.55">65v</small></h1>
   <span class="offline-indicator" id="offline-ind">● Sin conexión</span>
   <span class="sync-ind ok" id="sync-ind" title="Estado de sincronización">Al día</span>
   <span id="sesion-badge">0</span>
@@ -2610,11 +2610,6 @@ function renderPanelPresupuesto(f) {
       <button class="btn btn-p" onclick="nuevoBloquePresupuestoMovil('${f.id || f._tempId}')">+ Presupuesto</button>
       <button class="btn btn-s" onclick="abrirListaMaterialesPresupuestoMovil()">Materiales</button>
     </div>
-    <div style="height:14px"></div>
-    <button class="btn btn-s" onclick="cargarPresupuestoPC('${f.id || f._tempId}')">
-      Cargar presupuesto del PC
-    </button>
-    <div id="presup-txt-${f.id||f._tempId}" style="display:none;margin-top:10px;background:var(--ink);color:var(--wood-light);border-radius:6px;padding:14px;font-size:0.78rem;line-height:1.6;white-space:pre-wrap;overflow-x:auto"></div>
   `;
 }
 
@@ -3117,23 +3112,6 @@ async function reabrirFaenaMovil(event, id) {
   }
 }
 
-async function cargarPresupuestoPC(faenaId) {
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/presupuesto`, { signal: faenasAbortTimeout(5000) });
-    if (!r.ok) throw new Error();
-    const d = await r.json();
-    if (d.ok && d.data.contenido) {
-      const el = document.getElementById(`presup-txt-${faenaId}`);
-      if (el) { el.textContent = d.data.contenido; el.style.display = "block"; }
-      toast("✓ Presupuesto cargado");
-    } else {
-      toast("No hay presupuesto guardado en el PC", true);
-    }
-  } catch(e) {
-    toast("Error al conectar con el PC", true);
-  }
-}
-
 // ═══════════════════════════════════════════════════════════
 // PANEL 2 — DOCUMENTOS + ANOTACIONES
 // ═══════════════════════════════════════════════════════════
@@ -3404,7 +3382,21 @@ async function guardarFotoEnCarpetaMovil(base64, nombre, numeroFaena) {
 let fotoFaenaId = null;
 let camaraStream = null;
 let camaraDestinoTicket = false;
+let camaraDestinoGastoIa = null;
 let _capturaTicketActiva = false;
+
+// #region agent log
+function _dbgCam(hypothesisId, location, message, data) {
+  const payload = { sessionId: "5d25d7", runId: "gastos-ref", hypothesisId, location, message, data: Object.assign({ api: (typeof getServerUrl === "function" ? getServerUrl() : ""), host: String((typeof location !== "undefined" && location.host) || "") }, data || {}), timestamp: Date.now() };
+  try {
+    fetch("http://127.0.0.1:7619/ingest/c0c9228e-ad85-49b6-b82f-413e3067b4be", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5d25d7" }, body: JSON.stringify(payload) }).catch(() => {});
+  } catch (e0) {}
+  try {
+    const base = (typeof getServerUrl === "function") ? getServerUrl() : ((location.origin || "") + "/api");
+    fetch(`${String(base).replace(/\/$/, "")}/_debug_agent_log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+  } catch (e1) {}
+}
+// #endregion
 
 function cerrarCamara() {
   const overlay = document.getElementById("camara-overlay");
@@ -3416,35 +3408,139 @@ function cerrarCamara() {
   const video = document.getElementById("camara-video");
   if (video) video.srcObject = null;
   camaraDestinoTicket = false;
+  camaraDestinoGastoIa = null;
   _capturaTicketActiva = false;
+}
+
+async function abrirCamaraInApp() {
+  const overlay = document.getElementById("camara-overlay");
+  const video = document.getElementById("camara-video");
+  if (!overlay || !video) throw new Error("No hay interfaz de cámara");
+
+  const gum = (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function")
+    ? (c) => navigator.mediaDevices.getUserMedia(c)
+    : null;
+  // #region agent log
+  _dbgCam("B", "movil2.html:abrirCamaraInApp", "inicio", { hasGum: !!gum, secure: !!window.isSecureContext, proto: location.protocol, host: String(location.hostname || ""), destTicket: !!camaraDestinoTicket, destGasto: String(camaraDestinoGastoIa || "") });
+  // #endregion
+  if (!gum) throw new Error("NO_GUM");
+
+  overlay.classList.add("open");
+  const intentos = [
+    { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+    { audio: false, video: { facingMode: "environment" } },
+    { audio: false, video: true }
+  ];
+  let lastErr = null;
+  for (const constraints of intentos) {
+    try {
+      camaraStream = await gum(constraints);
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      camaraStream = null;
+    }
+  }
+  if (!camaraStream) {
+    overlay.classList.remove("open");
+    const name = lastErr && lastErr.name ? String(lastErr.name) : "";
+    const msg = (lastErr && lastErr.message) || name || "No se pudo abrir la cámara";
+    // #region agent log
+    _dbgCam("B", "movil2.html:abrirCamaraInApp", "gum falló", { name, msg: String(msg).slice(0, 120) });
+    // #endregion
+    throw new Error(msg);
+  }
+  // #region agent log
+  _dbgCam("B", "movil2.html:abrirCamaraInApp", "gum OK", { tracks: (camaraStream.getTracks && camaraStream.getTracks().length) || 0 });
+  // #endregion
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("webkit-playsinline", "true");
+  video.controls = false;
+  video.muted = true;
+  try { video.disablePictureInPicture = true; } catch (ePip) {}
+  video.srcObject = camaraStream;
+  try { await video.play(); } catch (ePlay) {}
+}
+
+/** Cámara nativa del móvil (file+capture). El click debe ir en el mismo gesto del usuario (antes de cualquier await). */
+function abrirCamaraNativaArchivo(onFile) {
+  return new Promise((resolve) => {
+    // #region agent log
+    _dbgCam("A", "movil2.html:abrirCamaraNativaArchivo", "click nativo", { destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
+    // #endregion
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.setAttribute("capture", "environment");
+    input.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;z-index:99999;";
+    document.body.appendChild(input);
+    let hecho = false;
+    const terminar = (file) => {
+      if (hecho) return;
+      hecho = true;
+      // #region agent log
+      _dbgCam("A", "movil2.html:abrirCamaraNativaArchivo", "change/cancel", { hasFile: !!file, size: file ? (file.size || 0) : 0, type: file ? String(file.type || "") : "" });
+      // #endregion
+      setTimeout(() => { try { input.remove(); } catch (e) {} }, 800);
+      resolve(file || null);
+      if (file && typeof onFile === "function") onFile(file);
+    };
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      terminar(file || null);
+    });
+    input.addEventListener("cancel", () => terminar(null));
+    try { input.click(); } catch (eClick) { terminar(null); }
+  });
+}
+
+function tieneGetUserMedia() {
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function");
+}
+
+async function abrirCamaraConFallback(onFileNativo) {
+  const hasGum = tieneGetUserMedia();
+  // #region agent log
+  _dbgCam("A", "movil2.html:abrirCamaraConFallback", "entrada", { hasGum, secure: !!window.isSecureContext, destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
+  // #endregion
+  // Sin GUM: click nativo YA (mismo gesto). No hacer await a abrirCamaraInApp antes.
+  if (!hasGum) {
+    const file = await abrirCamaraNativaArchivo();
+    if (file && typeof onFileNativo === "function") await onFileNativo(file);
+    else if (!file) toast("No se pudo abrir la cámara", true);
+    // #region agent log
+    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo nativo (sin gum)", { hasFile: !!file });
+    // #endregion
+    return file ? "nativa" : "cancel";
+  }
+  try {
+    await abrirCamaraInApp();
+    // #region agent log
+    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo inapp", { destGasto: String(camaraDestinoGastoIa || ""), destTicket: !!camaraDestinoTicket });
+    // #endregion
+    return "inapp";
+  } catch (e) {
+    // #region agent log
+    _dbgCam("A", "movil2.html:abrirCamaraConFallback", "gum falló → nativo", { err: String((e && e.message) || e || "").slice(0, 120) });
+    // #endregion
+    const file = await abrirCamaraNativaArchivo();
+    if (file && typeof onFileNativo === "function") await onFileNativo(file);
+    else if (!file) toast((e && e.message) || "No se pudo abrir la cámara", true);
+    // #region agent log
+    _dbgCam("C", "movil2.html:abrirCamaraConFallback", "modo nativo tras gum", { hasFile: !!file });
+    // #endregion
+    return file ? "nativa" : "cancel";
+  }
 }
 
 async function añadirFoto(faenaId) {
   camaraDestinoTicket = false;
+  camaraDestinoGastoIa = null;
   fotoFaenaId = String(faenaId);
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    toast("Este navegador no abre la cámara aquí. Usa Galería o Chrome.", true);
-    añadirFotoGaleria(faenaId);
-    return;
-  }
-  try {
-    camaraStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    const video = document.getElementById("camara-video");
-    video.setAttribute("playsinline", "true");
-    video.setAttribute("webkit-playsinline", "true");
-    video.controls = false;
-    video.muted = true;
-    video.disablePictureInPicture = true;
-    video.srcObject = camaraStream;
-    try { await video.play(); } catch (e) {}
-    document.getElementById("camara-overlay").classList.add("open");
-  } catch (e) {
-    toast("Activa el permiso de cámara o usa Galería", true);
-    añadirFotoGaleria(faenaId);
-  }
+  await abrirCamaraConFallback(async (file) => {
+    await procesarListaFotos([file]);
+  });
 }
 
 function añadirFotoGaleria(faenaId) {
@@ -3467,6 +3563,10 @@ async function dispararCamara() {
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
   const paraTicket = camaraDestinoTicket;
+  const gastoIaFaena = camaraDestinoGastoIa;
+  // #region agent log
+  _dbgCam("D", "movil2.html:dispararCamara", "disparo", { paraTicket: !!paraTicket, gastoIaFaena: String(gastoIaFaena || ""), w: video.videoWidth, h: video.videoHeight });
+  // #endregion
   cerrarCamara();
   const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
   if (!blob) { toast("No se pudo hacer la foto", true); return; }
@@ -3474,6 +3574,10 @@ async function dispararCamara() {
   if (paraTicket) {
     navTo(1);
     await _leerFotoTicket(file);
+    return;
+  }
+  if (gastoIaFaena) {
+    await procesarGastoFotoTicket(gastoIaFaena, file);
     return;
   }
   await procesarListaFotos([file]);
@@ -3721,10 +3825,7 @@ function renderPanelGastos(f) {
   document.getElementById("p-gastos-content").innerHTML = `
     <div class="section-sep">
       🧾 Gastos de fabricación
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-p btn-inline" onclick="abrirGastoFabricacion('${faenaId}')">+ Gasto</button>
-        <button class="btn btn-s btn-inline" onclick="sincronizarGastosFaena('${faenaId}')">⟳ Sync</button>
-      </div>
+      <button class="btn btn-p btn-inline" onclick="abrirGastoFabricacion('${faenaId}')">+ Gasto</button>
     </div>
     <div style="font-size:0.8rem;color:#888;margin-bottom:10px;line-height:1.5">
       Aquí metes tus costes de fabricación. No son presupuesto: son lo que te cuesta producir la faena.
@@ -3853,21 +3954,56 @@ async function procesarGastoDocumento(faenaId, file) {
   }
 }
 
-function capturarFotoGastoIA(faenaId) {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
-  document.body.appendChild(input);
-  input.onchange = async (e) => { const file = e.target.files[0]; input.remove(); if (file) await procesarGastoFotoTicket(faenaId, file); };
-  input.click();
+async function capturarFotoGastoIA(faenaId) {
+  // Mismo flujo que Tickets en Render (tomarFotoDirecta): getUserMedia + overlay in-app.
+  // #region agent log
+  _dbgCam("E", "movil2.html:capturarFotoGastoIA", "tap Foto gastos (=flujo tickets)", { faenaId: String(faenaId || ""), uiVer: localStorage.getItem("faenas_ui_ver"), hasGum: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) });
+  // #endregion
+  camaraDestinoTicket = false;
+  camaraDestinoGastoIa = String(faenaId || "");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    camaraDestinoGastoIa = null;
+    toast("Este navegador no abre la cámara aquí. Usa Galería.", true);
+    seleccionarFotoGastoIA(faenaId);
+    return;
+  }
+  try {
+    camaraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById("camara-video");
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+    video.controls = false;
+    video.muted = true;
+    try { video.disablePictureInPicture = true; } catch (ePip) {}
+    video.srcObject = camaraStream;
+    try { await video.play(); } catch (ePlay) {}
+    document.getElementById("camara-overlay").classList.add("open");
+    // #region agent log
+    _dbgCam("C", "movil2.html:capturarFotoGastoIA", "overlay abierto", { faenaId: String(faenaId || "") });
+    // #endregion
+  } catch (e) {
+    camaraDestinoGastoIa = null;
+    // #region agent log
+    _dbgCam("C", "movil2.html:capturarFotoGastoIA", "gum falló → galería", { err: String((e && e.message) || e || "").slice(0, 120) });
+    // #endregion
+    toast("Activa el permiso de cámara o usa Galería", true);
+    seleccionarFotoGastoIA(faenaId);
+  }
 }
 
 function seleccionarFotoGastoIA(faenaId) {
   const input = document.createElement("input");
   input.type = "file"; input.accept = "image/*";
-  input.style.cssText = "position:fixed;top:-100px;left:-100px;opacity:0;";
+  input.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;z-index:99999;";
   document.body.appendChild(input);
-  input.onchange = async (e) => { const file = e.target.files[0]; input.remove(); if (file) await procesarGastoFotoTicket(faenaId, file); };
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    setTimeout(() => { try { input.remove(); } catch (e) {} }, 800);
+    if (file) await procesarGastoFotoTicket(faenaId, file);
+  };
   input.click();
 }
 
@@ -4052,28 +4188,6 @@ async function eliminarGastoFabricacionDesdeModal() {
   if (!gastoId) return;
   await eliminarGastoFabricacion(faenaId, gastoId);
   cerrarModal("m-gasto-fabricacion");
-}
-
-async function sincronizarGastosFaena(faenaId) {
-  const cola = cargarCola();
-  const ops = cola.gastos.filter(g => String(g.faena_id) === String(faenaId));
-  if (!ops.length) { toast("No hay gastos pendientes", true); return; }
-  try {
-    const r = await fetch(`${getServerUrl()}/sync/gastos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operaciones: ops }), signal: faenasAbortTimeout(10000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    cola.gastos = cola.gastos.filter(g => String(g.faena_id) !== String(faenaId));
-    guardarCola(cola);
-    await recargarPresupuestoFaena(faenaId);
-    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-    if (f) renderPanelGastos(f);
-    renderFaenas();
-    toast("✓ Gastos sincronizados con el PC");
-  } catch (e) {
-    console.error(e);
-    toast("No se pudieron sincronizar los gastos", true);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5481,6 +5595,7 @@ function eliminarTicketArticuloModal() {
 }
 
 async function tomarFotoDirecta() {
+  // Flujo Render (no tocar salvo petición explícita)
   camaraDestinoTicket = true;
   _capturaTicketActiva = true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -5499,7 +5614,7 @@ async function tomarFotoDirecta() {
     video.setAttribute("webkit-playsinline", "true");
     video.controls = false;
     video.muted = true;
-    video.disablePictureInPicture = true;
+    try { video.disablePictureInPicture = true; } catch (ePip) {}
     video.srcObject = camaraStream;
     try { await video.play(); } catch (e) {}
     document.getElementById("camara-overlay").classList.add("open");
@@ -6490,7 +6605,7 @@ let _salidaTrasSync = false;
 
 function preguntarSalidaSiPendiente() {
   if (_modalSalidaAbierto || _salidaTrasSync || state._syncEnCurso) return;
-  if (_capturaTicketActiva || camaraDestinoTicket) return;
+  if (_capturaTicketActiva || camaraDestinoTicket || camaraDestinoGastoIa) return;
   if (!hayCambiosSesion()) return;
   abrirTerminarSesion(true);
 }
@@ -7159,7 +7274,11 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "65f";
+  const UI_VER = "65v";
+  // #region agent log
+  _dbgCam("I", "movil2.html:init", "arranque", { uiVerLs: localStorage.getItem("faenas_ui_ver"), uiVerCode: UI_VER, apiBase: String(window.FAENAS_API_BASE || ""), apiResolved: getServerUrl() });
+  // #endregion
+  try { sessionStorage.removeItem("faenas_cam_ctx"); } catch (eCtx) {}
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -7187,7 +7306,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=65f", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=65v", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
@@ -7233,6 +7352,16 @@ async function init() {
   }
 }
 
+window.addEventListener("error", (ev) => {
+  // #region agent log
+  try { _dbgCam("BOOT", "movil2.html:window.error", "js error", { msg: String((ev && ev.message) || ""), file: String((ev && ev.filename) || "").slice(-80), line: ev && ev.lineno }); } catch (e) {}
+  // #endregion
+});
+window.addEventListener("unhandledrejection", (ev) => {
+  // #region agent log
+  try { _dbgCam("BOOT", "movil2.html:unhandledrejection", "promise reject", { msg: String((ev && ev.reason && (ev.reason.message || ev.reason)) || ev.reason || "").slice(0, 200) }); } catch (e) {}
+  // #endregion
+});
 init();
 </script>
 </body>
