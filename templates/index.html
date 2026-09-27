@@ -3671,7 +3671,7 @@ function htmlPresupuestoDetallePc(f, bloquesP, totalPresupuesto) {
         <div class="presup-total-label">Total conjunto</div>
         <div class="presup-total-val" id="detalle-presup-total">${totalPresupuesto > 0 ? totalPresupuesto.toFixed(2) + " €" : "—"}</div>
       </div>
-      ${bloquesP.length ? `<div style="text-align:right">
+      ${bloquesP.length && !enBorrador ? `<div style="text-align:right">
         <div class="presup-total-label">Gastos</div>
         <div style="font-size:1.2rem;font-weight:700;color:#f0b080">${totalGastos.toFixed(2)} €</div>
       </div>` : ""}
