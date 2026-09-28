@@ -5524,24 +5524,8 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
                 articulos.append(a)
 
     imgs = [_comprimir_imagen_data_url(x) for x in (imagenes or []) if x]
-    # #region agent log
-    try:
-        import json as _json_dbg, time as _time_dbg
-        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:start","message":"extract stages","data":{"texto_len":len((texto or "").strip()),"n_imgs":len(imgs),"nombre":nombre,"has_pdf_bytes":bool(pdf_bytes)},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     if texto:
         _acumular(_json_ticket_desde_ocr(texto))
-        # #region agent log
-        try:
-            import json as _json_dbg, time as _time_dbg
-            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:heuristic","message":"after heuristic","data":{"n":len(articulos),"proveedor":meta.get("proveedor")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
     # Preferir documento+texto(+PDF) cuando hay texto: más estable que ticket+imágenes.
     if not articulos and (texto or pdf_bytes or imgs[:2]):
         intentos = 2
@@ -5555,25 +5539,9 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
                     pdf_bytes=pdf_bytes,
                 )
                 _acumular(data_ia)
-                # #region agent log
-                try:
-                    import json as _json_dbg, time as _time_dbg
-                    with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                        _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:gemini","message":"after gemini","data":{"intento":intento+1,"n":len(articulos),"n_raw":len((data_ia or {}).get("articulos") or []),"proveedor":(data_ia or {}).get("proveedor")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-                except Exception:
-                    pass
-                # #endregion
                 if articulos:
                     break
             except Exception as e:
-                # #region agent log
-                try:
-                    import json as _json_dbg, time as _time_dbg
-                    with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                        _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:gemini_err","message":str(e),"data":{"intento":intento+1},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-                except Exception:
-                    pass
-                # #endregion
                 print("pdf ia lote:", e)
     # Si no hay líneas, cada página como foto de ticket.
     if not articulos:
@@ -5599,14 +5567,6 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
             # Reintento heurístico mejorado para facturas tipo tabla multipágina/lineas rotas
             if not articulos:
                 _acumular(_json_factura_lineas_sueltas("\n".join(textos_ocr)))
-    # #region agent log
-    try:
-        import json as _json_dbg, time as _time_dbg
-        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:end","message":"extract done","data":{"n":len(articulos),"proveedor":meta.get("proveedor"),"nombres":[str(a.get("nombre") or "")[:50] for a in articulos[:8]]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     return {
         "proveedor": meta.get("proveedor"),
         "fecha": meta.get("fecha"),
@@ -5620,14 +5580,6 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
 
 def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     """Lee un PDF o imagen en este ordenador (OCR) y devuelve el JSON de líneas."""
-    # #region agent log
-    try:
-        import json as _json_dbg, time as _time_dbg
-        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:entry","message":"start doc process","data":{"nombre":nombre,"mime":mime_type,"bruto_len":len(bruto or b""),"texto_in_len":len((texto or "").strip()),"es_pdf_magic":(bruto or b"")[:5]==b"%PDF-"},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     nombre = (nombre or "documento").strip() or "documento"
     mime_type = (mime_type or "").strip()
     texto = (texto or "").strip()
@@ -5637,24 +5589,8 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     if es_pdf and bruto:
         if not texto:
             texto = _texto_de_pdf_bytes(bruto)
-        # #region agent log
-        try:
-            import json as _json_dbg, time as _time_dbg
-            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:after_text","message":"pdf text extract","data":{"texto_len":len((texto or "").strip()),"texto_sample":(texto or "")[:180]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         if not (texto or "").strip():
             texto = _ocr_pdf_bytes(bruto)
-            # #region agent log
-            try:
-                import json as _json_dbg, time as _time_dbg
-                with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                    _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:after_ocr","message":"ocr fallback","data":{"texto_len":len((texto or "").strip()),"texto_sample":(texto or "")[:180]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-            except Exception:
-                pass
-            # #endregion
         imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
     elif bruto and not es_pdf:
         mime = mime_type or "image/jpeg"
@@ -5663,14 +5599,6 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
         else:
             imagenes = ["data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")]
     if not texto and not imagenes:
-        # #region agent log
-        try:
-            import json as _json_dbg, time as _time_dbg
-            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:no_content","message":"no text no images","data":{"es_pdf":es_pdf},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         raise ValueError("No se pudo abrir el PDF. Prueba de nuevo o usa una foto.")
     data = _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=bruto if es_pdf else None)
     if not isinstance(data, dict):
@@ -5689,15 +5617,6 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     data = _limpiar_resultado_ia(data, origen_tipo="documento")
     if not data.get("articulos"):
         data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
-    # #region agent log
-    try:
-        import json as _json_dbg, time as _time_dbg
-        arts_log = data.get("articulos") or []
-        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"IVA","location":"server2.py:_procesar_bytes_documento:exit","message":"doc process done","data":{"n_raw":len(articulos),"n_ok":len(arts_log),"proveedor":data.get("proveedor"),"iva_incluido":data.get("iva_incluido"),"iva_aplicado":data.get("iva_aplicado"),"lineas":[{"nombre":str(a.get("nombre") or "")[:40],"cant":a.get("cantidad"),"unidad":a.get("unidad"),"pu":a.get("precio_unitario"),"tot":a.get("total")} for a in arts_log[:6]],"aviso":data.get("aviso")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     return data
 
 
@@ -5724,14 +5643,6 @@ def ia_procesar_documento():
             bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
         except Exception:
             bruto = b""
-    # #region agent log
-    try:
-        import json as _json_dbg, time as _time_dbg
-        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"D","location":"server2.py:ia_procesar_documento","message":"endpoint hit","data":{"nombre":nombre,"mime":mime_type,"bruto_len":len(bruto),"guardar":guardar,"has_file":bool(f),"has_b64":bool(archivo_base64)},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     if not texto and ruta:
         texto = _leer_texto_documento_para_ia(ruta)
     if not texto and not bruto and archivo_base64:
@@ -5757,24 +5668,8 @@ def ia_procesar_documento():
                 print("pdf ficha:", e)
         return jsonify({"ok": True, "data": data})
     except ValueError as e:
-        # #region agent log
-        try:
-            import json as _json_dbg, time as _time_dbg
-            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:ia_procesar_documento:ValueError","message":str(e),"data":{},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
-        # #region agent log
-        try:
-            import json as _json_dbg, time as _time_dbg
-            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"E","location":"server2.py:ia_procesar_documento:Exception","message":str(e),"data":{"type":type(e).__name__},"timestamp":int(_time_dbg.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
 
 
