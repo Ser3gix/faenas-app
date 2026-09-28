@@ -1387,7 +1387,7 @@ textarea { resize: vertical; min-height: 80px; }
   border-radius: var(--radius);
   padding: 12px;
   min-height: 180px;
-  max-height: 42vh;
+  max-height: 58vh;
   overflow-y: auto;
   margin-bottom: 10px;
   font-size: 0.95rem;
@@ -1407,6 +1407,30 @@ textarea { resize: vertical; min-height: 80px; }
 .msg-who { display: block; font-size: 0.72rem; font-weight: 700; opacity: 0.75; margin-bottom: 4px; }
 .jimmi-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .jimmi-foto { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; display: block; background: #d6cfc3; }
+.jimmi-propuestas { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.jimmi-prop-card {
+  background: #fff;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.jimmi-prop-title { font-weight: 700; font-size: 0.92rem; color: var(--ink); line-height: 1.35; }
+.jimmi-prop-meta { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+.jimmi-prop-precio { font-weight: 700; color: var(--green); font-size: 1rem; margin-top: 6px; }
+.jimmi-prop-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.jimmi-prop-actions a, .jimmi-prop-actions button { flex: 1; min-width: 120px; text-align: center; }
+.jimmi-prop-link {
+  display: inline-block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sawdust);
+  background: var(--paper);
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-decoration: none;
+  font-weight: 600;
+}
+.jimmi-prop-link.muted { color: var(--muted); font-weight: 500; border-style: dashed; }
 </style>
 </head>
 <body>
@@ -2345,12 +2369,99 @@ function htmlFotosJimmi(imagenes) {
   }).join("")}</div>`;
 }
 
-function htmlMsgJimmi(m) {
+function htmlPropuestasJimmi(propuestas, msgIdx) {
+  if (!Array.isArray(propuestas) || !propuestas.length) return "";
+  const cards = propuestas.map((a, i) => {
+    const nombre = escHtml(a.nombre || "Producto");
+    const tienda = escHtml(a.proveedor || "Tienda");
+    const def = escHtml(a.definicion || "");
+    const precio = Number(a.precio_unitario || 0);
+    const precioTxt = Number.isFinite(precio)
+      ? precio.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
+      : "—";
+    const url = String(a.url || "").trim();
+    const link = url
+      ? `<a class="jimmi-prop-link" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Ver producto</a>`
+      : `<span class="jimmi-prop-link muted">Sin enlace de producto</span>`;
+    return `<div class="jimmi-prop-card">
+      <div class="jimmi-prop-title">${nombre}</div>
+      <div class="jimmi-prop-meta">${tienda}${def ? " · " + def : ""}</div>
+      <div class="jimmi-prop-precio">${precioTxt}</div>
+      <div class="jimmi-prop-actions">
+        ${link}
+        <button type="button" class="btn btn-p btn-sm" data-jimmi-add="${msgIdx}:${i}">Añadir a materiales</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="jimmi-propuestas">${cards}</div>`;
+}
+
+function htmlMsgJimmi(m, msgIdx) {
   const quien = m.rol === "usuario" ? "Tú" : "Jimmi";
   const cls = m.rol === "usuario" ? "msg-user" : "msg-jimmi";
   const fotos = m.rol === "usuario" ? "" : htmlFotosJimmi(m.imagenes);
-  return `<div class="msg ${cls}"><span class="msg-who">${quien}</span>${escHtml(m.texto)}${fotos}</div>`;
+  const props = m.rol === "usuario" ? "" : htmlPropuestasJimmi(m.propuestas, msgIdx);
+  return `<div class="msg ${cls}" data-jimmi-msg="${msgIdx}"><span class="msg-who">${quien}</span>${escHtml(m.texto)}${fotos}${props}</div>`;
 }
+
+function pintarChatJimmi() {
+  const box = document.getElementById("jimmi-mensajes");
+  if (!box) return;
+  const hist = window._jimmiHistorial || [];
+  if (!hist.length) {
+    box.innerHTML = `<div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios. En Materiales puedes pedir: «busca en la web bisagra 35 mm».</div>`;
+    return;
+  }
+  box.innerHTML = hist.map((m, i) => htmlMsgJimmi(m, i)).join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+async function aceptarPropuestaJimmi(msgIdx, artIdx) {
+  const hist = window._jimmiHistorial || [];
+  const msg = hist[msgIdx];
+  const art = msg && Array.isArray(msg.propuestas) ? msg.propuestas[artIdx] : null;
+  if (!art || !String(art.nombre || "").trim()) {
+    toast("No hay producto para guardar", true);
+    return;
+  }
+  const payload = {
+    proveedor: art.proveedor || "",
+    fecha: (msg.ticket && msg.ticket.fecha) || "",
+    articulos: [{
+      ...art,
+      cantidad: Number(art.cantidad || 1) || 1,
+      faena_id: null,
+      _solo_materiales: true,
+      fuente: art.fuente || "web"
+    }]
+  };
+  try {
+    const r = await fetch(`${getServerUrl()}/secretario/aplicar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "almacen", data: payload }),
+      signal: faenasAbortTimeout(30000)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "No se pudo guardar");
+    const resumen = d.data || {};
+    toast(`✓ Guardado en materiales (${resumen.materiales_creados || 0} nuevos, ${resumen.precios_actualizados || 0} precios)`);
+    try { await sincronizar(true); } catch (eSync) {}
+  } catch (e) {
+    toast(e.message || "Error al guardar", true);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target && e.target.closest && e.target.closest("[data-jimmi-add]");
+  if (!btn) return;
+  const raw = btn.getAttribute("data-jimmi-add") || "";
+  const partes = raw.split(":");
+  const msgIdx = Number(partes[0]);
+  const artIdx = Number(partes[1]);
+  if (!Number.isFinite(msgIdx) || !Number.isFinite(artIdx)) return;
+  aceptarPropuestaJimmi(msgIdx, artIdx);
+});
 
 function codigoFaenaSeguro(faena) {
   return String(faena?.numero || faena?.id || "faena")
@@ -6872,7 +6983,8 @@ async function enviarConsultaIA() {
   const faenaId = document.getElementById("ia-faena-id")?.value || "";
   const modo = modoJimmiActual();
   if (box) {
-    box.innerHTML = window._jimmiHistorial.map(htmlMsgJimmi).join("") + `<div class="jimmi-hint">Jimmi está pensando…</div>`;
+    pintarChatJimmi();
+    box.innerHTML = (window._jimmiHistorial || []).map((m, i) => htmlMsgJimmi(m, i)).join("") + `<div class="jimmi-hint">Jimmi está pensando…</div>`;
     box.scrollTop = box.scrollHeight;
   }
   document.getElementById("ia-pregunta").value = "";
@@ -6885,7 +6997,11 @@ async function enviarConsultaIA() {
     const data = await r.json();
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
     const imagenes = (data.ok && data.data && data.data.imagenes) ? data.data.imagenes : [];
-    window._jimmiHistorial.push({ rol: "jimmi", texto, imagenes });
+    const propuestas = (data.ok && data.data && Array.isArray(data.data.propuestas) && data.data.propuestas.length)
+      ? data.data.propuestas
+      : ((data.ok && data.data && data.data.ticket && data.data.ticket.articulos) || []);
+    const ticket = (data.ok && data.data && data.data.ticket) ? data.data.ticket : null;
+    window._jimmiHistorial.push({ rol: "jimmi", texto, imagenes, propuestas, ticket });
     if (data.ok && data.data && data.data.conversacion_cerrada) {
       window._jimmiHistorial = [];
     }
@@ -6893,7 +7009,7 @@ async function enviarConsultaIA() {
       if (data.ok && data.data && data.data.conversacion_cerrada) {
         box.innerHTML = `<div class="jimmi-hint">${escHtml(texto)}</div>${htmlFotosJimmi(imagenes)}<div class="jimmi-hint">Conversación cerrada. Puedes empezar otra.</div>`;
       } else {
-        box.innerHTML = (window._jimmiHistorial.length ? window._jimmiHistorial : [{ rol: "jimmi", texto, imagenes }]).map(htmlMsgJimmi).join("");
+        pintarChatJimmi();
       }
       box.scrollTop = box.scrollHeight;
     }
@@ -6901,16 +7017,9 @@ async function enviarConsultaIA() {
     if (data.ok && data.data && data.data.anotacion_guardada) {
       aplicarAnotacionGuardadaJimmi(data.data.anotacion_guardada);
     }
-    if (data.ok && data.data && data.data.ticket && (data.data.ticket.articulos || []).length) {
-      ticketAnalisisActual = data.data.ticket;
-      navTo(1);
-      document.getElementById("ticket-paso2").style.display = "none";
-      document.getElementById("ticket-paso3").style.display = "block";
-      document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
-      _renderTablaAnalisisTicket(data.data.ticket);
-      toast("Revisa la tabla de tickets para guardar los precios");
-    }
-  } catch (e) {
+    if (propuestas && propuestas.length) {
+      toast(`${propuestas.length} opciones para comparar. Añade desde Jimmi las que quieras.`);
+    }  } catch (e) {
     toast("Error al conectar con Jimmi", true);
   }
 }
