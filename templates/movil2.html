@@ -1563,8 +1563,8 @@ textarea { resize: vertical; min-height: 80px; }
       <label>Faena (opcional)</label>
       <select id="ia-faena-id"><option value="">— Todo el negocio —</option></select>
     </div>
-    <div class="jimmi-chat" id="jimmi-mensajes"><div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios.</div></div>
-    <textarea id="ia-pregunta" rows="3" placeholder="Pregunta a Jimmi: presupuestos, precios, faenas..." style="font-size:0.95rem;margin-bottom:8px"></textarea>
+    <div class="jimmi-chat" id="jimmi-mensajes"><div class="jimmi-hint">Jimmi, tu secretario. Pregúntame por faenas, presupuestos o precios. En Materiales puedes pedir: «busca en la web bisagra 35 mm».</div></div>
+    <textarea id="ia-pregunta" rows="3" placeholder="Ej: busca en la web bisagra cazoleta 35 mm" style="font-size:0.95rem;margin-bottom:8px"></textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-p" onclick="enviarConsultaIA()">Enviar</button>
       <button class="btn btn-s" onclick="cerrarConversacionJimmi()">Cerrar</button>
@@ -5881,7 +5881,9 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto = null) {
           cantidad,
           precio_unitario: precio,
           total,
-          faena_id
+          faena_id,
+          fuente: String(a.fuente || "").trim(),
+          url: String(a.url || "").trim()
         };
       })
       .filter(a => a.nombre)
@@ -5973,6 +5975,18 @@ function _ticketArtBodyHtml(a, i, mostrarFaena) {
       <label>Proveedor</label>
       <input type="text" data-k="proveedor" value="${proveedor}" autocomplete="off" style="min-height:34px;font-size:14px;padding:4px 8px">
     </div>
+    ${(() => {
+      const url = String(a.url || "").trim();
+      if (!url) return "";
+      const safe = escHtml(url);
+      return `<div class="ticket-art-field ticket-art-field-compact">
+        <label>Enlace web</label>
+        <div style="font-size:0.82rem;line-height:1.4;word-break:break-all">
+          <a href="${safe}" target="_blank" rel="noopener noreferrer">Abrir en tienda</a>
+        </div>
+        <input type="hidden" data-k="url" value="${safe}">
+      </div>`;
+    })()}
     <div class="ticket-art-field ticket-art-faena">
       <label>Destino</label>
       <select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select>
@@ -6107,7 +6121,7 @@ function _pintarListaAnalisisTicket(wrap) {
       </div>`;
     }).join("");
     wrap.innerHTML = `
-      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""} · <strong>${articulos.length}</strong> material${articulos.length !== 1 ? "es" : ""}</div>
+      <div style="font-size:0.84rem;color:#666;margin-bottom:8px">Proveedor: <strong>${prov || "(sin proveedor)"}</strong>${fec ? ` · Fecha: <strong>${fec}</strong>` : ""} · <strong>${articulos.length}</strong> material${articulos.length !== 1 ? "es" : ""} · Precios con IVA</div>
       <div class="ticket-art-list">${cards}</div>
       <div class="ticket-art-actions">
         <button type="button" class="btn btn-s" data-ticket-art-add="1">+ Añadir material</button>
@@ -6166,6 +6180,10 @@ function _sincronizarArticulosDesdeDom(containerId) {
     const body = el.querySelector(".ticket-art-row-body");
     const art = _leerArticuloDesdeBody(body);
     if (art && Number.isFinite(i) && i >= 0 && Array.isArray(data.articulos)) {
+      const prev = data.articulos[i] || {};
+      if (!art.url && prev.url) art.url = prev.url;
+      if (!art.fuente && prev.fuente) art.fuente = prev.fuente;
+      if (!art.definicion && prev.definicion) art.definicion = prev.definicion;
       data.articulos[i] = art;
     }
   });
@@ -6226,6 +6244,8 @@ function _leerTablaAnalisisTicket(containerId = "ticket-tabla-wrap", datosRefere
         precio_unitario: Number(a.precio_unitario || 0) || 0,
         total: Number(a.total || 0) || ((Number(a.cantidad || 0) || 0) * (Number(a.precio_unitario || 0) || 0)),
         unidad: String(a.unidad || "ud").trim() || "ud",
+        fuente: String(a.fuente || "").trim(),
+        url: String(a.url || "").trim(),
         faena_id: (() => {
           const v = String(a.faena_id || "").trim();
           if (!v || v === "materiales" || v === "almacen" || v === "almacén") return "materiales";
@@ -6263,6 +6283,8 @@ function _leerArticuloDesdeBody(body) {
     cantidad,
     precio_unitario: precio,
     total: Number.isFinite(totalNum) ? totalNum : cantidad * precio,
+    url: val("url"),
+    fuente: val("url") ? "web" : "",
     faena_id: (() => {
       const v = String(val("faena_id") || "").trim();
       if (!v || v === "materiales" || v === "almacen" || v === "almacén") return "materiales";

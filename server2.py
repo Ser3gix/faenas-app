@@ -3225,6 +3225,120 @@ def ollama_buscar_materiales():
     return jsonify({"ok": True, "data": {"materiales": resultados, "no_encontrados": no_encontrados}})
 
 
+def _prompt_buscar_web_materiales(query, max_resultados=8):
+    q = (query or "").strip()
+    n = max(1, min(int(max_resultados or 8), 15))
+    return f"""Busca en internet productos de carpintería, herrajes o bricolaje en tiendas de España para: "{q}".
+
+Devuelve SOLO un objeto JSON (sin markdown) con:
+proveedor (tienda principal si hay una clara, o null),
+fecha (AAAA-MM-DD de hoy si puedes),
+total_ticket (suma de totales),
+tipo_documento: "web",
+iva_incluido: true,
+iva_porcentaje: 21,
+articulos: hasta {n} resultados distintos, cada uno con:
+  nombre, cantidad (1), precio_unitario (CON IVA incluido), total (=precio_unitario),
+  unidad, categoria (Trabajo | Tableros | Molduras-Maderas | Herrajes | Otros),
+  definicion (medida o referencia breve),
+  proveedor (nombre de la tienda), fuente: "web", url (enlace https al producto o ficha).
+
+Prioriza precios actuales y enlaces reales de compra. Si no encuentras nada, articulos debe ser []."""
+
+
+def _buscar_materiales_en_web(query, max_resultados=8):
+    """Búsqueda general en internet (Gemini googleSearch) → JSON tipo ticket."""
+    q = (query or "").strip()
+    if not q:
+        raise ValueError("Falta la búsqueda")
+    try:
+        n = max(1, min(int(max_resultados or 8), 15))
+    except Exception:
+        n = 8
+    ticket_key = TICKET_IA_API_KEY or IA_API_KEY
+    ticket_model = TICKET_IA_MODEL or IA_MODEL
+    if not ticket_key:
+        raise RuntimeError("No hay API key de IA configurada")
+    prompt = _prompt_buscar_web_materiales(q, n)
+    system = (
+        "Eres un buscador de precios de materiales de carpintería en España. "
+        "Usa la búsqueda web. Devuelve SOLO JSON válido con articulos. "
+        "Los precios van con IVA incluido. No inventes URLs."
+    )
+    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    raw = None
+    try:
+        # googleSearch no siempre admite responseMimeType=json; pedimos texto y parseamos.
+        raw = _peticion_gemini(
+            contents=contents,
+            system_instruction=system,
+            max_tokens=2500,
+            temperature=0.1,
+            api_key=ticket_key,
+            model=ticket_model,
+            timeout=90,
+            tools=[{"googleSearch": {}}],
+        )
+    except Exception:
+        raw = _peticion_gemini(
+            contents=contents,
+            system_instruction=system,
+            response_mime_type="application/json",
+            max_tokens=2500,
+            temperature=0.1,
+            api_key=ticket_key,
+            model=ticket_model,
+            timeout=90,
+        )
+    texto = _gemini_extraer_texto(raw)
+    data = _extraer_json_de_texto(texto)
+    if not isinstance(data, dict):
+        data = _normalizar_json_materiales_con_ia(texto, tipo="web", api_key=ticket_key, model=ticket_model)
+    if not isinstance(data, dict):
+        data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
+    data["tipo_documento"] = data.get("tipo_documento") or "web"
+    data["iva_incluido"] = True
+    data = _limpiar_resultado_ia(data, origen_tipo="ticket")
+    arts = []
+    for a in data.get("articulos") or []:
+        if not isinstance(a, dict):
+            continue
+        nrm = _normalizar_articulo(a)
+        nrm["fuente"] = str(a.get("fuente") or "web").strip() or "web"
+        nrm["url"] = str(a.get("url") or "").strip()
+        if not nrm.get("proveedor"):
+            nrm["proveedor"] = str(data.get("proveedor") or "").strip()
+        nrm["faena_id"] = None
+        nrm["_solo_materiales"] = True
+        arts.append(nrm)
+    data["articulos"] = arts[:n]
+    data["query"] = q
+    data["tipo_fuente"] = "web"
+    if arts:
+        try:
+            from secretario import guardar_extraccion_compra
+            data["ficha"] = guardar_extraccion_compra("web", data, None)
+        except Exception:
+            pass
+    return data
+
+
+@app.route("/api/materiales/buscar-web", methods=["POST"])
+def materiales_buscar_web():
+    datos = request.json or {}
+    query = (datos.get("query") or datos.get("busqueda") or datos.get("descripcion") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "Escribe qué material quieres buscar"}), 400
+    max_resultados = datos.get("max_resultados", 8)
+    try:
+        data = _buscar_materiales_en_web(query, max_resultados=max_resultados)
+        if not (data.get("articulos") or []):
+            return jsonify({"ok": True, "data": data, "aviso": "No se encontraron productos"})
+        return jsonify({"ok": True, "data": data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error buscando en la web: {str(e)}"}), 502
+
+
 def _extraer_json_de_texto(texto):
     bruto = (texto or "").strip()
     if not bruto:
@@ -3308,6 +3422,8 @@ def _normalizar_articulo(art):
         "categoria": str(art.get("categoria") or "").strip(),
         "definicion": str(art.get("definicion") or "").strip(),
         "proveedor": str(art.get("proveedor") or "").strip(),
+        "fuente": str(art.get("fuente") or "").strip(),
+        "url": str(art.get("url") or "").strip(),
         "faena_id": faena_item,
         "_solo_materiales": solo_materiales,
     }

@@ -181,7 +181,32 @@ def _filtra_por_tokens(items, tokens, campos_fn):
 
 def _pide_web(pregunta):
     txt = _norm_txt(pregunta)
-    return any(k in txt for k in ("internet", "google", "en la web", "online", "busca en web"))
+    claves = (
+        "internet", "google", "en la web", "online", "busca en web",
+        "buscar en web", "busca en internet", "buscar en internet",
+        "tienda", "tiendas", "leroy", "amazon", "brico",
+        "cuanto cuesta", "cuánto cuesta", "que precio", "qué precio",
+        "precio de", "precios de", "buscar precio", "busca precio",
+        "comparar precio", "comparar precios",
+    )
+    return any(k in txt for k in claves)
+
+
+def _pide_web_materiales(pregunta, modo):
+    """En modo materiales, también busca web ante consultas de producto/precio."""
+    if _pide_web(pregunta):
+        return True
+    if normalizar_modo(modo) != "materiales":
+        return False
+    txt = _norm_txt(pregunta)
+    if len(txt) < 3:
+        return False
+    # Evitar activar web en preguntas puramente de catálogo local.
+    if any(k in txt for k in ("en el almacen", "en el almacén", "catalogo", "catálogo", "ya tengo", "mis materiales")):
+        return False
+    return _huele_materiales(pregunta, modo) or any(
+        k in txt for k in ("precio", "precios", "coste", "cuesta", "buscar", "busca", "donde compro", "dónde compro")
+    )
 
 
 def _huele_materiales(pregunta, modo):
@@ -1758,7 +1783,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         print("jimmi local:", e)
         local = None
     texto_local = (local or {}).get("texto") or ""
-    if _pide_guardar_nota(pregunta) and not _pide_web(pregunta):
+    if _pide_guardar_nota(pregunta) and not _pide_web_materiales(pregunta, modo):
         if local and local.get("usar") and texto_local:
             return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
         return _pack_datos(
@@ -1770,7 +1795,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         or _es_seguimiento(pregunta)
     )
     if (
-        local and local.get("usar") and not _pide_web(pregunta)
+        local and local.get("usar") and not _pide_web_materiales(pregunta, modo)
         and (forzar_datos or "Dime el número de la faena" not in texto_local)
     ):
         return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
@@ -1792,11 +1817,11 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "Los tiempos reales están en datos_app.tiempos_resumen (faena_id, faena_numero, categoria, minutos). "
         "Categorías de tiempo: medicion_diseno, compras_gestion, trabajo. "
         "Las referencias de faenas archivadas están en datos_app.referencias_faena. "
-        "Primero usa tarifas, extracciones y tiempos propios. Si falta un precio, busca en internet y cita fuente y fecha. "
-        "Ignora IVA, CIF y totales fiscales. Usa el importe pagado de cada línea. "
+        "Primero usa tarifas, extracciones y tiempos propios. Si falta un precio o piden buscar en web/tiendas, busca en internet y cita fuente y fecha. "
+        "Los precios de compra van con IVA incluido. "
         "Si ofreces materiales o precios para aceptar, termina con UN bloque ```json con el formato de ticket: "
-        "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url}]}. "
-        "fuente es catalogo o web. url solo si es web. "
+        "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url,proveedor}]}. "
+        "fuente es catalogo o web. url solo si es web. proveedor de cada línea = tienda. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
         "Si preguntan solo las fotos, responde únicamente con las fotos. No repitas el resto de la ficha. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
@@ -1811,7 +1836,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "datos_app": datos,
     }
     contents = _contents_conversacion(historial, pregunta, json.dumps(user, ensure_ascii=False))
-    usa_web = _pide_web(pregunta)
+    usa_web = _pide_web_materiales(pregunta, modo)
     try:
         kwargs = dict(
             contents=contents,

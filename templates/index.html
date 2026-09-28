@@ -849,11 +849,21 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box">
+    <div class="form-title">Buscar en la web</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;line-height:1.5">Jimmi busca productos en tiendas (España). Comprueba precios y enlaces antes de guardar en el almacén.</p>
+    <div class="btn-row" style="flex-wrap:wrap;align-items:center;gap:8px">
+      <input id="mat-web-query" type="search" placeholder="Ej: bisagra cazoleta 35 mm" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarMaterialesWebPc();}">
+      <button type="button" class="btn btn-p" id="btn-mat-web" onclick="buscarMaterialesWebPc()">Buscar en web</button>
+    </div>
+    <div id="mat-web-estado" style="display:none;margin-top:8px;font-size:0.82rem;color:var(--muted)"></div>
+  </div>
+
+  <div class="form-box">
     <div class="form-title" style="display:flex;justify-content:space-between;align-items:center">
       Introducir datos
       <button class="btn btn-d btn-sm" onclick="cancelarTicket()" id="btn-cancelar-ticket" style="display:none">Cancelar</button>
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6" id="ticket-ayuda">Foto o PDF. Al aceptar se guarda en la nube. Sin IVA.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6" id="ticket-ayuda">Foto o PDF. Al aceptar se guarda en la nube. Precios con IVA.</p>
     <input type="file" id="ticket-foto-input" accept="image/*" onchange="ticketPreview(event)" style="display:none">
     <input type="file" id="ticket-pdf-input" accept="application/pdf,.pdf,.txt" onchange="ticketPdfPreview(event)" style="display:none">
     <div class="btn-row">
@@ -1118,7 +1128,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <p style="font-size:0.78rem;color:#888;margin-top:8px">
-    Jimmi, tu secretario. Pregunta por faenas, presupuestos o precios. Si propone un cambio, confirma antes de guardar.
+    Jimmi, tu secretario. Pregunta por faenas, presupuestos o precios. En Materiales puedes buscar en la web (botón o «busca en la web…»). Si propone un cambio, confirma antes de guardar.
   </p>
 
   <div id="copilot-box" style="display:none;margin-top:12px">
@@ -4361,7 +4371,10 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
         cantidad,
         precio_unitario: precio,
         total: Number(a.total || (cantidad * precio)) || 0,
-        faena_id
+        faena_id,
+        fuente: String(a.fuente || "").trim(),
+        url: String(a.url || "").trim(),
+        definicion: String(a.definicion || "").trim()
       };
     }).filter(a => a.nombre)
   };
@@ -4374,13 +4387,19 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
   const articulos = normalizado.articulos.length ? normalizado.articulos : [{
     nombre: "", unidad: "ud", categoria: "Otros", proveedor: normalizado.proveedor,
     cantidad: 1, precio_unitario: 0, total: 0,
-    faena_id: faenaPorDefecto != null ? String(faenaPorDefecto) : null
+    faena_id: faenaPorDefecto != null ? String(faenaPorDefecto) : null,
+    url: "", fuente: ""
   }];
   const rows = articulos.map((a, i) => {
     const cantidad = Number(a.cantidad || 0);
     const precio = Number(a.precio_unitario || 0);
     const total = Number(a.total || (cantidad * precio));
     const faena = a.faena_id ? String(a.faena_id) : "";
+    const url = String(a.url || "").trim();
+    const linkHtml = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem">Abrir</a>
+         <input type="hidden" data-k="url" value="${esc(url)}">`
+      : `<input type="hidden" data-k="url" value="">`;
     return `<tr data-i="${i}">
       <td><select data-k="categoria">${opcionesCategoriaHtml(a.categoria || "Otros")}</select></td>
       <td><input type="text" data-k="nombre" value="${esc(a.nombre || "")}"></td>
@@ -4389,15 +4408,16 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
       <td><input type="number" step="0.01" data-k="precio_unitario" value="${Number.isFinite(precio) ? precio : 0}"></td>
       <td><input type="number" step="0.01" data-k="total" value="${Number.isFinite(total) ? total : 0}"></td>
       <td><input type="text" data-k="unidad" value="${esc(a.unidad || "ud")}"></td>
+      <td>${linkHtml}</td>
       <td><select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select></td>
     </tr>`;
   }).join("");
   wrap.innerHTML = `
-    <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">Proveedor: <strong>${esc(normalizado.proveedor) || "(sin proveedor)"}</strong>${normalizado.fecha ? ` · Fecha: <strong>${esc(normalizado.fecha)}</strong>` : ""}</div>
+    <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">Proveedor: <strong>${esc(normalizado.proveedor) || "(sin proveedor)"}</strong>${normalizado.fecha ? ` · Fecha: <strong>${esc(normalizado.fecha)}</strong>` : ""} · Precios con IVA</div>
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Faena</th>
+          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Web</th><th>Faena</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -4409,7 +4429,7 @@ function _leerTablaAnalisisTicket(containerId) {
   if (!wrap || !ticketAnalisisActual) return null;
   const articulos = [];
   let proveedorComun = "";
-  wrap.querySelectorAll("tbody tr").forEach(tr => {
+  wrap.querySelectorAll("tbody tr").forEach((tr, idx) => {
     const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
     if (!nombre) return;
     const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
@@ -4418,6 +4438,8 @@ function _leerTablaAnalisisTicket(containerId) {
     const precio = Number((tr.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
     const totalNum = Number((tr.querySelector('[data-k="total"]')?.value || "").replace(",", "."));
     const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
+    const url = (tr.querySelector('[data-k="url"]')?.value || "").trim();
+    const prev = (ticketAnalisisActual.articulos || [])[idx] || {};
     articulos.push({
       nombre,
       categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otros").trim() || "Otros",
@@ -4426,10 +4448,53 @@ function _leerTablaAnalisisTicket(containerId) {
       precio_unitario: Number.isFinite(precio) ? precio : 0,
       total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
       unidad: (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud",
-      faena_id: faenaRaw || null
+      faena_id: faenaRaw || null,
+      fuente: prev.fuente || (url ? "web" : ""),
+      url,
+      definicion: prev.definicion || ""
     });
   });
   return { proveedor: proveedorComun || ticketAnalisisActual.proveedor || "", fecha: ticketAnalisisActual.fecha || "", articulos };
+}
+
+async function buscarMaterialesWebPc() {
+  const input = document.getElementById("mat-web-query");
+  const btn = document.getElementById("btn-mat-web");
+  const estado = document.getElementById("mat-web-estado");
+  const query = (input?.value || "").trim();
+  if (!query) { toast("Escribe qué material buscar", true); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "Buscando…"; }
+  if (estado) { estado.style.display = "block"; estado.textContent = "Jimmi está buscando en la web…"; }
+  try {
+    const r = await apiLargo("POST", "/materiales/buscar-web", { query, max_resultados: 8 }, 90000);
+    if (!r.ok) { toast(r.error || "No se pudo buscar", true); if (estado) estado.textContent = r.error || "Error"; return; }
+    const data = r.data || {};
+    const n = (data.articulos || []).length;
+    if (!n) {
+      toast(r.aviso || "Sin resultados en la web", true);
+      if (estado) estado.textContent = "Sin resultados. Prueba otra búsqueda.";
+      return;
+    }
+    ticketAnalisisActual = data;
+    const jsonEl = document.getElementById("ticket-json-pc");
+    if (jsonEl) jsonEl.value = JSON.stringify(data, null, 2);
+    document.getElementById("ticket-paso2").style.display = "none";
+    document.getElementById("ticket-paso3").style.display = "block";
+    document.getElementById("btn-cancelar-ticket").style.display = "inline-flex";
+    const dest = document.getElementById("ticket-destino");
+    if (dest) dest.value = "almacen";
+    actualizarDestinoTicket();
+    rellenarFaenasTicketDestino();
+    _renderTablaAnalisisTicket(data);
+    if (estado) estado.textContent = `✓ ${n} resultado${n === 1 ? "" : "s"}. Revisa y guarda en el almacén.`;
+    toast(`✓ ${n} producto${n === 1 ? "" : "s"} encontrado${n === 1 ? "" : "s"}`);
+    document.getElementById("ticket-paso3")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    toast("Error al buscar en la web", true);
+    if (estado) estado.textContent = e.message || "Error de conexión";
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Buscar en web"; }
+  }
 }
 
 function ticketPreview(event) {
