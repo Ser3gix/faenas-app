@@ -184,10 +184,14 @@ def _pide_web(pregunta):
     claves = (
         "internet", "google", "en la web", "online", "busca en web",
         "buscar en web", "busca en internet", "buscar en internet",
-        "tienda", "tiendas", "leroy", "amazon", "brico",
+        "tienda", "tiendas", "leroy", "amazon", "brico", "obramat",
+        "manomano", "bauhaus", "hornbach", "aki", "bigmat",
         "cuanto cuesta", "cuánto cuesta", "que precio", "qué precio",
         "precio de", "precios de", "buscar precio", "busca precio",
         "comparar precio", "comparar precios",
+        "que hay en", "qué hay en", "hay en", "que venden", "qué venden",
+        "listones", "liston", "listón",
+        "cruzada", "cruzar", "varias tiendas",
     )
     return any(k in txt for k in claves)
 
@@ -202,9 +206,11 @@ def _pide_web_materiales(pregunta, modo):
     if len(txt) < 3:
         return False
     if any(k in txt for k in ("en el almacen", "en el almacén", "catalogo", "catálogo", "ya tengo", "mis materiales")):
-        return False
+        # "catálogo" en almacén local; pero "hay en obramat" sí es web
+        if not any(t in txt for t in ("obramat", "leroy", "brico", "amazon", "manomano", "bauhaus")):
+            return False
     return _huele_materiales(pregunta, modo) or any(
-        k in txt for k in ("precio", "precios", "coste", "cuesta", "buscar", "busca", "donde compro", "dónde compro")
+        k in txt for k in ("precio", "precios", "coste", "cuesta", "buscar", "busca", "donde compro", "dónde compro", "hay en", "tienen")
     )
 
 
@@ -251,6 +257,15 @@ def _consulta_web_ambigua(pregunta):
     txt = _norm_txt(pregunta or "")
     if not txt:
         return True
+    # Consultas a una tienda concreta con producto/categoría no son vagas.
+    if any(t in txt for t in (
+        "obramat", "obrama", "leroy", "brico", "manomano", "bauhaus", "hornbach",
+        "amazon", "aki", "bigmat",
+    )) and any(k in txt for k in (
+        "liston", "listón", "tablero", "bisagra", "tornillo", "canto", "melamina",
+        "pino", "abeto", "mdf", "herraje", "hay", "venden", "tienen", "moldura",
+    )):
+        return False
     ruido = {
         "busca", "buscar", "buscame", "búscame", "web", "internet", "google", "online",
         "precio", "precios", "cuanto", "cuesta", "tienda", "tiendas", "comparar", "comparacion",
@@ -267,6 +282,7 @@ def _consulta_web_ambigua(pregunta):
         k in txt for k in (
             "bisagra", "tablero", "tornillo", "canto", "melamina", "herraje",
             "cazoleta", "corredera", "guia", "guía", "mdf", "dm", "barniz", "cola",
+            "liston", "listón", "pino", "abeto",
         )
     ):
         return True
@@ -276,11 +292,11 @@ def _consulta_web_ambigua(pregunta):
 def _texto_aclaracion_web(pregunta):
     q = (pregunta or "").strip() or "ese material"
     return (
-        f"Para buscar bien «{q}» en varias tiendas y poder comparar, necesito afinar un poco:\n"
-        f"• ¿Medida o referencia? (ej. 35 mm, 16 mm, código…)\n"
-        f"• ¿Tipo o material? (cazoleta, latón, acero, blanco…)\n"
-        f"• ¿Para qué lo usas? (puerta, cajón, cocina…)\n\n"
-        f"Respóndeme con esos datos y te traigo opciones de varias tiendas con enlace al producto."
+        f"Para buscar bien «{q}», necesito afinar un poco:\n"
+        f"• ¿Medida o referencia? (ej. 35 mm, 20x40, código…)\n"
+        f"• ¿Tipo o material? (cazoleta, pino, abeto, blanco…)\n"
+        f"• ¿Tienda concreta, comparar un producto, o cruzar varios en varias tiendas?\n\n"
+        f"Respóndeme con esos datos y te traigo opciones con enlace al producto."
     )
 
 
@@ -1932,11 +1948,19 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
                 },
             }
         try:
-            from server2 import _buscar_materiales_en_web, _GEMINI_ULTIMO_MODELO
-            data_web = _buscar_materiales_en_web(consulta or pregunta, max_resultados=8)
+            from server2 import _buscar_materiales_en_web, _detectar_modo_busqueda_web, _GEMINI_ULTIMO_MODELO
+            modo_web = _detectar_modo_busqueda_web(consulta or pregunta)
+            max_n = 12 if modo_web == "cruzada" else (10 if modo_web == "catalogo_tienda" else 8)
+            data_web = _buscar_materiales_en_web(consulta or pregunta, max_resultados=max_n, modo=modo_web)
             arts = list(data_web.get("articulos") or [])
             if arts:
-                lineas = [f"Comparativa para «{consulta or pregunta}» en varias tiendas (precios con IVA):"]
+                if modo_web == "catalogo_tienda":
+                    tienda = (data_web.get("proveedor") or (arts[0].get("proveedor") if arts else "") or "esa tienda").strip()
+                    lineas = [f"Surtido en {tienda} para «{consulta or pregunta}» (precios con IVA):"]
+                elif modo_web == "cruzada":
+                    lineas = [f"Búsqueda cruzada (varios productos × varias tiendas) para «{consulta or pregunta}» (precios con IVA):"]
+                else:
+                    lineas = [f"Comparativa para «{consulta or pregunta}» en varias tiendas (precios con IVA):"]
                 for a in arts:
                     precio = a.get("precio_unitario")
                     try:
@@ -1945,9 +1969,14 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
                         precio_txt = str(precio or "—")
                     tienda = (a.get("proveedor") or "Tienda").strip()
                     nombre = (a.get("nombre") or "Producto").strip()
-                    lineas.append(f"• {tienda}: {nombre} — {precio_txt}")
-                lineas.append("Abre el enlace del producto (no la tienda) y añade al almacén los que te interesen.")
-                lineas.append("Si quieres, dime marca, color u otra medida y afino la búsqueda.")
+                    defi = (a.get("definicion") or "").strip()
+                    extra = f" ({defi})" if defi else ""
+                    if modo_web == "catalogo_tienda":
+                        lineas.append(f"• {nombre}{extra} — {precio_txt}")
+                    else:
+                        lineas.append(f"• {tienda}: {nombre}{extra} — {precio_txt}")
+                lineas.append("Abre el enlace del producto y añade al almacén los que te interesen.")
+                lineas.append("Puedes pedir: una tienda concreta, comparar un solo producto, o cruzar varios en varias tiendas.")
                 return {
                     "ok": True,
                     "data": {

@@ -3306,14 +3306,84 @@ def ollama_buscar_materiales():
     return jsonify({"ok": True, "data": {"materiales": resultados, "no_encontrados": no_encontrados}})
 
 
-def _prompt_buscar_web_materiales(query, max_resultados=8):
+def _prompt_buscar_web_materiales(query, max_resultados=8, modo="comparar"):
     q = (query or "").strip()
     n = max(4, min(int(max_resultados or 8), 12))
+    if modo == "catalogo_tienda":
+        tiendas = _tiendas_en_consulta(q)
+        tienda_txt = tiendas[0].title() if tiendas else "esa tienda"
+        if tiendas and tiendas[0] == "leroy merlin":
+            tienda_txt = "Leroy Merlin"
+        elif tiendas and tiendas[0] == "obramat":
+            tienda_txt = "Obramat"
+        return f"""Busca en internet el surtido / catálogo de productos SOLO en {tienda_txt} según: "{q}".
+
+La consulta pide el listado de productos o variedades EN ESA TIENDA (y ciudad/centro si se indica, p. ej. Obramat Valencia).
+NO compares con otras tiendas. NO devuelvas un producto de Leroy, Amazon, ManoMano, etc.
+
+OBLIGATORIO:
+- TODOS los artículos deben ser de {tienda_txt} (proveedor = "{tienda_txt}" o "{tienda_txt} Valencia" si aplica).
+- Lista entre {max(6, min(n, 8))} y {n} productos/variantes DISTINTOS (medidas, secciones, maderas, referencias).
+- Si piden pino Y abeto (u otras maderas), incluye AMBOS grupos con varias medidas de cada uno.
+- url = enlace DIRECTO a la ficha del PRODUCTO en el dominio de {tienda_txt} (nunca la home ni solo /search).
+- precio_unitario CON IVA incluido. unidad típica (ud, ml, m, pack).
+- No inventes productos ni URLs: solo lo encontrado en la búsqueda web.
+
+Devuelve SOLO un objeto JSON (sin markdown) con:
+proveedor (nombre de la tienda),
+fecha (AAAA-MM-DD de hoy si puedes),
+total_ticket (suma),
+tipo_documento: "web",
+iva_incluido: true,
+iva_porcentaje: 21,
+modo_busqueda: "catalogo_tienda",
+articulos: [{{
+  nombre, cantidad: 1, precio_unitario, total, unidad, categoria
+  (Trabajo|Tableros|Molduras-Maderas|Herrajes|Otros),
+  definicion (medida/ref/madera breve),
+  proveedor (misma tienda),
+  fuente: "web",
+  url (https ficha producto)
+}}]
+
+Si no hay resultados, articulos=[]."""
+
+    if modo == "cruzada":
+        return f"""Haz una búsqueda CRUZADA: varios productos/variantes distintos en VARIAS tiendas de España según: "{q}".
+
+OBLIGATORIO:
+- Identifica al menos 2 productos o variantes distintos (ej. listón de pino y listón de abeto; o varias medidas).
+- Busca cada uno en varias tiendas (Leroy Merlin, Obramat, Amazon, ManoMano, Brico Depôt, Bauhaus, etc.).
+- Devuelve entre {max(6, min(n, 8))} y {n} líneas en total.
+- Cada línea = UN producto concreto en UNA tienda (no mezcles tiendas en la misma línea).
+- Idealmente cada producto aparece en 2 o más tiendas para poder comparar.
+- url = ficha DIRECTA del producto (nunca home ni buscador).
+- precio_unitario CON IVA. No inventes URLs ni precios.
+
+Devuelve SOLO un objeto JSON (sin markdown) con:
+proveedor: null,
+fecha (AAAA-MM-DD de hoy si puedes),
+total_ticket (suma),
+tipo_documento: "web",
+iva_incluido: true,
+iva_porcentaje: 21,
+modo_busqueda: "cruzada",
+articulos: [{{
+  nombre, cantidad: 1, precio_unitario, total, unidad, categoria
+  (Trabajo|Tableros|Molduras-Maderas|Herrajes|Otros),
+  definicion (medida/ref/madera breve),
+  proveedor (nombre de esa tienda),
+  fuente: "web",
+  url (https ficha producto)
+}}]
+
+Ordena por producto y luego por precio. Si no hay resultados, articulos=[]."""
+
     return f"""Busca en internet el mismo producto (o equivalente) en VARIAS tiendas distintas de España para comparar precios: "{q}".
 
 OBLIGATORIO:
 - Devuelve entre {max(4, min(n, 6))} y {n} resultados.
-- Cada resultado debe ser de una TIENDA DISTINTA (proveedor distinto): p. ej. Leroy Merlin, Amazon, ManoMano, Brico Depôt, Bauhaus, Hornbach, ferretería online, etc.
+- Cada resultado debe ser de una TIENDA DISTINTA (proveedor distinto): p. ej. Leroy Merlin, Amazon, ManoMano, Brico Depôt, Bauhaus, Hornbach, Obramat, ferretería online, etc.
 - url = enlace DIRECTO a la ficha del PRODUCTO (no la home de la tienda ni la página de búsqueda).
 - precio_unitario CON IVA incluido (precio final de venta).
 - No inventes URLs: solo enlaces reales encontrados en la búsqueda.
@@ -3325,6 +3395,7 @@ total_ticket (suma),
 tipo_documento: "web",
 iva_incluido: true,
 iva_porcentaje: 21,
+modo_busqueda: "comparar",
 articulos: [{{
   nombre, cantidad: 1, precio_unitario, total, unidad, categoria
   (Trabajo|Tableros|Molduras-Maderas|Herrajes|Otros),
@@ -3337,37 +3408,168 @@ articulos: [{{
 Si no hay suficientes tiendas, devuelve las que encuentres (nunca una sola si hay más). Si no hay nada, articulos=[]."""
 
 
-def _buscar_materiales_en_web(query, max_resultados=8):
-    """Búsqueda general en internet (Gemini googleSearch) → JSON multi-tienda."""
+def _norm_busqueda_txt(query):
+    txt = unicodedata.normalize("NFKD", str(query or "").lower())
+    return "".join(c for c in txt if unicodedata.category(c) != "Mn")
+
+
+# alias → nombre canónico (acepta typos cortos tipo "obrama")
+_TIENDAS_WEB = (
+    ("obramat", ("obramat", "obrama", "obra mat")),
+    ("leroy merlin", ("leroy merlin", "leroymerlin", "leroy")),
+    ("brico depot", ("brico depot", "bricodepot", "brico depôt")),
+    ("manomano", ("manomano", "mano mano")),
+    ("bauhaus", ("bauhaus",)),
+    ("hornbach", ("hornbach",)),
+    ("amazon", ("amazon",)),
+    ("aki", ("aki",)),
+    ("bricoman", ("bricoman",)),
+    ("bigmat", ("bigmat", "big mat")),
+    ("point p", ("point p", "pointp")),
+    ("disetron", ("disetron",)),
+)
+
+
+def _tiendas_en_consulta(query):
+    """Devuelve nombres canónicos de tiendas citadas en la consulta."""
+    txt = _norm_busqueda_txt(query)
+    halladas = []
+    for canon, aliases in _TIENDAS_WEB:
+        if any(a in txt for a in aliases):
+            halladas.append(canon)
+    return halladas
+
+
+def _detectar_modo_busqueda_web(query):
+    """comparar | catalogo_tienda | cruzada (varios productos x varias tiendas)."""
+    txt = _norm_busqueda_txt(query)
+    tiendas_hit = _tiendas_en_consulta(txt)
+    n_tiendas = len(tiendas_hit)
+    tiene_tienda = n_tiendas >= 1
+    productos = (
+        "liston", "tablero", "bisagra", "tornillo", "canto", "melamina", "mdf",
+        "pino", "abeto", "roble", "herraje", "barniz", "cola", "dm", "osb",
+        "guias", "corredera", "cazoleta", "varnish", "moldura", "listones",
+    )
+    catalogo = any(k in txt for k in (
+        "que hay", "qué hay", "hay en", "tienen", "vende", "venden", "disponib",
+        "catalogo", "catálogo", "listado", "surtido", "variedades", "tipos de",
+        "medidas de", "que listones", "qué listones", "que tableros", "qué tableros",
+        "que venden", "qué venden", "de esa tienda", "en esa tienda",
+    ))
+    varias_variantes = (" y " in f" {txt} ") or (" o " in f" {txt} ")
+    n_productos = sum(1 for p in productos if p in txt)
+    varios_productos = varias_variantes or n_productos >= 2 or any(k in txt for k in (
+        "varios productos", "varias medidas", "distintos productos", "diferentes productos",
+    )) or catalogo
+    varias_tiendas = n_tiendas >= 2 or any(k in txt for k in (
+        "varias tiendas", "distintas tiendas", "cruzad", "cruzar", "comparar en",
+        "entre tiendas", "en varias", "multi tienda", "multitienda",
+    ))
+
+    # Una sola tienda citada → SIEMPRE catálogo de esa tienda (no comparar 1×tienda).
+    if tiene_tienda and n_tiendas == 1 and not varias_tiendas:
+        return "catalogo_tienda"
+
+    # Varios productos y (varias tiendas o sin tienda fija) → cruzada
+    if varios_productos and (varias_tiendas or not tiene_tienda):
+        return "cruzada"
+    if varias_tiendas and varios_productos:
+        return "cruzada"
+    if any(k in txt for k in ("cruzad", "cruzar busqueda", "cruzar búsqueda")):
+        return "cruzada"
+
+    return "comparar"
+
+
+def _filtrar_articulos_tienda(articulos, query):
+    """En modo catálogo, deja solo líneas de la tienda pedida (si se puede reconocer)."""
+    tiendas = _tiendas_en_consulta(query)
+    if len(tiendas) != 1:
+        return articulos
+    canon = tiendas[0]
+    aliases = next((a for c, a in _TIENDAS_WEB if c == canon), (canon,))
+    out = []
+    for a in articulos or []:
+        if not isinstance(a, dict):
+            continue
+        prov = _norm_busqueda_txt(a.get("proveedor") or "")
+        url = _norm_busqueda_txt(a.get("url") or "")
+        if any(x in prov or x in url for x in aliases):
+            a = dict(a)
+            a["proveedor"] = (a.get("proveedor") or canon).strip() or canon.title()
+            out.append(a)
+    # Si el modelo mezcló tiendas y tras filtrar queda vacío, no descartamos todo:
+    # reetiquetamos con la tienda pedida (mejor que devolver otras cadenas).
+    if not out and articulos:
+        for a in articulos:
+            if not isinstance(a, dict):
+                continue
+            a = dict(a)
+            a["proveedor"] = canon.title() if canon != "leroy merlin" else "Leroy Merlin"
+            if canon == "obramat":
+                a["proveedor"] = "Obramat"
+            out.append(a)
+    return out
+
+
+def _buscar_materiales_en_web(query, max_resultados=8, modo=None):
+    """Búsqueda web: comparar, catálogo de una tienda o cruzada productos×tiendas."""
     q = (query or "").strip()
     if not q:
         raise ValueError("Falta la búsqueda")
+    modo = modo or _detectar_modo_busqueda_web(q)
     try:
-        n = max(4, min(int(max_resultados or 8), 12))
+        n = max(4, min(int(max_resultados or 8), 14))
     except Exception:
         n = 8
+    if modo == "catalogo_tienda":
+        n = max(n, 8)
+    elif modo == "cruzada":
+        n = max(n, 10)
     ticket_key = TICKET_IA_API_KEY or IA_API_KEY
     ticket_model = TICKET_IA_MODEL or IA_MODEL
     if not ticket_key:
         raise RuntimeError("No hay API key de IA configurada")
-    prompt = _prompt_buscar_web_materiales(q, n)
-    system = (
-        "Eres un comparador de precios de materiales de carpintería en España. "
-        "Usa la búsqueda web. Devuelve SOLO JSON válido. "
-        "Incluye varias tiendas distintas. Cada url debe ser la ficha del producto, nunca la home. "
-        "Precios con IVA. No inventes URLs."
-    )
+    prompt = _prompt_buscar_web_materiales(q, n, modo=modo)
+    if modo == "catalogo_tienda":
+        tiendas = _tiendas_en_consulta(q)
+        tienda_txt = (tiendas[0] if tiendas else "la tienda pedida").title()
+        if tiendas and tiendas[0] == "obramat":
+            tienda_txt = "Obramat"
+        elif tiendas and tiendas[0] == "leroy merlin":
+            tienda_txt = "Leroy Merlin"
+        system = (
+            f"Eres un asistente de carpintería que consulta el surtido SOLO de {tienda_txt}. "
+            "Usa la búsqueda web. Devuelve SOLO JSON válido. "
+            f"Lista muchos productos/variantes distintos de {tienda_txt} (no de otras cadenas). "
+            "Cada url = ficha de producto de esa tienda. Precios con IVA. No inventes URLs."
+        )
+    elif modo == "cruzada":
+        system = (
+            "Eres un comparador cruzado: varios productos de carpintería en varias tiendas de España. "
+            "Usa la búsqueda web. Devuelve SOLO JSON válido. "
+            "Cada línea es un producto concreto en una tienda, con url de ficha. "
+            "Precios con IVA. No inventes URLs."
+        )
+    else:
+        system = (
+            "Eres un comparador de precios de materiales de carpintería en España. "
+            "Usa la búsqueda web. Devuelve SOLO JSON válido. "
+            "Incluye varias tiendas distintas. Cada url debe ser la ficha del producto, nunca la home. "
+            "Precios con IVA. No inventes URLs."
+        )
     contents = [{"role": "user", "parts": [{"text": prompt}]}]
     raw = None
     try:
         raw = _peticion_gemini(
             contents=contents,
             system_instruction=system,
-            max_tokens=3500,
+            max_tokens=4000 if modo == "cruzada" else 3500,
             temperature=0.15,
             api_key=ticket_key,
             model=ticket_model,
-            timeout=100,
+            timeout=110,
             tools=[{"googleSearch": {}}],
         )
     except Exception:
@@ -3375,11 +3577,11 @@ def _buscar_materiales_en_web(query, max_resultados=8):
             contents=contents,
             system_instruction=system,
             response_mime_type="application/json",
-            max_tokens=3500,
+            max_tokens=4000 if modo == "cruzada" else 3500,
             temperature=0.15,
             api_key=ticket_key,
             model=ticket_model,
-            timeout=100,
+            timeout=110,
         )
     texto = _gemini_extraer_texto(raw)
     grounding = _gemini_uris_grounding(raw)
@@ -3390,6 +3592,7 @@ def _buscar_materiales_en_web(query, max_resultados=8):
         data = {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": []}
     data["tipo_documento"] = data.get("tipo_documento") or "web"
     data["iva_incluido"] = True
+    data["modo_busqueda"] = modo
     data = _limpiar_resultado_ia(data, origen_tipo="ticket")
     arts = []
     vistos_tienda = set()
@@ -3403,17 +3606,38 @@ def _buscar_materiales_en_web(query, max_resultados=8):
             nrm["proveedor"] = str(data.get("proveedor") or "").strip()
         nrm["faena_id"] = None
         nrm["_solo_materiales"] = True
-        clave = (nrm.get("proveedor") or "").strip().lower()
-        if clave and clave in vistos_tienda and len(vistos_tienda) >= 4:
-            continue
-        if clave:
-            vistos_tienda.add(clave)
+        if modo == "comparar":
+            clave = (nrm.get("proveedor") or "").strip().lower()
+            if clave and clave in vistos_tienda and len(vistos_tienda) >= 4:
+                continue
+            if clave:
+                vistos_tienda.add(clave)
         arts.append(nrm)
+    if modo == "catalogo_tienda":
+        arts = _filtrar_articulos_tienda(arts, q)
     arts = _enriquecer_urls_productos(arts, grounding)
+    # En cruzada, ordenar por nombre y precio para leer mejor
+    if modo == "cruzada":
+        arts.sort(key=lambda x: (
+            str(x.get("nombre") or "").lower(),
+            float(x.get("precio_unitario") or 0),
+            str(x.get("proveedor") or "").lower(),
+        ))
     data["articulos"] = arts[:n]
     data["query"] = q
     data["tipo_fuente"] = "web"
-    data["proveedor"] = None
+    if modo == "catalogo_tienda":
+        tiendas = _tiendas_en_consulta(q)
+        if tiendas:
+            canon = tiendas[0]
+            data["proveedor"] = (
+                "Obramat" if canon == "obramat"
+                else ("Leroy Merlin" if canon == "leroy merlin" else canon.title())
+            )
+        elif not data.get("proveedor") and arts:
+            data["proveedor"] = arts[0].get("proveedor") or None
+    else:
+        data["proveedor"] = None
     if arts:
         try:
             from secretario import guardar_extraccion_compra
