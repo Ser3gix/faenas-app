@@ -4984,7 +4984,20 @@ function renderResultadoOptimizadorPc(data) {
         <div><div class="presup-total-label">Canto</div><div style="font-weight:700;font-size:1.15rem">${r.metros_canto} m</div></div>
         <div><div class="presup-total-label">Subtotal</div><div style="font-weight:700;font-size:1.15rem;color:var(--green)">${(r.subtotal || 0).toFixed(2)} €</div></div>
       </div>
-      ${r.aviso_stock ? `<p style="color:#b36b00;font-size:0.82rem;margin-bottom:8px">Faltan tableros en el stock configurado para completar todas las piezas.</p>` : ""}
+      ${r.aviso_stock ? (() => {
+        const faltan = Array.isArray(r.piezas_faltantes) ? r.piezas_faltantes : [];
+        const nFaltan = faltan.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0);
+        const filas = faltan.map(p => {
+          const motivo = p.motivo === "no_cabe"
+            ? "no cabe en el tablero útil"
+            : "faltan tableros / no encaja en el stock";
+          return `<li><strong>${esc(p.nombre || "Pieza")}</strong> · ${p.cantidad} ud · ${p.largo}×${p.ancho} mm — <span style="color:#8a5a00">${esc(motivo)}</span></li>`;
+        }).join("");
+        return `<div style="color:#b36b00;font-size:0.82rem;margin-bottom:10px;line-height:1.45">
+          <p style="margin:0 0 6px 0">No se pudieron colocar <strong>${nFaltan}</strong> pieza${nFaltan === 1 ? "" : "s"} (${r.piezas_colocadas}/${r.piezas_totales}).</p>
+          ${filas ? `<ul style="margin:0 0 0 18px;padding:0">${filas}</ul>` : ""}
+        </div>`;
+      })() : ""}
       <details style="margin-bottom:10px">
         <summary style="cursor:pointer;font-size:0.85rem;color:var(--accent)">Desglose de costes</summary>
         <ul style="margin:8px 0 0 18px;font-size:0.82rem;line-height:1.6;color:#555">

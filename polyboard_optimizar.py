@@ -155,6 +155,16 @@ def optimizar_despiece(
         mapping_rects = {}
         metros_canto_total = 0.0
 
+        def _cabe_en_tablero(largo_mm, ancho_mm):
+            w = largo_mm + espesor_sierra
+            h = ancho_mm + espesor_sierra
+            normal = w <= ancho_util and h <= alto_util
+            if normal:
+                return True
+            if permitir_rotacion and h <= ancho_util and w <= alto_util:
+                return True
+            return False
+
         for item in piezas or []:
             # En PolyBoard: largo × ancho. En empaquetado usamos ancho_p=largo, alto_p=ancho
             # (misma convención práctica que la app Streamlit: alto↔ancho intercambiados).
@@ -164,6 +174,7 @@ def optimizar_despiece(
             if largo_p <= 0 or ancho_p <= 0 or cantidad <= 0:
                 continue
             ml_canto_una = _metros_canto_pieza(item)
+            cabe = _cabe_en_tablero(largo_p, ancho_p)
             for _ in range(cantidad):
                 packer.add_rect(
                     largo_p + espesor_sierra,
@@ -175,6 +186,7 @@ def optimizar_despiece(
                     "ancho": largo_p,
                     "alto": ancho_p,
                     "ml_canto": ml_canto_una,
+                    "cabe_tablero": cabe,
                 }
                 metros_canto_total += ml_canto_una
                 id_contador += 1
@@ -185,6 +197,30 @@ def optimizar_despiece(
         piezas_colocadas = len(rects_colocados)
         bins_usados = sorted({r[0] for r in rects_colocados}) if rects_colocados else []
         tableros_usados = len(bins_usados)
+
+        ids_colocados = {r[5] for r in rects_colocados}
+        faltantes_agg = {}
+        for rid, info in mapping_rects.items():
+            if rid in ids_colocados:
+                continue
+            nombre = str(info.get("nombre") or "Pieza")
+            largo_mm = int(_to_float(info.get("ancho")))
+            ancho_mm = int(_to_float(info.get("alto")))
+            motivo = "no_cabe" if not info.get("cabe_tablero", True) else "stock"
+            clave = (nombre, largo_mm, ancho_mm, motivo)
+            if clave not in faltantes_agg:
+                faltantes_agg[clave] = {
+                    "nombre": nombre,
+                    "largo": largo_mm,
+                    "ancho": ancho_mm,
+                    "cantidad": 0,
+                    "motivo": motivo,
+                }
+            faltantes_agg[clave]["cantidad"] += 1
+        piezas_faltantes = sorted(
+            faltantes_agg.values(),
+            key=lambda x: (x["motivo"], x["nombre"], -x["largo"], -x["ancho"]),
+        )
 
         # Solo canto de piezas realmente colocadas
         metros_canto_colocado = 0.0
@@ -235,6 +271,7 @@ def optimizar_despiece(
             "ancho_util": ancho_util,
             "alto_util": alto_util,
             "aviso_stock": piezas_colocadas < total_piezas_ind,
+            "piezas_faltantes": piezas_faltantes,
             "esquemas": esquemas,
         }
 
