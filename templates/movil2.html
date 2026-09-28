@@ -6213,14 +6213,14 @@ function _ticketArtBodyHtml(a, i, mostrarFaena) {
     </div>
     ${(() => {
       const url = String(a.url || "").trim();
-      if (!url) return "";
-      const safe = escHtml(url);
+      const links = htmlEnlaceProducto(a);
+      if (!links || links.includes("—")) return "";
       return `<div class="ticket-art-field ticket-art-field-compact">
         <label>Enlace web</label>
         <div style="font-size:0.82rem;line-height:1.4;word-break:break-all">
-          ${htmlEnlaceProducto(a)}
+          ${links}
         </div>
-        <input type="hidden" data-k="url" value="${safe}">
+        <input type="hidden" data-k="url" value="${escHtml(url)}">
       </div>`;
     })()}
     <div class="ticket-art-field ticket-art-faena">
