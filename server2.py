@@ -531,7 +531,8 @@ tipo_documento: "ticket" | "factura" | "albaran" | "otro".
 Copia los importes de línea tal como aparecen. En facturas suele ser base sin IVA (iva_incluido=false); en tickets suele ir con IVA (iva_incluido=true).
 TABLEROS: si hay columna M2 o el precio es por m², unidad=\"m2\", cantidad=m² y precio_unitario=€/m² (no por pieza).
 CANTOS / CANTEADO: unidad=\"ml\" (metro lineal), cantidad=metros lineales y precio_unitario=€/ml.
-CORTE de tablero: suele ir en m² (unidad=\"m2\").
+CORTE / SECCIONADORA: unidad=\"ml\" (metro lineal), cantidad=metros lineales y precio_unitario=€/ml.
+CANTOS / CANTEADO: unidad=\"ml\", cantidad=metros lineales y precio_unitario=€/ml.
 Ignora portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
@@ -4964,36 +4965,36 @@ def _json_factura_lineas_sueltas(texto):
                 cantidad = nums[0] if nums else 1
                 unidad = "ud"
                 es_canto = bool(re.search(r"\bcanto\b|\bcanteado\b|canto pvc|canto abs", nombre, re.I))
+                es_corte = bool(re.search(r"\bcorte\b|seccionadora", nombre, re.I))
                 es_tablero = bool(re.search(
                     r"tablero|agplast|mdf|melamina|osb|\bdm\b|hazel|oak|roble|pino|abeto|mm\.?",
                     nombre, re.I,
-                )) and not es_canto
-                es_corte = bool(re.search(r"corte|seccionadora", nombre, re.I))
+                )) and not es_canto and not es_corte
                 if len(nums) >= 5:
                     medida = nums[1]
                     precio = nums[2]
                     if medida and medida > 0:
                         cantidad = medida
-                    if es_canto:
+                    if es_canto or es_corte:
                         unidad = "ml"
-                    elif es_tablero or es_corte:
+                    elif es_tablero:
                         unidad = "m2"
                     elif medida and medida > 0 and medida != nums[0]:
                         unidad = "m2"
                 elif len(nums) >= 3:
                     precio = nums[-3] if len(nums) >= 4 else nums[1]
-                    if es_canto:
+                    if es_canto or es_corte:
                         unidad = "ml"
-                    elif es_tablero or es_corte:
+                    elif es_tablero:
                         unidad = "m2"
                 if precio is None and total is not None and cantidad:
                     try:
                         precio = round(float(total) / float(cantidad), 4)
                     except Exception:
                         precio = total
-                if es_canto:
-                    cat = "Molduras-Maderas"
-                elif es_tablero or es_corte:
+                if es_canto or es_corte:
+                    cat = "Molduras-Maderas" if es_canto else "Trabajo"
+                elif es_tablero:
                     cat = "Tableros"
                 else:
                     cat = "Otros"
