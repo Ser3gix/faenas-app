@@ -4851,24 +4851,144 @@ def _json_ticket_desde_ocr(texto):
         fila = _parse_fila_compra_ocr(l)
         if not fila:
             continue
-        clave = fila["nombre"].lower()
+        clave = (fila.get("nombre") or "").lower()
         if clave in vistos:
             continue
         vistos.add(clave)
         articulos.append(fila)
-
     if not articulos:
-        return None
-    data = {
+        # Facturas con descripción y importes en líneas distintas (p. ej. SALIMER)
+        return _json_factura_lineas_sueltas(texto)
+    return {
         "proveedor": proveedor,
         "fecha": fecha,
         "total_ticket": total_ticket,
         "tipo_documento": "factura" if es_factura else "ticket",
-        "iva_incluido": False if es_factura else True,
+        "iva_incluido": (not es_factura),
         "iva_porcentaje": iva_pct,
         "articulos": articulos,
     }
-    return _asegurar_precios_con_iva(data, origen_tipo="documento" if es_factura else "ticket")
+
+
+def _json_factura_lineas_sueltas(texto):
+    """Parser para facturas donde ref/descripcion/cantidades van en líneas separadas."""
+    if not texto:
+        return None
+    lineas = [re.sub(r"\s+", " ", l).strip() for l in (texto or "").splitlines()]
+    lineas = [l for l in lineas if l]
+    if not lineas:
+        return None
+    proveedor = None
+    for l in lineas:
+        if re.search(r"profesionales|\bS\.A\.\s*$|\bS\.L\.\s*$", l, re.I) and len(l) < 100:
+            proveedor = l[:120]
+            break
+    fecha = None
+    m_fecha = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", texto)
+    if m_fecha:
+        fecha = m_fecha.group(1)
+    total_ticket = None
+    for l in lineas:
+        if "total factura" in l.lower() or "total pedido" in l.lower():
+            nums = re.findall(r"\d+[.,]\d{2}", l)
+            if nums:
+                total_ticket = _parse_numero(nums[-1])
+                break
+    if total_ticket is None:
+        # TOTAL FACTURA suele ir seguido de importes en líneas posteriores
+        for i, l in enumerate(lineas):
+            if "total factura" in l.lower():
+                for j in range(i + 1, min(i + 12, len(lineas))):
+                    nums = re.findall(r"\d+[.,]\d{2}", lineas[j])
+                    if nums and "iva" not in lineas[j].lower():
+                        total_ticket = _parse_numero(nums[-1])
+                break
+
+    ruido = re.compile(
+        r"albar[aá]n|referencia|descripci[oó]n|cantidad|precio|importe|base imponible|"
+        r"cuota iva|total factura|suma importes|delegacion|registro mercantil|"
+        r"datos de pago|agente:|mostrador|proveedor:|n\.?i\.?f|fax:|tel:",
+        re.I,
+    )
+    articulos = []
+    i = 0
+    while i < len(lineas):
+        l = lineas[i]
+        # Bloque típico: Albarán nº → ref → descripción → números
+        if re.match(r"^albar[aá]n\s*n", l, re.I) or (
+            re.match(r"^[A-Z0-9]{6,}$", l) and i + 1 < len(lineas)
+        ):
+            # saltar "Albarán nº" y número
+            j = i
+            if re.match(r"^albar[aá]n\s*n", l, re.I):
+                j = i + 1
+                if j < len(lineas) and re.match(r"^\d+$", lineas[j]):
+                    j += 1
+            ref = ""
+            if j < len(lineas) and re.match(r"^[A-Z0-9]{5,}$", lineas[j]) and not re.search(r"[.,]", lineas[j]):
+                ref = lineas[j]
+                j += 1
+            if j >= len(lineas):
+                i += 1
+                continue
+            nombre = lineas[j]
+            if ruido.search(nombre) or re.match(r"^[\d.,]+$", nombre) or len(nombre) < 3:
+                i += 1
+                continue
+            j += 1
+            nums = []
+            while j < len(lineas) and len(nums) < 6:
+                if re.match(r"^albar[aá]n\s*n", lineas[j], re.I):
+                    break
+                if ruido.search(lineas[j]) and not re.search(r"\d", lineas[j]):
+                    break
+                encontrados = re.findall(r"\d+[.,]\d{2,4}|\d+", lineas[j])
+                if encontrados and re.match(r"^[\d.,\s]+$", lineas[j].replace(" ", "")):
+                    for n in encontrados:
+                        nums.append(_parse_numero(n))
+                    j += 1
+                else:
+                    break
+            if nombre and nums:
+                # Heurística: cantidad, (m2), precio, (%dto), importe
+                cantidad = nums[0] if nums else 1
+                precio = None
+                total = None
+                if len(nums) >= 2:
+                    total = nums[-1]
+                if len(nums) >= 3:
+                    # Preferir precio unitario antes del descuento/importe
+                    precio = nums[-3] if len(nums) >= 4 else nums[1]
+                if precio is None and total is not None and cantidad:
+                    try:
+                        precio = round(float(total) / float(cantidad), 4)
+                    except Exception:
+                        precio = total
+                articulos.append({
+                    "nombre": nombre[:180],
+                    "cantidad": cantidad or 1,
+                    "precio_unitario": precio if precio is not None else 0,
+                    "total": total if total is not None else precio,
+                    "unidad": "ud",
+                    "categoria": "Tableros" if re.search(r"tablero|agplast|mdf|melamina|canto|canteado|corte", nombre, re.I) else "Otros",
+                    "definicion": ref,
+                    "fuente": "pdf",
+                })
+                i = j
+                continue
+        i += 1
+
+    if not articulos:
+        return None
+    return {
+        "proveedor": proveedor,
+        "fecha": fecha,
+        "total_ticket": total_ticket,
+        "tipo_documento": "factura",
+        "iva_incluido": False,
+        "iva_porcentaje": 21,
+        "articulos": articulos,
+    }
 
 
 def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=None, tipo="ticket", pdf_bytes=None):
@@ -5340,35 +5460,80 @@ def _lineas_de_respuesta_ia(data):
 
 def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
     articulos = []
-    meta = {"proveedor": None, "fecha": None, "total_ticket": None}
+    meta = {"proveedor": None, "fecha": None, "total_ticket": None, "tipo_documento": None, "iva_incluido": None, "iva_porcentaje": None}
 
     def _acumular(data):
         arts, m = _lineas_de_respuesta_ia(data)
+        if not isinstance(data, dict):
+            data = {}
         if m.get("proveedor") and not meta.get("proveedor"):
             meta["proveedor"] = m.get("proveedor")
         if m.get("fecha") and not meta.get("fecha"):
             meta["fecha"] = m.get("fecha")
         if m.get("total_ticket") and not meta.get("total_ticket"):
             meta["total_ticket"] = m.get("total_ticket")
+        if data.get("tipo_documento") and not meta.get("tipo_documento"):
+            meta["tipo_documento"] = data.get("tipo_documento")
+        if data.get("iva_porcentaje") and not meta.get("iva_porcentaje"):
+            meta["iva_porcentaje"] = data.get("iva_porcentaje")
+        if "iva_incluido" in data and meta.get("iva_incluido") is None:
+            meta["iva_incluido"] = data.get("iva_incluido")
         for a in arts:
             if isinstance(a, dict) and str(a.get("nombre") or "").strip() and not _es_nombre_articulo_ejemplo(a.get("nombre")):
                 articulos.append(a)
 
     imgs = [_comprimir_imagen_data_url(x) for x in (imagenes or []) if x]
+    # #region agent log
+    try:
+        import json as _json_dbg, time as _time_dbg
+        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:start","message":"extract stages","data":{"texto_len":len((texto or "").strip()),"n_imgs":len(imgs),"nombre":nombre,"has_pdf_bytes":bool(pdf_bytes)},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+    except Exception:
+        pass
+    # #endregion
     if texto:
         _acumular(_json_ticket_desde_ocr(texto))
-    # Una o dos páginas juntas, como el ticket (menos peso para Gemini).
-    if not articulos and (imgs[:2] or texto):
+        # #region agent log
         try:
-            _acumular(_extraer_materiales_json_con_ia(
-                _prompt_ticket_base() if imgs else _prompt_documento_base(nombre),
-                texto=texto or None,
-                imagenes=imgs[:2] or None,
-                tipo="ticket" if imgs else "documento",
-                pdf_bytes=pdf_bytes,
-            ))
-        except Exception as e:
-            print("pdf ia lote:", e)
+            import json as _json_dbg, time as _time_dbg
+            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:heuristic","message":"after heuristic","data":{"n":len(articulos),"proveedor":meta.get("proveedor")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
+    # Preferir documento+texto(+PDF) cuando hay texto: más estable que ticket+imágenes.
+    if not articulos and (texto or pdf_bytes or imgs[:2]):
+        intentos = 2
+        for intento in range(intentos):
+            try:
+                data_ia = _extraer_materiales_json_con_ia(
+                    _prompt_documento_base(nombre) if (texto or pdf_bytes) else _prompt_ticket_base(),
+                    texto=texto or None,
+                    imagenes=(None if (texto or pdf_bytes) else (imgs[:2] or None)),
+                    tipo="documento" if (texto or pdf_bytes) else "ticket",
+                    pdf_bytes=pdf_bytes,
+                )
+                _acumular(data_ia)
+                # #region agent log
+                try:
+                    import json as _json_dbg, time as _time_dbg
+                    with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                        _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:gemini","message":"after gemini","data":{"intento":intento+1,"n":len(articulos),"n_raw":len((data_ia or {}).get("articulos") or []),"proveedor":(data_ia or {}).get("proveedor")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+                except Exception:
+                    pass
+                # #endregion
+                if articulos:
+                    break
+            except Exception as e:
+                # #region agent log
+                try:
+                    import json as _json_dbg, time as _time_dbg
+                    with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                        _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:gemini_err","message":str(e),"data":{"intento":intento+1},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+                except Exception:
+                    pass
+                # #endregion
+                print("pdf ia lote:", e)
     # Si no hay líneas, cada página como foto de ticket.
     if not articulos:
         for img in imgs:
@@ -5377,7 +5542,6 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
                     _prompt_ticket_base(),
                     imagen=img,
                     tipo="ticket",
-                    pdf_bytes=pdf_bytes,
                 ))
             except Exception as e:
                 print("pdf ia pagina:", e)
@@ -5391,16 +5555,38 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
                 textos_ocr.append(ocr)
         if textos_ocr:
             _acumular(_json_ticket_desde_ocr("\n".join(textos_ocr)))
+            # Reintento heurístico mejorado para facturas tipo tabla multipágina/lineas rotas
+            if not articulos:
+                _acumular(_json_factura_lineas_sueltas("\n".join(textos_ocr)))
+    # #region agent log
+    try:
+        import json as _json_dbg, time as _time_dbg
+        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"F","location":"server2.py:_extraer_lineas_desde_pdf:end","message":"extract done","data":{"n":len(articulos),"proveedor":meta.get("proveedor"),"nombres":[str(a.get("nombre") or "")[:50] for a in articulos[:8]]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+    except Exception:
+        pass
+    # #endregion
     return {
         "proveedor": meta.get("proveedor"),
         "fecha": meta.get("fecha"),
         "total_ticket": meta.get("total_ticket"),
+        "tipo_documento": meta.get("tipo_documento") or "factura",
+        "iva_incluido": False if meta.get("iva_incluido") is None else meta.get("iva_incluido"),
+        "iva_porcentaje": meta.get("iva_porcentaje") or 21,
         "articulos": articulos,
     }
 
 
 def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     """Lee un PDF o imagen en este ordenador (OCR) y devuelve el JSON de líneas."""
+    # #region agent log
+    try:
+        import json as _json_dbg, time as _time_dbg
+        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:entry","message":"start doc process","data":{"nombre":nombre,"mime":mime_type,"bruto_len":len(bruto or b""),"texto_in_len":len((texto or "").strip()),"es_pdf_magic":(bruto or b"")[:5]==b"%PDF-"},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+    except Exception:
+        pass
+    # #endregion
     nombre = (nombre or "documento").strip() or "documento"
     mime_type = (mime_type or "").strip()
     texto = (texto or "").strip()
@@ -5410,8 +5596,24 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     if es_pdf and bruto:
         if not texto:
             texto = _texto_de_pdf_bytes(bruto)
+        # #region agent log
+        try:
+            import json as _json_dbg, time as _time_dbg
+            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:after_text","message":"pdf text extract","data":{"texto_len":len((texto or "").strip()),"texto_sample":(texto or "")[:180]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         if not (texto or "").strip():
             texto = _ocr_pdf_bytes(bruto)
+            # #region agent log
+            try:
+                import json as _json_dbg, time as _time_dbg
+                with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                    _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:after_ocr","message":"ocr fallback","data":{"texto_len":len((texto or "").strip()),"texto_sample":(texto or "")[:180]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+            except Exception:
+                pass
+            # #endregion
         imagenes = _imagenes_de_pdf_bytes(bruto, max_paginas=4)
     elif bruto and not es_pdf:
         mime = mime_type or "image/jpeg"
@@ -5420,6 +5622,14 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
         else:
             imagenes = ["data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")]
     if not texto and not imagenes:
+        # #region agent log
+        try:
+            import json as _json_dbg, time as _time_dbg
+            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:_procesar_bytes_documento:no_content","message":"no text no images","data":{"es_pdf":es_pdf},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         raise ValueError("No se pudo abrir el PDF. Prueba de nuevo o usa una foto.")
     data = _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=bruto if es_pdf else None)
     if not isinstance(data, dict):
@@ -5432,8 +5642,21 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
     ]
     data["tipo_fuente"] = "documento"
     data["nombre_documento"] = nombre
-    if not data["articulos"]:
+    if not data.get("tipo_documento"):
+        data["tipo_documento"] = "factura"
+    # Siempre devolver precios con IVA incluido (facturas suelen venir en base).
+    data = _limpiar_resultado_ia(data, origen_tipo="documento")
+    if not data.get("articulos"):
         data["aviso"] = "Jimmi no vio líneas claras. Completa la tabla y guarda."
+    # #region agent log
+    try:
+        import json as _json_dbg, time as _time_dbg
+        arts_log = data.get("articulos") or []
+        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"IVA","location":"server2.py:_procesar_bytes_documento:exit","message":"doc process done","data":{"n_raw":len(articulos),"n_ok":len(arts_log),"proveedor":data.get("proveedor"),"iva_incluido":data.get("iva_incluido"),"iva_aplicado":data.get("iva_aplicado"),"precios":[a.get("precio_unitario") for a in arts_log[:4]],"aviso":data.get("aviso"),"nombres":[str((a or {}).get("nombre") or "")[:60] for a in arts_log[:8]]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+    except Exception:
+        pass
+    # #endregion
     return data
 
 
@@ -5460,6 +5683,14 @@ def ia_procesar_documento():
             bruto = base64.b64decode(limpiar_data_b64(archivo_base64))
         except Exception:
             bruto = b""
+    # #region agent log
+    try:
+        import json as _json_dbg, time as _time_dbg
+        with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"D","location":"server2.py:ia_procesar_documento","message":"endpoint hit","data":{"nombre":nombre,"mime":mime_type,"bruto_len":len(bruto),"guardar":guardar,"has_file":bool(f),"has_b64":bool(archivo_base64)},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+    except Exception:
+        pass
+    # #endregion
     if not texto and ruta:
         texto = _leer_texto_documento_para_ia(ruta)
     if not texto and not bruto and archivo_base64:
@@ -5485,8 +5716,24 @@ def ia_procesar_documento():
                 print("pdf ficha:", e)
         return jsonify({"ok": True, "data": data})
     except ValueError as e:
+        # #region agent log
+        try:
+            import json as _json_dbg, time as _time_dbg
+            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"B","location":"server2.py:ia_procesar_documento:ValueError","message":str(e),"data":{},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
+        # #region agent log
+        try:
+            import json as _json_dbg, time as _time_dbg
+            with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
+                _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"E","location":"server2.py:ia_procesar_documento:Exception","message":str(e),"data":{"type":type(e).__name__},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         return jsonify({"ok": False, "error": f"Error procesando documento con IA: {str(e)}"}), 502
 
 
