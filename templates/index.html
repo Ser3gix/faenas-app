@@ -1051,7 +1051,12 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
   <div id="opt-herrajes-box" style="display:none">
     <div class="form-box">
-      <div class="form-title">Herrajes</div>
+      <div class="sec-header" style="margin:0 0 10px 0">
+        <h2 style="font-size:1rem;margin:0">Herrajes</h2>
+        <div class="btn-row">
+          <button type="button" class="btn btn-s btn-sm" onclick="anadirHerrajeOpt()">+ Herraje</button>
+        </div>
+      </div>
       <div id="opt-herrajes-tabla"></div>
     </div>
   </div>
@@ -1062,9 +1067,23 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <div><label>Refilado / borde (mm)</label><input type="number" id="opt-margen" value="10" min="0" step="1"></div>
       <div><label>Espesor sierra / kerf (mm)</label><input type="number" id="opt-kerf" value="4" min="0" step="1"></div>
       <div><label>Stock máx. tableros</label><input type="number" id="opt-stock" value="50" min="1" step="1"></div>
-      <div><label>Corte (€/ml)</label><input type="number" id="opt-precio-corte" value="0.50" min="0" step="0.05"></div>
-      <div><label>Canteado (€/ml)</label><input type="number" id="opt-precio-cantear" value="0.75" min="0" step="0.05"></div>
-      <div><label>Material canto (€/ml)</label><input type="number" id="opt-precio-canto" value="0.40" min="0" step="0.05"></div>
+    </div>
+    <div class="form-grid" style="margin-top:10px">
+      <div>
+        <label>Corte (almacén)</label>
+        <select id="opt-mat-corte" onchange="asignarServicioOpt('corte', this.value)"></select>
+        <input type="number" id="opt-precio-corte" value="0.50" min="0" step="0.05" style="margin-top:6px" title="€/ml">
+      </div>
+      <div>
+        <label>Canteado (almacén)</label>
+        <select id="opt-mat-cantear" onchange="asignarServicioOpt('cantear', this.value)"></select>
+        <input type="number" id="opt-precio-cantear" value="0.75" min="0" step="0.05" style="margin-top:6px" title="€/ml">
+      </div>
+      <div>
+        <label>Canto / material canto (almacén)</label>
+        <select id="opt-mat-canto" onchange="asignarServicioOpt('canto', this.value)"></select>
+        <input type="number" id="opt-precio-canto" value="0.40" min="0" step="0.05" style="margin-top:6px" title="€/ml">
+      </div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:0.82rem;cursor:pointer">
       <input type="checkbox" id="opt-rotacion"> Permitir rotación de piezas (veta libre)
@@ -1075,7 +1094,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box" id="opt-tableros-box" style="display:none">
-    <div class="form-title">Dimensiones y precio por espesor (almacén)</div>
+    <div class="form-title">Tableros por espesor — material de almacén</div>
     <div id="opt-tableros-config"></div>
   </div>
 
@@ -5178,8 +5197,11 @@ function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
   renderTablaOptimizador();
   renderHerrajesOptimizador();
   renderConfigTablerosOptimizador();
+  rellenarSelectsServicioOpt();
   actualizarResumenOptimizador();
-  aplicarTarifasAlmacenOptimizador().catch(() => {});
+  asegurarMaterialesPc()
+    .then(() => aplicarTarifasAlmacenOptimizador())
+    .catch(() => {});
 }
 
 async function cargarOptimizadorDesdeInput(input) {
@@ -5206,14 +5228,20 @@ function renderHerrajesOptimizador() {
   const box = document.getElementById("opt-herrajes-box");
   const el = document.getElementById("opt-herrajes-tabla");
   if (!box || !el) return;
-  if (!optHerrajes.length) {
+  // Mostrar siempre que haya despiece cargado (para poder añadir)
+  const hayDespiece = optDatos && Object.keys(optDatos).length;
+  if (!hayDespiece && !optHerrajes.length) {
     box.style.display = "none";
     el.innerHTML = "";
     return;
   }
   box.style.display = "";
+  if (!optHerrajes.length) {
+    el.innerHTML = `<p style="font-size:0.82rem;color:#aaa;margin:0">Sin herrajes. Pulsa <strong>+ Herraje</strong> para añadir.</p>`;
+    return;
+  }
   el.innerHTML = `<table class="pb-table"><thead><tr>
-    <th>Herraje</th><th>Cant.</th><th>Precio almacén</th><th>Total</th><th>Nota</th>
+    <th>Nombre</th><th>Cant.</th><th>Material almacén</th><th>€/ud</th><th>Total</th><th></th>
   </tr></thead><tbody>
   ${optHerrajes.map((h, i) => {
     const pu = h.precio_unitario != null && h.precio_unitario !== "" ? parseFloat(h.precio_unitario) : null;
@@ -5221,12 +5249,79 @@ function renderHerrajesOptimizador() {
     return `<tr>
       <td contenteditable="true" onblur="editarHerrajeOpt(${i},'nombre',this.textContent)">${esc(h.nombre || "")}</td>
       <td contenteditable="true" onblur="editarHerrajeOpt(${i},'cantidad',this.textContent)">${h.cantidad || 0}</td>
+      <td><select style="min-width:160px;max-width:240px;font-size:0.75rem" onchange="asignarMaterialHerrajeOpt(${i}, this.value)">
+        ${opcionesMaterialesOptHtml(h.material_id, { prefer: "herraje" })}
+      </select></td>
       <td contenteditable="true" onblur="editarHerrajeOpt(${i},'precio_unitario',this.textContent)">${pu != null ? pu.toFixed(2) : "—"}</td>
       <td>${tot != null ? tot.toFixed(2) + " €" : "—"}</td>
-      <td style="font-size:0.72rem;color:#888">${esc(h.nombre_almacen || h.aviso || "")}</td>
+      <td><button type="button" class="btn btn-d btn-sm" onclick="eliminarHerrajeOpt(${i})" title="Eliminar">×</button></td>
     </tr>`;
   }).join("")}
   </tbody></table>`;
+}
+
+function precioMinMaterialOpt(m) {
+  if (!m) return null;
+  const precios = Array.isArray(m.precios) ? m.precios : [];
+  if (!precios.length) return null;
+  let min = null;
+  for (const p of precios) {
+    const v = parseFloat(p.precio_unitario);
+    if (isNaN(v)) continue;
+    if (min == null || v < min) min = v;
+  }
+  return min;
+}
+
+function materialesOptLista(filtro) {
+  const lista = Array.isArray(state.materiales) ? state.materiales : [];
+  const f = (filtro || {}).prefer || "";
+  const esp = filtro && filtro.espesor != null ? Number(filtro.espesor) : null;
+  return lista.filter(m => {
+    const nom = String(m.nombre || "").toLowerCase();
+    const cat = String(m.categoria || "").toLowerCase();
+    const unid = String(m.unidad || "").toLowerCase().replace("²", "2");
+    if (f === "herraje") {
+      return cat.includes("herraje") || nom.includes("bisagra") || nom.includes("guia") || nom.includes("guía")
+        || nom.includes("asa") || nom.includes("soporte") || nom.includes("barra") || nom.includes("portaestante");
+    }
+    if (f === "tablero") {
+      const okCat = cat.includes("tablero") || nom.includes("tablero") || nom.includes("agplast") || unid === "m2";
+      if (!okCat) return false;
+      if (esp != null) {
+        const mEsp = (nom.match(/[x×]\s*(\d{1,2})\b/) || nom.match(/\b(\d{1,2})\s*mm\b/) || nom.match(/,\s*(\d{1,2})\s*$/));
+        if (mEsp && Number(mEsp[1]) !== esp) return false;
+      }
+      return true;
+    }
+    if (f === "canto") {
+      return (nom.includes("canto") || cat.includes("canto")) && !nom.includes("canteado");
+    }
+    if (f === "cantear" || f === "canteado") {
+      return nom.includes("canteado") || nom.includes("cantear");
+    }
+    if (f === "corte") {
+      return nom.includes("corte") || nom.includes("seccion");
+    }
+    return true;
+  }).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+}
+
+function opcionesMaterialesOptHtml(selectedId, filtro) {
+  const lista = materialesOptLista(filtro);
+  const sid = selectedId != null ? String(selectedId) : "";
+  let opts = `<option value="">— Elegir de almacén —</option>`;
+  // Si el seleccionado no está en el filtro, incluirlo
+  if (sid) {
+    const sel = (state.materiales || []).find(m => String(m.id) === sid);
+    if (sel && !lista.some(m => String(m.id) === sid)) lista.unshift(sel);
+  }
+  for (const m of lista) {
+    const pu = precioMinMaterialOpt(m);
+    const extra = pu != null ? ` (${pu.toFixed(2)} €)` : "";
+    opts += `<option value="${m.id}" ${String(m.id) === sid ? "selected" : ""}>${esc(m.nombre || "")}${extra}</option>`;
+  }
+  return opts;
 }
 
 function editarHerrajeOpt(idx, campo, valor) {
@@ -5243,9 +5338,103 @@ function editarHerrajeOpt(idx, campo, valor) {
   renderHerrajesOptimizador();
 }
 
+function asignarMaterialHerrajeOpt(idx, materialId) {
+  if (!optHerrajes[idx]) return;
+  if (!materialId) {
+    optHerrajes[idx].material_id = null;
+    optHerrajes[idx].nombre_almacen = null;
+    renderHerrajesOptimizador();
+    return;
+  }
+  const m = (state.materiales || []).find(x => String(x.id) === String(materialId));
+  if (!m) return;
+  const pu = precioMinMaterialOpt(m);
+  optHerrajes[idx].material_id = m.id;
+  optHerrajes[idx].nombre_almacen = m.nombre;
+  if (!optHerrajes[idx].nombre) optHerrajes[idx].nombre = m.nombre;
+  if (pu != null) optHerrajes[idx].precio_unitario = pu;
+  optHerrajes[idx].aviso = "";
+  renderHerrajesOptimizador();
+}
+
+function eliminarHerrajeOpt(idx) {
+  if (!optHerrajes[idx]) return;
+  optHerrajes.splice(idx, 1);
+  renderHerrajesOptimizador();
+  actualizarResumenOptimizador();
+}
+
+function anadirHerrajeOpt() {
+  optHerrajes.push({
+    nombre: "Nuevo herraje",
+    cantidad: 1,
+    unidad: "ud",
+    precio_unitario: null,
+    nombre_almacen: null,
+    material_id: null,
+    aviso: "",
+  });
+  renderHerrajesOptimizador();
+  actualizarResumenOptimizador();
+}
+
+function asignarMaterialTableroOpt(idx, materialId) {
+  const clave = materialesVisiblesOptimizador()[idx];
+  if (!clave) return;
+  const inpP = document.getElementById("opt-mat-" + idx + "-p");
+  const inpW = document.getElementById("opt-mat-" + idx + "-w");
+  const inpH = document.getElementById("opt-mat-" + idx + "-h");
+  const nota = document.getElementById("opt-mat-" + idx + "-nota");
+  if (!materialId) {
+    if (nota) nota.textContent = "";
+    return;
+  }
+  const m = (state.materiales || []).find(x => String(x.id) === String(materialId));
+  if (!m) return;
+  const pu = precioMinMaterialOpt(m);
+  if (inpP && pu != null) inpP.value = pu;
+  // Intentar medidas 2800x2070 / 2440x1220 del nombre
+  const dims = String(m.nombre || "").match(/(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
+  if (dims) {
+    if (inpW) inpW.value = dims[1];
+    if (inpH) inpH.value = dims[2];
+  }
+  if (nota) nota.textContent = m.nombre || "";
+}
+
+function asignarServicioOpt(tipo, materialId) {
+  const map = { corte: "opt-precio-corte", cantear: "opt-precio-cantear", canto: "opt-precio-canto" };
+  const inp = document.getElementById(map[tipo]);
+  if (!materialId) return;
+  const m = (state.materiales || []).find(x => String(x.id) === String(materialId));
+  if (!m) return;
+  const pu = precioMinMaterialOpt(m);
+  if (inp && pu != null) inp.value = pu;
+}
+
+function rellenarSelectsServicioOpt(preferidos) {
+  const pref = preferidos || {};
+  const specs = [
+    { id: "opt-mat-corte", prefer: "corte", sel: pref.corte },
+    { id: "opt-mat-cantear", prefer: "cantear", sel: pref.cantear },
+    { id: "opt-mat-canto", prefer: "canto", sel: pref.canto },
+  ];
+  for (const s of specs) {
+    const el = document.getElementById(s.id);
+    if (!el) continue;
+    const keep = s.sel != null ? s.sel : el.value;
+    el.innerHTML = opcionesMaterialesOptHtml(keep, { prefer: s.prefer });
+    if (keep) el.value = String(keep);
+  }
+}
+
 async function aplicarTarifasAlmacenOptimizador() {
+  await asegurarMaterialesPc().catch(() => {});
   const mats = materialesVisiblesOptimizador();
-  if (!mats.length && !optHerrajes.length) return;
+  if (!mats.length && !optHerrajes.length) {
+    rellenarSelectsServicioOpt();
+    return;
+  }
   const espesores = mats.map(m => parseInt(String(m).replace(/\D/g, ""), 10)).filter(n => n > 0);
   try {
     const r = await api("POST", "/polyboard/tarifas-almacen", {
@@ -5254,6 +5443,11 @@ async function aplicarTarifasAlmacenOptimizador() {
     });
     if (!r.ok) { toast(r.error || "No se pudieron leer tarifas", true); return; }
     const d = r.data || {};
+    rellenarSelectsServicioOpt({
+      corte: d.corte && d.corte.material_id,
+      cantear: d.cantear && d.cantear.material_id,
+      canto: d.canto && d.canto.material_id,
+    });
     if (d.corte && d.corte.precio_ml != null) {
       const el = document.getElementById("opt-precio-corte");
       if (el) el.value = d.corte.precio_ml;
@@ -5266,26 +5460,53 @@ async function aplicarTarifasAlmacenOptimizador() {
       const el = document.getElementById("opt-precio-canto");
       if (el) el.value = d.canto.precio_ml;
     }
-    // Precios tablero por espesor
     mats.forEach((m, idx) => {
       const tar = (d.tableros || {})[m];
+      const sel = document.getElementById("opt-mat-" + idx + "-sel");
       const inp = document.getElementById("opt-mat-" + idx + "-p");
-      if (inp && tar && tar.precio_m2 != null) inp.value = tar.precio_m2;
+      if (tar && tar.material_id != null && sel) {
+        sel.value = String(tar.material_id);
+        asignarMaterialTableroOpt(idx, tar.material_id);
+      } else if (inp && tar && tar.precio_m2 != null) {
+        inp.value = tar.precio_m2;
+      }
     });
     if (Array.isArray(d.herrajes) && d.herrajes.length) {
-      optHerrajes = d.herrajes.map(h => ({
-        nombre: h.nombre_origen || h.nombre || "",
-        cantidad: h.cantidad || 0,
-        unidad: h.unidad || "ud",
-        precio_unitario: h.precio_unitario,
-        nombre_almacen: h.nombre_almacen,
-        material_id: h.material_id,
-        aviso: h.aviso || "",
-      }));
+      // Solo rellenar precios/material si el herraje ya existe; no borrar ediciones de nombre
+      const porNombre = {};
+      d.herrajes.forEach(h => {
+        porNombre[String(h.nombre_origen || "").toLowerCase()] = h;
+      });
+      optHerrajes = optHerrajes.map(h => {
+        const hit = porNombre[String(h.nombre || "").toLowerCase()];
+        if (!hit) return h;
+        return {
+          ...h,
+          material_id: hit.material_id != null ? hit.material_id : h.material_id,
+          nombre_almacen: hit.nombre_almacen || h.nombre_almacen,
+          precio_unitario: hit.precio_unitario != null ? hit.precio_unitario : h.precio_unitario,
+          aviso: hit.aviso || "",
+        };
+      });
+      // Añadir herrajes del PDF que no estuvieran
+      for (const h of d.herrajes) {
+        const nom = String(h.nombre_origen || "").toLowerCase();
+        if (optHerrajes.some(x => String(x.nombre || "").toLowerCase() === nom)) continue;
+        optHerrajes.push({
+          nombre: h.nombre_origen || "",
+          cantidad: h.cantidad || 0,
+          unidad: h.unidad || "ud",
+          precio_unitario: h.precio_unitario,
+          nombre_almacen: h.nombre_almacen,
+          material_id: h.material_id,
+          aviso: h.aviso || "",
+        });
+      }
       renderHerrajesOptimizador();
     }
     toast("✓ Tarifas de almacén aplicadas");
   } catch (e) {
+    rellenarSelectsServicioOpt();
     toast("Error al cargar tarifas de almacén", true);
   }
 }
@@ -5419,12 +5640,22 @@ function renderConfigTablerosOptimizador() {
   box.style.display = "";
   wrap.innerHTML = mats.map((m, idx) => {
     const id = "opt-mat-" + idx;
+    const esp = parseInt(String(m).replace(/\D/g, ""), 10) || null;
     return `<div class="form-box" style="margin:0 0 10px 0;padding:12px;background:#faf8f4">
       <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">Espesor ${esc(m)}</div>
+      <div class="form-grid g1" style="margin-bottom:8px">
+        <div>
+          <label>Material de almacén</label>
+          <select id="${id}-sel" onchange="asignarMaterialTableroOpt(${idx}, this.value)">
+            ${opcionesMaterialesOptHtml(null, { prefer: "tablero", espesor: esp })}
+          </select>
+          <div id="${id}-nota" style="font-size:0.72rem;color:#888;margin-top:4px"></div>
+        </div>
+      </div>
       <div class="form-grid">
         <div><label>Ancho tablero (mm)</label><input type="number" id="${id}-w" value="2440" step="10"></div>
         <div><label>Alto / largo (mm)</label><input type="number" id="${id}-h" value="1220" step="10"></div>
-        <div><label>Precio almacén (€/m²)</label><input type="number" id="${id}-p" value="18" step="0.5" min="0"></div>
+        <div><label>Precio (€/m²)</label><input type="number" id="${id}-p" value="18" step="0.5" min="0"></div>
       </div>
     </div>`;
   }).join("");
