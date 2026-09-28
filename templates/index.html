@@ -4429,7 +4429,7 @@ function _leerTablaAnalisisTicket(containerId) {
   if (!wrap || !ticketAnalisisActual) return null;
   const articulos = [];
   let proveedorComun = "";
-  wrap.querySelectorAll("tbody tr").forEach((tr, idx) => {
+  wrap.querySelectorAll("tbody tr").forEach(tr => {
     const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
     if (!nombre) return;
     const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
@@ -4439,7 +4439,8 @@ function _leerTablaAnalisisTicket(containerId) {
     const totalNum = Number((tr.querySelector('[data-k="total"]')?.value || "").replace(",", "."));
     const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
     const url = (tr.querySelector('[data-k="url"]')?.value || "").trim();
-    const prev = (ticketAnalisisActual.articulos || [])[idx] || {};
+    const idx = Number(tr.getAttribute("data-i"));
+    const prev = Number.isFinite(idx) ? ((ticketAnalisisActual.articulos || [])[idx] || {}) : {};
     articulos.push({
       nombre,
       categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otros").trim() || "Otros",
@@ -4450,7 +4451,7 @@ function _leerTablaAnalisisTicket(containerId) {
       unidad: (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud",
       faena_id: faenaRaw || null,
       fuente: prev.fuente || (url ? "web" : ""),
-      url,
+      url: url || prev.url || "",
       definicion: prev.definicion || ""
     });
   });
