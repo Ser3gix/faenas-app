@@ -6752,15 +6752,20 @@ def abrir_documento(id, nombre):
 
 @app.route("/api/faenas/<int:id>/documentos/carpeta", methods=["POST"])
 def abrir_carpeta_documentos(id):
-    conn = get_connection()
-    faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
+    if os.name != "nt":
+        return jsonify({"ok": False, "error": "Abrir carpeta solo está disponible en el PC Windows."}), 400
+    conn = _conn_para_faena(id)
+    faena = conn.execute("SELECT id, numero, carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     conn.close()
-    if faena and faena["carpeta"] and os.name == "nt":
-        carpeta_docs = os.path.join(faena["carpeta"], "Documentos")
-        os.makedirs(carpeta_docs, exist_ok=True)
-        subprocess.Popen(["explorer", carpeta_docs])
-        return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "Los planos se guardan en el PC. En la nube usa Añadir o Archivar (ZIP)."}), 400
+    if not faena:
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    carpeta = _resolver_carpeta_local(fila_a_dict(faena))
+    if not carpeta:
+        return jsonify({"ok": False, "error": "No hay carpeta local de esta faena en el PC."}), 400
+    carpeta_docs = os.path.join(carpeta, "Documentos")
+    os.makedirs(carpeta_docs, exist_ok=True)
+    subprocess.Popen(["explorer", carpeta_docs])
+    return jsonify({"ok": True})
 
 
 # -------------------- CURSOR --------------------

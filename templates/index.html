@@ -3599,6 +3599,7 @@ function htmlDocumentosDetallePc(f, docs) {
   const lista = Array.isArray(docs) ? docs : [];
   return `
     <div class="btn-row" style="margin:0 0 8px;gap:6px">
+      <button class="btn btn-s btn-sm" onclick="abrirCarpetaDocumentos(${f.id})">Abrir carpeta</button>
       <button class="btn btn-s btn-sm" onclick="document.getElementById('doc-upload-${f.id}').click()">+ Añadir</button>
       <input id="doc-upload-${f.id}" type="file" multiple style="display:none" onchange="subirDocumento(${f.id}, this)">
     </div>
@@ -3737,6 +3738,7 @@ function irASeccionPc(idx) {
   }
   mostrarHubFaenaResumenPc(i === 0);
   if (i === 0) actualizarHubDetallePc(f, data);
+  if (i === 3) abrirCarpetaDocumentos(f.id);
 }
 
 function pintarDetalleFaenaPc(f, data) {
@@ -4093,6 +4095,10 @@ async function eliminarFotoPC(faenaId, nombre) {
 async function abrirCarpetaFotos(faenaId) {
   const r = await api("POST", `/faenas/${faenaId}/fotos/carpeta`);
   if (!r.ok) toast(r.error, true);
+}
+async function abrirCarpetaDocumentos(faenaId) {
+  const r = await api("POST", `/faenas/${faenaId}/documentos/carpeta`);
+  if (!r.ok) toast(r.error || "No se pudo abrir la carpeta de documentos", true);
 }
 
 // ===== DOCUMENTOS =====
