@@ -639,6 +639,87 @@ def _gemini_extraer_texto(raw):
     return texto
 
 
+def _gemini_uris_grounding(raw):
+    """URLs reales de Google Search grounding (preferibles a URLs inventadas)."""
+    urls = []
+    vistos = set()
+    candidates = (raw or {}).get("candidates") if isinstance(raw, dict) else None
+    for cand in candidates or []:
+        if not isinstance(cand, dict):
+            continue
+        meta = cand.get("groundingMetadata") or cand.get("grounding_metadata") or {}
+        for chunk in meta.get("groundingChunks") or meta.get("grounding_chunks") or []:
+            web = (chunk or {}).get("web") or {}
+            uri = (web.get("uri") or web.get("url") or "").strip()
+            if uri and uri not in vistos:
+                vistos.add(uri)
+                urls.append(uri)
+        for atr in meta.get("groundingSupports") or meta.get("grounding_supports") or []:
+            for idx in (atr or {}).get("groundingChunkIndices") or (atr or {}).get("grounding_chunk_indices") or []:
+                try:
+                    chunk = (meta.get("groundingChunks") or meta.get("grounding_chunks") or [])[int(idx)]
+                    web = (chunk or {}).get("web") or {}
+                    uri = (web.get("uri") or web.get("url") or "").strip()
+                    if uri and uri not in vistos:
+                        vistos.add(uri)
+                        urls.append(uri)
+                except Exception:
+                    continue
+    return urls
+
+
+def _url_parece_ficha_producto(url):
+    """True si la URL parece ficha de producto (no home ni buscador de tienda)."""
+    u = (url or "").strip()
+    if not u.lower().startswith(("http://", "https://")):
+        return False
+    try:
+        from urllib.parse import urlparse, unquote
+        p = urlparse(u)
+    except Exception:
+        return False
+    path = unquote((p.path or "/")).rstrip("/") or "/"
+    baja = path.lower()
+    if baja in {"/", "/es", "/es-es", "/en", "/home", "/inicio", "/shop", "/tienda"}:
+        return False
+    if any(x in baja for x in ("/search", "/buscar", "/busqueda", "/catalogue", "/catalogo", "/category", "/categoria", "/c/")):
+        return False
+    q = (p.query or "").lower()
+    if q.startswith("q=") or "search=" in q or q.startswith("s="):
+        return False
+    partes = [x for x in path.split("/") if x]
+    if len(partes) >= 2:
+        return True
+    if any(k in baja for k in ("/p/", "/product", "/producto", "/articulo", "/item/", "/dp/", ".html")):
+        return True
+    return False
+
+
+def _enriquecer_urls_productos(articulos, grounding_urls=None):
+    """Prioriza enlaces de ficha de producto; completa con URLs de grounding si hace falta."""
+    pool = [u for u in (grounding_urls or []) if _url_parece_ficha_producto(u)]
+    usados = set()
+    out = []
+    for art in articulos or []:
+        if not isinstance(art, dict):
+            continue
+        a = dict(art)
+        url = str(a.get("url") or "").strip()
+        if url and _url_parece_ficha_producto(url):
+            usados.add(url)
+            a["url"] = url
+        else:
+            url = ""
+            for cand in pool:
+                if cand not in usados:
+                    url = cand
+                    usados.add(cand)
+                    break
+            a["url"] = url
+        out.append(a)
+    return out
+
+
 def _gemini_imagen_part(data_url):
     data = limpiar_data_b64(data_url)
     if not data:
@@ -3227,32 +3308,42 @@ def ollama_buscar_materiales():
 
 def _prompt_buscar_web_materiales(query, max_resultados=8):
     q = (query or "").strip()
-    n = max(1, min(int(max_resultados or 8), 15))
-    return f"""Busca en internet productos de carpintería, herrajes o bricolaje en tiendas de España para: "{q}".
+    n = max(4, min(int(max_resultados or 8), 12))
+    return f"""Busca en internet el mismo producto (o equivalente) en VARIAS tiendas distintas de España para comparar precios: "{q}".
+
+OBLIGATORIO:
+- Devuelve entre {max(4, min(n, 6))} y {n} resultados.
+- Cada resultado debe ser de una TIENDA DISTINTA (proveedor distinto): p. ej. Leroy Merlin, Amazon, ManoMano, Brico Depôt, Bauhaus, Hornbach, ferretería online, etc.
+- url = enlace DIRECTO a la ficha del PRODUCTO (no la home de la tienda ni la página de búsqueda).
+- precio_unitario CON IVA incluido (precio final de venta).
+- No inventes URLs: solo enlaces reales encontrados en la búsqueda.
 
 Devuelve SOLO un objeto JSON (sin markdown) con:
-proveedor (tienda principal si hay una clara, o null),
+proveedor: null,
 fecha (AAAA-MM-DD de hoy si puedes),
-total_ticket (suma de totales),
+total_ticket (suma),
 tipo_documento: "web",
 iva_incluido: true,
 iva_porcentaje: 21,
-articulos: hasta {n} resultados distintos, cada uno con:
-  nombre, cantidad (1), precio_unitario (CON IVA incluido), total (=precio_unitario),
-  unidad, categoria (Trabajo | Tableros | Molduras-Maderas | Herrajes | Otros),
-  definicion (medida o referencia breve),
-  proveedor (nombre de la tienda), fuente: "web", url (enlace https al producto o ficha).
+articulos: [{{
+  nombre, cantidad: 1, precio_unitario, total, unidad, categoria
+  (Trabajo|Tableros|Molduras-Maderas|Herrajes|Otros),
+  definicion (medida/ref breve),
+  proveedor (nombre de esa tienda),
+  fuente: "web",
+  url (https ficha producto)
+}}]
 
-Prioriza precios actuales y enlaces reales de compra. Si no encuentras nada, articulos debe ser []."""
+Si no hay suficientes tiendas, devuelve las que encuentres (nunca una sola si hay más). Si no hay nada, articulos=[]."""
 
 
 def _buscar_materiales_en_web(query, max_resultados=8):
-    """Búsqueda general en internet (Gemini googleSearch) → JSON tipo ticket."""
+    """Búsqueda general en internet (Gemini googleSearch) → JSON multi-tienda."""
     q = (query or "").strip()
     if not q:
         raise ValueError("Falta la búsqueda")
     try:
-        n = max(1, min(int(max_resultados or 8), 15))
+        n = max(4, min(int(max_resultados or 8), 12))
     except Exception:
         n = 8
     ticket_key = TICKET_IA_API_KEY or IA_API_KEY
@@ -3261,22 +3352,22 @@ def _buscar_materiales_en_web(query, max_resultados=8):
         raise RuntimeError("No hay API key de IA configurada")
     prompt = _prompt_buscar_web_materiales(q, n)
     system = (
-        "Eres un buscador de precios de materiales de carpintería en España. "
-        "Usa la búsqueda web. Devuelve SOLO JSON válido con articulos. "
-        "Los precios van con IVA incluido. No inventes URLs."
+        "Eres un comparador de precios de materiales de carpintería en España. "
+        "Usa la búsqueda web. Devuelve SOLO JSON válido. "
+        "Incluye varias tiendas distintas. Cada url debe ser la ficha del producto, nunca la home. "
+        "Precios con IVA. No inventes URLs."
     )
     contents = [{"role": "user", "parts": [{"text": prompt}]}]
     raw = None
     try:
-        # googleSearch no siempre admite responseMimeType=json; pedimos texto y parseamos.
         raw = _peticion_gemini(
             contents=contents,
             system_instruction=system,
-            max_tokens=2500,
-            temperature=0.1,
+            max_tokens=3500,
+            temperature=0.15,
             api_key=ticket_key,
             model=ticket_model,
-            timeout=90,
+            timeout=100,
             tools=[{"googleSearch": {}}],
         )
     except Exception:
@@ -3284,13 +3375,14 @@ def _buscar_materiales_en_web(query, max_resultados=8):
             contents=contents,
             system_instruction=system,
             response_mime_type="application/json",
-            max_tokens=2500,
-            temperature=0.1,
+            max_tokens=3500,
+            temperature=0.15,
             api_key=ticket_key,
             model=ticket_model,
-            timeout=90,
+            timeout=100,
         )
     texto = _gemini_extraer_texto(raw)
+    grounding = _gemini_uris_grounding(raw)
     data = _extraer_json_de_texto(texto)
     if not isinstance(data, dict):
         data = _normalizar_json_materiales_con_ia(texto, tipo="web", api_key=ticket_key, model=ticket_model)
@@ -3300,6 +3392,7 @@ def _buscar_materiales_en_web(query, max_resultados=8):
     data["iva_incluido"] = True
     data = _limpiar_resultado_ia(data, origen_tipo="ticket")
     arts = []
+    vistos_tienda = set()
     for a in data.get("articulos") or []:
         if not isinstance(a, dict):
             continue
@@ -3310,10 +3403,17 @@ def _buscar_materiales_en_web(query, max_resultados=8):
             nrm["proveedor"] = str(data.get("proveedor") or "").strip()
         nrm["faena_id"] = None
         nrm["_solo_materiales"] = True
+        clave = (nrm.get("proveedor") or "").strip().lower()
+        if clave and clave in vistos_tienda and len(vistos_tienda) >= 4:
+            continue
+        if clave:
+            vistos_tienda.add(clave)
         arts.append(nrm)
+    arts = _enriquecer_urls_productos(arts, grounding)
     data["articulos"] = arts[:n]
     data["query"] = q
     data["tipo_fuente"] = "web"
+    data["proveedor"] = None
     if arts:
         try:
             from secretario import guardar_extraccion_compra

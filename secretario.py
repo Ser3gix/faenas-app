@@ -201,11 +201,86 @@ def _pide_web_materiales(pregunta, modo):
     txt = _norm_txt(pregunta)
     if len(txt) < 3:
         return False
-    # Evitar activar web en preguntas puramente de catálogo local.
     if any(k in txt for k in ("en el almacen", "en el almacén", "catalogo", "catálogo", "ya tengo", "mis materiales")):
         return False
     return _huele_materiales(pregunta, modo) or any(
         k in txt for k in ("precio", "precios", "coste", "cuesta", "buscar", "busca", "donde compro", "dónde compro")
+    )
+
+
+def _es_respuesta_aclaracion_web(historial):
+    for m in reversed(historial or []):
+        if not isinstance(m, dict):
+            continue
+        rol = str(m.get("rol") or "").lower()
+        if rol in {"usuario", "user"}:
+            continue
+        if rol in {"jimmi", "asistente", "assistant", "model"}:
+            t = _norm_txt(m.get("texto") or "")
+            return any(k in t for k in (
+                "para buscar bien", "para afinar", "necesito afinar",
+                "necesito un dato", "dime la medida", "responde con esos datos",
+                "afinar un poco", "afino la busqueda", "afino la búsqueda",
+                "si quieres, dime", "no he encontrado opciones claras",
+            ))
+        break
+    return False
+
+
+def _construir_consulta_web(pregunta, historial):
+    pregunta = (pregunta or "").strip()
+    hist = [m for m in (historial or []) if isinstance(m, dict)]
+    if not _es_respuesta_aclaracion_web(hist):
+        return pregunta
+    prev_users = []
+    for m in hist:
+        rol = str(m.get("rol") or "").lower()
+        if rol in {"usuario", "user"}:
+            txt = str(m.get("texto") or "").strip()
+            if txt:
+                prev_users.append(txt)
+    base = " ".join(prev_users[-3:]).strip()
+    if not base:
+        return pregunta
+    if pregunta and pregunta not in base:
+        return f"{base} {pregunta}".strip()
+    return base
+
+
+def _consulta_web_ambigua(pregunta):
+    txt = _norm_txt(pregunta or "")
+    if not txt:
+        return True
+    ruido = {
+        "busca", "buscar", "buscame", "búscame", "web", "internet", "google", "online",
+        "precio", "precios", "cuanto", "cuesta", "tienda", "tiendas", "comparar", "comparacion",
+        "en", "la", "el", "de", "del", "un", "una", "unos", "unas", "me", "por", "favor",
+        "hola", "necesito", "quiero", "podrias", "puedes", "hay", "donde", "compro",
+        "material", "materiales", "producto", "productos",
+    }
+    utiles = [p for p in txt.split() if len(p) > 1 and p not in ruido]
+    if re.search(r"\d", txt):
+        return len(utiles) < 1
+    if len(utiles) <= 1:
+        return True
+    if len(utiles) <= 2 and not any(
+        k in txt for k in (
+            "bisagra", "tablero", "tornillo", "canto", "melamina", "herraje",
+            "cazoleta", "corredera", "guia", "guía", "mdf", "dm", "barniz", "cola",
+        )
+    ):
+        return True
+    return False
+
+
+def _texto_aclaracion_web(pregunta):
+    q = (pregunta or "").strip() or "ese material"
+    return (
+        f"Para buscar bien «{q}» en varias tiendas y poder comparar, necesito afinar un poco:\n"
+        f"• ¿Medida o referencia? (ej. 35 mm, 16 mm, código…)\n"
+        f"• ¿Tipo o material? (cazoleta, latón, acero, blanco…)\n"
+        f"• ¿Para qué lo usas? (puerta, cajón, cocina…)\n\n"
+        f"Respóndeme con esos datos y te traigo opciones de varias tiendas con enlace al producto."
     )
 
 
@@ -1783,7 +1858,8 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         print("jimmi local:", e)
         local = None
     texto_local = (local or {}).get("texto") or ""
-    if _pide_guardar_nota(pregunta) and not _pide_web_materiales(pregunta, modo):
+    aclarando = _es_respuesta_aclaracion_web(historial)
+    if _pide_guardar_nota(pregunta) and not (_pide_web_materiales(pregunta, modo) or aclarando):
         if local and local.get("usar") and texto_local:
             return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
         return _pack_datos(
@@ -1795,7 +1871,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         or _es_seguimiento(pregunta)
     )
     if (
-        local and local.get("usar") and not _pide_web_materiales(pregunta, modo)
+        local and local.get("usar") and not (_pide_web_materiales(pregunta, modo) or aclarando)
         and (forzar_datos or "Dime el número de la faena" not in texto_local)
     ):
         return _pack_datos(texto_local, modo, local.get("anotacion_guardada"), imagenes=local.get("imagenes"))
@@ -1818,10 +1894,12 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "Categorías de tiempo: medicion_diseno, compras_gestion, trabajo. "
         "Las referencias de faenas archivadas están en datos_app.referencias_faena. "
         "Primero usa tarifas, extracciones y tiempos propios. Si falta un precio o piden buscar en web/tiendas, busca en internet y cita fuente y fecha. "
+        "Si la petición es vaga, pregunta 2 o 3 datos (medida, tipo, uso) antes de buscar. "
         "Los precios de compra van con IVA incluido. "
-        "Si ofreces materiales o precios para aceptar, termina con UN bloque ```json con el formato de ticket: "
-        "{proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url,proveedor}]}. "
-        "fuente es catalogo o web. url solo si es web. proveedor de cada línea = tienda. "
+        "Si ofreces materiales o precios web para aceptar, termina con UN bloque ```json con VARIAS tiendas distintas (mínimo 4 si es posible): "
+        "{proveedor:null, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url,proveedor}]}. "
+        "Cada artículo = una tienda distinta. url = ficha DIRECTA del producto (nunca la home ni el buscador). "
+        "fuente es catalogo o web. proveedor de cada línea = nombre de esa tienda. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
         "Si preguntan solo las fotos, responde únicamente con las fotos. No repitas el resto de la ficha. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
@@ -1836,14 +1914,76 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "datos_app": datos,
     }
     contents = _contents_conversacion(historial, pregunta, json.dumps(user, ensure_ascii=False))
-    usa_web = _pide_web_materiales(pregunta, modo)
+    usa_web = _pide_web_materiales(pregunta, modo) or aclarando
+
+    if usa_web and (aclarando or _huele_materiales(pregunta, modo) or modo == "materiales" or _pide_web(pregunta)):
+        consulta = _construir_consulta_web(pregunta, historial)
+        if _consulta_web_ambigua(consulta) and not aclarando:
+            return {
+                "ok": True,
+                "data": {
+                    "respuesta": _texto_aclaracion_web(consulta or pregunta),
+                    "propuestas": [],
+                    "ticket": None,
+                    "motor": "jimmi_aclarar",
+                    "modelo": "",
+                    "modo": modo,
+                    "consulta_base": consulta or pregunta,
+                },
+            }
+        try:
+            from server2 import _buscar_materiales_en_web, _GEMINI_ULTIMO_MODELO
+            data_web = _buscar_materiales_en_web(consulta or pregunta, max_resultados=8)
+            arts = list(data_web.get("articulos") or [])
+            if arts:
+                lineas = [f"Comparativa para «{consulta or pregunta}» en varias tiendas (precios con IVA):"]
+                for a in arts:
+                    precio = a.get("precio_unitario")
+                    try:
+                        precio_txt = f"{float(precio):.2f} €"
+                    except Exception:
+                        precio_txt = str(precio or "—")
+                    tienda = (a.get("proveedor") or "Tienda").strip()
+                    nombre = (a.get("nombre") or "Producto").strip()
+                    lineas.append(f"• {tienda}: {nombre} — {precio_txt}")
+                lineas.append("Abre el enlace del producto (no la tienda) y añade al almacén los que te interesen.")
+                lineas.append("Si quieres, dime marca, color u otra medida y afino la búsqueda.")
+                return {
+                    "ok": True,
+                    "data": {
+                        "respuesta": "\n".join(lineas),
+                        "propuestas": arts,
+                        "ticket": data_web,
+                        "motor": "jimmi_web",
+                        "modelo": _GEMINI_ULTIMO_MODELO or "",
+                        "modo": modo,
+                    },
+                }
+            return {
+                "ok": True,
+                "data": {
+                    "respuesta": (
+                        f"No he encontrado opciones claras para «{consulta or pregunta}». "
+                        + _texto_aclaracion_web(consulta or pregunta)
+                    ),
+                    "propuestas": [],
+                    "ticket": None,
+                    "motor": "jimmi_aclarar",
+                    "modelo": _GEMINI_ULTIMO_MODELO or "",
+                    "modo": modo,
+                    "consulta_base": consulta or pregunta,
+                },
+            }
+        except Exception as e:
+            print("jimmi buscar-web:", e)
+
     try:
         kwargs = dict(
             contents=contents,
             system_instruction=system,
-            max_tokens=1200,
+            max_tokens=2500 if usa_web else 1200,
             temperature=0.25,
-            timeout=90,
+            timeout=100 if usa_web else 90,
         )
         if usa_web:
             try:
@@ -1869,7 +2009,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
     ticket = extraer_ticket_de_texto(texto)
     propuestas = []
     if ticket:
-        from server2 import _normalizar_articulo
+        from server2 import _normalizar_articulo, _enriquecer_urls_productos, _gemini_uris_grounding
         arts = []
         for a in ticket.get("articulos") or []:
             if not isinstance(a, dict):
@@ -1878,7 +2018,10 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
             n["fuente"] = a.get("fuente") or "web"
             n["url"] = a.get("url") or ""
             n["proveedor"] = a.get("proveedor") or ticket.get("proveedor") or ""
+            n["faena_id"] = None
+            n["_solo_materiales"] = True
             arts.append(n)
+        arts = _enriquecer_urls_productos(arts, _gemini_uris_grounding(raw))
         ticket["articulos"] = arts
         if arts:
             guardar_extraccion_compra("web", ticket, faena_id)
