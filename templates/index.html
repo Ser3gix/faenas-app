@@ -919,7 +919,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
   <div class="form-box" id="ticket-paso3" style="display:none">
     <div class="form-title">Revisar y editar</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;line-height:1.5">Corrige las líneas si hace falta. Al guardar se comparan con el almacén y se guardan.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;line-height:1.5">Toca una línea para editarla o eliminarla. Al guardar se comparan con el almacén.</p>
     <div class="form-grid">
       <div>
         <label>Destino</label>
@@ -1686,6 +1686,37 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <button class="btn btn-p" onclick="guardarMaterialEditado()">Guardar</button>
       <button class="btn btn-d" onclick="eliminarMaterialDesdeModal()">Eliminar</button>
       <button class="btn btn-s" onclick="cerrarModal('m-material-detalle')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal revisar línea (búsqueda / ticket) -->
+<div class="overlay" id="m-ticket-linea">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="ticket-linea-titulo">Editar línea</div>
+    <input type="hidden" id="ticket-linea-idx">
+    <input type="hidden" id="ticket-linea-container">
+    <div class="form-grid g1"><div><label>Material *</label><input id="ticket-linea-nombre" autocomplete="off"></div></div>
+    <div class="form-grid g1"><div><label>Definición</label><textarea id="ticket-linea-definicion" rows="2" placeholder="Medida, referencia…"></textarea></div></div>
+    <div class="form-grid">
+      <div><label>Categoría</label><select id="ticket-linea-categoria"></select></div>
+      <div><label>Proveedor</label><input id="ticket-linea-proveedor" autocomplete="off"></div>
+    </div>
+    <div class="form-grid">
+      <div><label>Cantidad</label><input type="number" step="0.01" id="ticket-linea-cantidad"></div>
+      <div><label>P. unitario (€ IVA)</label><input type="number" step="0.01" id="ticket-linea-precio"></div>
+      <div><label>Total</label><input type="number" step="0.01" id="ticket-linea-total"></div>
+      <div><label>Unidad</label><input id="ticket-linea-unidad"></div>
+    </div>
+    <div class="form-grid">
+      <div><label>Faena</label><select id="ticket-linea-faena"></select></div>
+      <div><label>Enlace web</label><input id="ticket-linea-url" placeholder="https://…"></div>
+    </div>
+    <div id="ticket-linea-link" style="font-size:0.82rem;margin:-4px 0 10px"></div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="guardarTicketLineaModal()">Guardar</button>
+      <button class="btn btn-d" onclick="eliminarTicketLineaModal()">Eliminar</button>
+      <button class="btn btn-s" onclick="cerrarModal('m-ticket-linea')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -4408,44 +4439,147 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
   };
 }
 
+function _persistirAnalisisTicketJson() {
+  const jsonEl = document.getElementById("ticket-json-pc");
+  if (jsonEl && ticketAnalisisActual) {
+    jsonEl.value = JSON.stringify(ticketAnalisisActual, null, 2);
+  }
+}
+
+function abrirTicketLineaModal(idx, containerId) {
+  const cid = containerId || "ticket-tabla-wrap";
+  if (!ticketAnalisisActual || !Array.isArray(ticketAnalisisActual.articulos)) return;
+  const i = Number(idx);
+  if (!Number.isFinite(i) || i < 0 || i >= ticketAnalisisActual.articulos.length) return;
+  const a = ticketAnalisisActual.articulos[i] || {};
+  document.getElementById("ticket-linea-idx").value = String(i);
+  document.getElementById("ticket-linea-container").value = cid;
+  document.getElementById("ticket-linea-titulo").textContent = a.nombre ? `Editar: ${a.nombre}` : "Editar línea";
+  document.getElementById("ticket-linea-nombre").value = a.nombre || "";
+  document.getElementById("ticket-linea-definicion").value = a.definicion || "";
+  const catSel = document.getElementById("ticket-linea-categoria");
+  catSel.innerHTML = opcionesCategoriaHtml(a.categoria || "Otros");
+  catSel.value = a.categoria || "Otros";
+  document.getElementById("ticket-linea-proveedor").value = a.proveedor || ticketAnalisisActual.proveedor || "";
+  document.getElementById("ticket-linea-cantidad").value = Number(a.cantidad || 1);
+  document.getElementById("ticket-linea-precio").value = Number(a.precio_unitario || 0);
+  document.getElementById("ticket-linea-total").value = Number(a.total != null ? a.total : (Number(a.cantidad || 1) * Number(a.precio_unitario || 0)));
+  document.getElementById("ticket-linea-unidad").value = a.unidad || "ud";
+  const faenaSel = document.getElementById("ticket-linea-faena");
+  faenaSel.innerHTML = _ticketOpcionesFaena(a.faena_id ? String(a.faena_id) : "");
+  const url = String(a.url || "").trim();
+  document.getElementById("ticket-linea-url").value = url;
+  const linkEl = document.getElementById("ticket-linea-link");
+  linkEl.innerHTML = url
+    ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir ficha del producto</a>`
+    : `<span style="color:var(--muted)">Sin enlace</span>`;
+  // Recalcular total al cambiar cant/precio
+  const recalc = () => {
+    const c = Number(document.getElementById("ticket-linea-cantidad").value || 0);
+    const p = Number(document.getElementById("ticket-linea-precio").value || 0);
+    if (Number.isFinite(c) && Number.isFinite(p)) {
+      document.getElementById("ticket-linea-total").value = (c * p).toFixed(2);
+    }
+  };
+  document.getElementById("ticket-linea-cantidad").oninput = recalc;
+  document.getElementById("ticket-linea-precio").oninput = recalc;
+  abrirModal("m-ticket-linea");
+}
+
+function guardarTicketLineaModal() {
+  const i = Number(document.getElementById("ticket-linea-idx").value);
+  const cid = document.getElementById("ticket-linea-container").value || "ticket-tabla-wrap";
+  if (!ticketAnalisisActual || !Array.isArray(ticketAnalisisActual.articulos)) return;
+  if (!Number.isFinite(i) || i < 0 || i >= ticketAnalisisActual.articulos.length) return;
+  const nombre = (document.getElementById("ticket-linea-nombre").value || "").trim();
+  if (!nombre) { toast("El nombre es obligatorio", true); return; }
+  const prev = ticketAnalisisActual.articulos[i] || {};
+  const cantidad = Number((document.getElementById("ticket-linea-cantidad").value || "0").replace(",", "."));
+  const precio = Number((document.getElementById("ticket-linea-precio").value || "0").replace(",", "."));
+  const totalNum = Number((document.getElementById("ticket-linea-total").value || "").replace(",", "."));
+  const url = (document.getElementById("ticket-linea-url").value || "").trim();
+  const faenaRaw = (document.getElementById("ticket-linea-faena").value || "").trim();
+  ticketAnalisisActual.articulos[i] = {
+    ...prev,
+    nombre,
+    definicion: (document.getElementById("ticket-linea-definicion").value || "").trim(),
+    categoria: (document.getElementById("ticket-linea-categoria").value || "Otros").trim() || "Otros",
+    proveedor: (document.getElementById("ticket-linea-proveedor").value || "").trim(),
+    cantidad: Number.isFinite(cantidad) ? cantidad : 0,
+    precio_unitario: Number.isFinite(precio) ? precio : 0,
+    total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
+    unidad: (document.getElementById("ticket-linea-unidad").value || "ud").trim() || "ud",
+    faena_id: faenaRaw || null,
+    url,
+    fuente: prev.fuente || (url ? "web" : "")
+  };
+  _persistirAnalisisTicketJson();
+  cerrarModal("m-ticket-linea");
+  _renderTablaAnalisisTicket(ticketAnalisisActual, cid);
+  toast("✓ Línea actualizada");
+}
+
+function eliminarTicketLineaModal() {
+  const i = Number(document.getElementById("ticket-linea-idx").value);
+  const cid = document.getElementById("ticket-linea-container").value || "ticket-tabla-wrap";
+  if (!ticketAnalisisActual || !Array.isArray(ticketAnalisisActual.articulos)) return;
+  if (!Number.isFinite(i) || i < 0 || i >= ticketAnalisisActual.articulos.length) return;
+  if (!confirm("¿Eliminar esta línea de la lista?")) return;
+  ticketAnalisisActual.articulos.splice(i, 1);
+  _persistirAnalisisTicketJson();
+  cerrarModal("m-ticket-linea");
+  _renderTablaAnalisisTicket(ticketAnalisisActual, cid);
+  toast("Línea eliminada");
+}
+
 function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
   const wrap = document.getElementById(containerId || "ticket-tabla-wrap");
   if (!wrap) return;
+  const cid = containerId || "ticket-tabla-wrap";
   const normalizado = _normalizarAnalisisParaTablaMateriales(data || {}, faenaPorDefecto);
-  const articulos = normalizado.articulos.length ? normalizado.articulos : [{
-    nombre: "", unidad: "ud", categoria: "Otros", proveedor: normalizado.proveedor,
-    cantidad: 1, precio_unitario: 0, total: 0,
-    faena_id: faenaPorDefecto != null ? String(faenaPorDefecto) : null,
-    url: "", fuente: ""
-  }];
+  ticketAnalisisActual = {
+    ...(ticketAnalisisActual && ticketAnalisisActual === data ? ticketAnalisisActual : (data || {})),
+    proveedor: normalizado.proveedor,
+    fecha: normalizado.fecha,
+    articulos: normalizado.articulos.length ? normalizado.articulos.map(a => ({ ...a })) : []
+  };
+  _persistirAnalisisTicketJson();
+  const articulos = ticketAnalisisActual.articulos;
+  if (!articulos.length) {
+    wrap.innerHTML = `<div style="font-size:0.84rem;color:var(--muted);margin:8px 0">No quedan líneas. Cancela o busca de nuevo.</div>`;
+    return;
+  }
   const rows = articulos.map((a, i) => {
     const cantidad = Number(a.cantidad || 0);
     const precio = Number(a.precio_unitario || 0);
-    const total = Number(a.total || (cantidad * precio));
-    const faena = a.faena_id ? String(a.faena_id) : "";
+    const total = Number(a.total != null ? a.total : (cantidad * precio));
     const url = String(a.url || "").trim();
-    const linkHtml = url
-      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem">Abrir</a>
-         <input type="hidden" data-k="url" value="${esc(url)}">`
-      : `<input type="hidden" data-k="url" value="">`;
-    return `<tr data-i="${i}">
-      <td><select data-k="categoria">${opcionesCategoriaHtml(a.categoria || "Otros")}</select></td>
-      <td><input type="text" data-k="nombre" value="${esc(a.nombre || "")}"></td>
-      <td><input type="text" data-k="proveedor" value="${esc(a.proveedor || normalizado.proveedor || "")}"></td>
-      <td><input type="number" step="0.01" data-k="cantidad" value="${Number.isFinite(cantidad) ? cantidad : 0}"></td>
-      <td><input type="number" step="0.01" data-k="precio_unitario" value="${Number.isFinite(precio) ? precio : 0}"></td>
-      <td><input type="number" step="0.01" data-k="total" value="${Number.isFinite(total) ? total : 0}"></td>
-      <td><input type="text" data-k="unidad" value="${esc(a.unidad || "ud")}"></td>
-      <td>${linkHtml}</td>
-      <td><select data-k="faena_id">${_ticketOpcionesFaena(faena)}</select></td>
+    const def = a.definicion ? `<div style="font-size:0.72rem;color:var(--muted)">${esc(a.definicion)}</div>` : "";
+    const linkCel = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Ver</a>`
+      : `<span style="color:var(--muted)">—</span>`;
+    const cidJs = JSON.stringify(cid);
+    return `<tr class="ticket-linea-row" data-i="${i}" style="cursor:pointer" onclick='abrirTicketLineaModal(${i}, ${cidJs})' title="Clic para editar o eliminar">
+      <td>${esc(a.categoria || "Otros")}</td>
+      <td><strong>${esc(a.nombre || "(sin nombre)")}</strong>${def}</td>
+      <td>${esc(a.proveedor || normalizado.proveedor || "—")}</td>
+      <td>${Number.isFinite(cantidad) ? cantidad : "—"}</td>
+      <td>${Number.isFinite(precio) ? precio.toFixed(2) + " €" : "—"}</td>
+      <td>${Number.isFinite(total) ? total.toFixed(2) + " €" : "—"}</td>
+      <td>${esc(a.unidad || "ud")}</td>
+      <td>${linkCel}</td>
     </tr>`;
   }).join("");
   wrap.innerHTML = `
-    <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">Proveedor: <strong>${esc(normalizado.proveedor) || "(sin proveedor)"}</strong>${normalizado.fecha ? ` · Fecha: <strong>${esc(normalizado.fecha)}</strong>` : ""} · Precios con IVA</div>
+    <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">
+      ${normalizado.proveedor ? `Proveedor: <strong>${esc(normalizado.proveedor)}</strong> · ` : ""}
+      ${normalizado.fecha ? `Fecha: <strong>${esc(normalizado.fecha)}</strong> · ` : ""}
+      Precios con IVA · Clic en una línea para editar o eliminar
+    </div>
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Web</th><th>Faena</th>
+          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Web</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -4453,37 +4587,24 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
 }
 
 function _leerTablaAnalisisTicket(containerId) {
-  const wrap = document.getElementById(containerId || "ticket-tabla-wrap");
-  if (!wrap || !ticketAnalisisActual) return null;
-  const articulos = [];
-  let proveedorComun = "";
-  wrap.querySelectorAll("tbody tr").forEach(tr => {
-    const nombre = (tr.querySelector('[data-k="nombre"]')?.value || "").trim();
-    if (!nombre) return;
-    const proveedor = (tr.querySelector('[data-k="proveedor"]')?.value || "").trim();
-    if (!proveedorComun && proveedor) proveedorComun = proveedor;
-    const cantidad = Number((tr.querySelector('[data-k="cantidad"]')?.value || "0").replace(",", "."));
-    const precio = Number((tr.querySelector('[data-k="precio_unitario"]')?.value || "0").replace(",", "."));
-    const totalNum = Number((tr.querySelector('[data-k="total"]')?.value || "").replace(",", "."));
-    const faenaRaw = (tr.querySelector('[data-k="faena_id"]')?.value || "").trim();
-    const url = (tr.querySelector('[data-k="url"]')?.value || "").trim();
-    const idx = Number(tr.getAttribute("data-i"));
-    const prev = Number.isFinite(idx) ? ((ticketAnalisisActual.articulos || [])[idx] || {}) : {};
-    articulos.push({
-      nombre,
-      categoria: (tr.querySelector('[data-k="categoria"]')?.value || "Otros").trim() || "Otros",
-      proveedor,
-      cantidad: Number.isFinite(cantidad) ? cantidad : 0,
-      precio_unitario: Number.isFinite(precio) ? precio : 0,
-      total: Number.isFinite(totalNum) ? totalNum : ((Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)),
-      unidad: (tr.querySelector('[data-k="unidad"]')?.value || "ud").trim() || "ud",
-      faena_id: faenaRaw || null,
-      fuente: prev.fuente || (url ? "web" : ""),
-      url: url || prev.url || "",
-      definicion: prev.definicion || ""
-    });
-  });
-  return { proveedor: proveedorComun || ticketAnalisisActual.proveedor || "", fecha: ticketAnalisisActual.fecha || "", articulos };
+  if (!ticketAnalisisActual) return null;
+  const articulos = (ticketAnalisisActual.articulos || [])
+    .filter(a => String(a.nombre || "").trim())
+    .map(a => ({
+      nombre: String(a.nombre || "").trim(),
+      categoria: String(a.categoria || "Otros").trim() || "Otros",
+      proveedor: String(a.proveedor || "").trim(),
+      cantidad: Number(a.cantidad || 0) || 0,
+      precio_unitario: Number(a.precio_unitario || 0) || 0,
+      total: Number(a.total != null ? a.total : (Number(a.cantidad || 0) * Number(a.precio_unitario || 0))),
+      unidad: String(a.unidad || "ud").trim() || "ud",
+      faena_id: a.faena_id || null,
+      fuente: a.fuente || (a.url ? "web" : ""),
+      url: String(a.url || "").trim(),
+      definicion: String(a.definicion || "").trim()
+    }));
+  const proveedorComun = articulos.find(a => a.proveedor)?.proveedor || ticketAnalisisActual.proveedor || "";
+  return { proveedor: proveedorComun, fecha: ticketAnalisisActual.fecha || "", articulos };
 }
 
 async function buscarMaterialesWebPc() {
