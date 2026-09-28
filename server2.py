@@ -529,6 +529,9 @@ def _prompt_documento_base(nombre="documento"):
 Devuelve SOLO JSON con proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje y articulos (nombre, cantidad, precio_unitario, total, unidad, categoria, definicion).
 tipo_documento: "ticket" | "factura" | "albaran" | "otro".
 Copia los importes de línea tal como aparecen. En facturas suele ser base sin IVA (iva_incluido=false); en tickets suele ir con IVA (iva_incluido=true).
+TABLEROS: si hay columna M2 o el precio es por m², unidad=\"m2\", cantidad=m² y precio_unitario=€/m² (no por pieza).
+CANTOS / CANTEADO: unidad=\"ml\" (metro lineal), cantidad=metros lineales y precio_unitario=€/ml.
+CORTE de tablero: suele ir en m² (unidad=\"m2\").
 Ignora portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
@@ -4942,36 +4945,73 @@ def _json_factura_lineas_sueltas(texto):
                     break
                 if ruido.search(lineas[j]) and not re.search(r"\d", lineas[j]):
                     break
-                encontrados = re.findall(r"\d+[.,]\d{2,4}|\d+", lineas[j])
+                encontrados = re.findall(r"\d+[.,]\d{1,4}|\d+", lineas[j])
                 if encontrados and re.match(r"^[\d.,\s]+$", lineas[j].replace(" ", "")):
-                    for n in encontrados:
-                        nums.append(_parse_numero(n))
+                    # Evitar partir "25,2" en 25 y 2: preferir un solo decimal por línea
+                    if re.fullmatch(r"\d+[.,]\d{1,4}", lineas[j].replace(" ", "")):
+                        nums.append(_parse_numero(lineas[j]))
+                    else:
+                        for n in encontrados:
+                            nums.append(_parse_numero(n))
                     j += 1
                 else:
                     break
             if nombre and nums:
-                # Heurística: cantidad, (m2), precio, (%dto), importe
-                cantidad = nums[0] if nums else 1
+                # Cabecera SALIMER/similar: Cantidad | M2/ml | Precio | %Dto | Importe
+                # Tableros: precio €/m² y cantidad = m². Cantos/canteado: €/ml y cantidad = ml.
+                total = nums[-1] if nums else None
                 precio = None
-                total = None
-                if len(nums) >= 2:
-                    total = nums[-1]
-                if len(nums) >= 3:
-                    # Preferir precio unitario antes del descuento/importe
+                cantidad = nums[0] if nums else 1
+                unidad = "ud"
+                es_canto = bool(re.search(r"\bcanto\b|\bcanteado\b|canto pvc|canto abs", nombre, re.I))
+                es_tablero = bool(re.search(
+                    r"tablero|agplast|mdf|melamina|osb|\bdm\b|hazel|oak|roble|pino|abeto|mm\.?",
+                    nombre, re.I,
+                )) and not es_canto
+                es_corte = bool(re.search(r"corte|seccionadora", nombre, re.I))
+                if len(nums) >= 5:
+                    medida = nums[1]
+                    precio = nums[2]
+                    if medida and medida > 0:
+                        cantidad = medida
+                    if es_canto:
+                        unidad = "ml"
+                    elif es_tablero or es_corte:
+                        unidad = "m2"
+                    elif medida and medida > 0 and medida != nums[0]:
+                        unidad = "m2"
+                elif len(nums) >= 3:
                     precio = nums[-3] if len(nums) >= 4 else nums[1]
+                    if es_canto:
+                        unidad = "ml"
+                    elif es_tablero or es_corte:
+                        unidad = "m2"
                 if precio is None and total is not None and cantidad:
                     try:
                         precio = round(float(total) / float(cantidad), 4)
                     except Exception:
                         precio = total
+                if es_canto:
+                    cat = "Molduras-Maderas"
+                elif es_tablero or es_corte:
+                    cat = "Tableros"
+                else:
+                    cat = "Otros"
+                defi_parts = []
+                if ref:
+                    defi_parts.append(ref)
+                if unidad == "m2":
+                    defi_parts.append("€/m²")
+                elif unidad == "ml":
+                    defi_parts.append("€/ml")
                 articulos.append({
                     "nombre": nombre[:180],
                     "cantidad": cantidad or 1,
                     "precio_unitario": precio if precio is not None else 0,
                     "total": total if total is not None else precio,
-                    "unidad": "ud",
-                    "categoria": "Tableros" if re.search(r"tablero|agplast|mdf|melamina|canto|canteado|corte", nombre, re.I) else "Otros",
-                    "definicion": ref,
+                    "unidad": unidad,
+                    "categoria": cat,
+                    "definicion": " · ".join(defi_parts),
                     "fuente": "pdf",
                 })
                 i = j
@@ -5653,7 +5693,7 @@ def _procesar_bytes_documento(bruto, nombre, mime_type="", texto=""):
         import json as _json_dbg, time as _time_dbg
         arts_log = data.get("articulos") or []
         with open(r"c:\Users\Ser3gix\Desktop\faenas-app\debug-5d25d7.log", "a", encoding="utf-8") as _f:
-            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"IVA","location":"server2.py:_procesar_bytes_documento:exit","message":"doc process done","data":{"n_raw":len(articulos),"n_ok":len(arts_log),"proveedor":data.get("proveedor"),"iva_incluido":data.get("iva_incluido"),"iva_aplicado":data.get("iva_aplicado"),"precios":[a.get("precio_unitario") for a in arts_log[:4]],"aviso":data.get("aviso"),"nombres":[str((a or {}).get("nombre") or "")[:60] for a in arts_log[:8]]},"timestamp":int(_time_dbg.time()*1000)})+"\n")
+            _f.write(_json_dbg.dumps({"sessionId":"5d25d7","hypothesisId":"IVA","location":"server2.py:_procesar_bytes_documento:exit","message":"doc process done","data":{"n_raw":len(articulos),"n_ok":len(arts_log),"proveedor":data.get("proveedor"),"iva_incluido":data.get("iva_incluido"),"iva_aplicado":data.get("iva_aplicado"),"lineas":[{"nombre":str(a.get("nombre") or "")[:40],"cant":a.get("cantidad"),"unidad":a.get("unidad"),"pu":a.get("precio_unitario"),"tot":a.get("total")} for a in arts_log[:6]],"aviso":data.get("aviso")},"timestamp":int(_time_dbg.time()*1000)})+"\n")
     except Exception:
         pass
     # #endregion
