@@ -509,18 +509,27 @@ def _ia_provider_activo():
 def _prompt_ticket_base():
     return """Analiza la imagen o el PDF de compra adjunto y extrae las líneas reales.
 
-Devuelve SOLO un JSON con: proveedor, fecha (si aparece), total_ticket, articulos.
+Devuelve SOLO un JSON con: proveedor, fecha (si aparece), total_ticket, tipo_documento, iva_incluido, iva_porcentaje, articulos.
+tipo_documento: "ticket" | "factura" | "albaran" | "otro".
+iva_incluido: true si los importes de línea YA llevan IVA (típico en tickets de caja/TPV); false si son base imponible sin IVA (típico en facturas).
+iva_porcentaje: el % de IVA del documento si aparece (si no, 21).
 Cada artículo: nombre, cantidad, precio_unitario, total, unidad, categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros), definicion (referencia o medida).
+REGLA DE PRECIOS: copia precio_unitario y total de cada línea TAL COMO aparecen en el documento (no recalcules el IVA tú).
+- Ticket/recibo TPV: suele ir con IVA → iva_incluido=true.
+- Factura/albarán con base imponible: la línea suele ir sin IVA → iva_incluido=false.
+total_ticket: el total final del documento si aparece (con IVA si es el total a pagar; si solo ves base imponible, pon esa base).
 Lee tablas de presupuesto, albarán o factura. Si hay descuento, total es lo pagado de esa línea y precio_unitario = total / cantidad.
-Importes con coma → números JSON con punto. Ignora IVA, base imponible, portes y totales fiscales.
+Importes con coma → números JSON con punto. Ignora portes y textos legales.
 Si no ves líneas, articulos es []. No inventes nombres genéricos."""
 
 
 def _prompt_documento_base(nombre="documento"):
     return f"""Analiza el documento '{nombre}' (factura, albarán, ticket o PDF impreso) y extrae las líneas de compra reales.
 
-Devuelve SOLO JSON con proveedor, fecha, total_ticket y articulos (nombre, cantidad, precio_unitario, total, unidad, categoria, definicion).
-Ignora IVA, portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
+Devuelve SOLO JSON con proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje y articulos (nombre, cantidad, precio_unitario, total, unidad, categoria, definicion).
+tipo_documento: "ticket" | "factura" | "albaran" | "otro".
+Copia los importes de línea tal como aparecen. En facturas suele ser base sin IVA (iva_incluido=false); en tickets suele ir con IVA (iva_incluido=true).
+Ignora portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
 def _gemini_nombre_modelo(nombre):
@@ -658,7 +667,125 @@ def _es_nombre_articulo_ejemplo(nombre):
     return n.startswith("nombre del articulo") or n.startswith("nombre del establecimiento")
 
 
-def _limpiar_resultado_ia(data):
+def _parse_bool_json(valor):
+    if isinstance(valor, bool):
+        return valor
+    if valor is None:
+        return None
+    txt = str(valor).strip().lower()
+    if txt in {"1", "true", "si", "sí", "yes", "y", "on"}:
+        return True
+    if txt in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _num_seguro_local(valor, defecto=0.0):
+    try:
+        if valor is None or valor == "":
+            return float(defecto)
+        if isinstance(valor, (int, float)):
+            return float(valor)
+        txt = str(valor).strip().replace("€", "").replace("%", "").replace(" ", "")
+        if "," in txt and "." in txt:
+            txt = txt.replace(".", "").replace(",", ".")
+        elif "," in txt:
+            txt = txt.replace(",", ".")
+        return float(txt)
+    except Exception:
+        return float(defecto)
+
+
+def _iva_porcentaje_de_data(data, defecto=21.0):
+    pct = _num_seguro_local((data or {}).get("iva_porcentaje"), 0.0)
+    if pct <= 0 or pct > 40:
+        return float(defecto)
+    return pct
+
+
+def _inferir_documento_sin_iva(data, origen_tipo="ticket"):
+    """True si los importes de línea parecen sin IVA (hay que sumarlo)."""
+    if not isinstance(data, dict):
+        return origen_tipo in {"documento", "texto"}
+    marcado = _parse_bool_json(data.get("iva_incluido"))
+    if marcado is True:
+        return False
+    if marcado is False:
+        return True
+    tipo = unicodedata.normalize("NFKD", str(data.get("tipo_documento") or ""))
+    tipo = "".join(c for c in tipo if unicodedata.category(c) != "Mn").lower()
+    if any(x in tipo for x in ("factura", "albaran", "presupuesto", "pedido")):
+        return True
+    if any(x in tipo for x in ("ticket", "tiquet", "recibo", "tpv", "caja")):
+        return False
+    return origen_tipo in {"documento", "texto"}
+
+
+def _asegurar_precios_con_iva(data, origen_tipo="ticket"):
+    """Garantiza precio_unitario/total/total_ticket con IVA incluido."""
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    pct = _iva_porcentaje_de_data(out, 21.0)
+    out["iva_porcentaje"] = pct
+    hay_que_sumar = _inferir_documento_sin_iva(out, origen_tipo=origen_tipo)
+    factor = (1.0 + (pct / 100.0)) if hay_que_sumar else 1.0
+    arts = []
+    suma_antes = 0.0
+    suma = 0.0
+    for a in out.get("articulos") or []:
+        if not isinstance(a, dict):
+            continue
+        art = dict(a)
+        cantidad = _num_seguro_local(art.get("cantidad"), 0.0)
+        if cantidad <= 0:
+            cantidad = 1.0
+        precio = _num_seguro_local(art.get("precio_unitario"), 0.0)
+        total = _num_seguro_local(art.get("total"), 0.0)
+        if total <= 0 and precio > 0:
+            total = cantidad * precio
+        elif precio <= 0 and total > 0:
+            precio = total / cantidad
+        suma_antes += total
+        if factor != 1.0:
+            precio = round(precio * factor, 2)
+            total = round(total * factor, 2)
+        else:
+            precio = round(precio, 2)
+            total = round(total, 2)
+        art["cantidad"] = cantidad
+        art["precio_unitario"] = precio
+        art["total"] = total
+        suma += total
+        arts.append(art)
+    out["articulos"] = arts
+    total_ticket = _num_seguro_local(out.get("total_ticket"), 0.0)
+    if hay_que_sumar and suma > 0:
+        if total_ticket > 0:
+            # El total del documento a veces ya viene con IVA aunque las líneas no.
+            if abs(total_ticket - suma_antes) / max(suma_antes, 0.01) < 0.08:
+                total_ticket = round(total_ticket * factor, 2)
+            elif abs(total_ticket - suma) / max(suma, 0.01) < 0.12:
+                total_ticket = round(total_ticket, 2)
+            else:
+                total_ticket = round(suma, 2)
+        else:
+            total_ticket = round(suma, 2)
+    elif suma > 0 and (total_ticket <= 0 or abs(total_ticket - suma) / max(suma, 0.01) > 0.35):
+        total_ticket = round(suma, 2)
+    elif total_ticket > 0:
+        total_ticket = round(total_ticket, 2)
+    elif suma > 0:
+        total_ticket = round(suma, 2)
+    out["total_ticket"] = total_ticket if total_ticket > 0 else out.get("total_ticket")
+    out["iva_incluido"] = True
+    out["iva_aplicado"] = bool(hay_que_sumar)
+    if not out.get("tipo_documento"):
+        out["tipo_documento"] = "factura" if origen_tipo in {"documento", "texto"} else "ticket"
+    return out
+
+
+def _limpiar_resultado_ia(data, origen_tipo="ticket"):
     if not isinstance(data, dict):
         return data
     arts = []
@@ -673,7 +800,7 @@ def _limpiar_resultado_ia(data):
     prov = str(out.get("proveedor") or "").strip().lower()
     if prov in {"nombre del establecimiento", "string", "null", "none"}:
         out["proveedor"] = None
-    return out
+    return _asegurar_precios_con_iva(out, origen_tipo=origen_tipo)
 
 
 def _peticion_gemini(contents, system_instruction=None, response_mime_type=None, max_tokens=1200, temperature=0.2, api_key=None, model=None, timeout=90, tools=None):
@@ -3139,8 +3266,9 @@ def _normalizar_json_materiales_con_ia(texto_crudo, tipo="ticket", api_key=None,
         return None
     system = (
         f"Convierte la salida de un extractor de {tipo} a JSON estricto. "
-        "Devuelve SOLO un objeto JSON con: proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad}]. "
-        "Si faltan campos, usa null. No añadas explicaciones."
+        "Devuelve SOLO un objeto JSON con: proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje, "
+        "articulos:[{nombre,cantidad,precio_unitario,total,unidad}]. "
+        "Copia importes tal cual; marca iva_incluido según ticket (true) o factura (false). Si faltan campos, usa null. No añadas explicaciones."
     )
     raw = _peticion_gemini(
         contents=[{"role": "user", "parts": [{"text": txt}]}],
@@ -4061,19 +4189,34 @@ def _json_ticket_desde_ocr(texto):
 
     total_ticket = None
     for l in lineas:
-        if "total pedido" in l.lower() or "total factura" in l.lower():
+        if "total pedido" in l.lower() or "total factura" in l.lower() or re.search(r"\btotal\b", l.lower()):
+            if "base imponible" in l.lower():
+                continue
             nums = re.findall(r"\d+[.,]\d{2}", l)
             if nums:
                 total_ticket = _parse_numero(nums[-1])
                 break
-    if total_ticket is None:
-        for l in lineas:
-            if "base imponible" in l.lower():
-                nums = re.findall(r"\d+[.,]\d{2}", l)
-                if nums:
-                    total_ticket = _parse_numero(nums[-1])
-                    break
+    base_imponible = None
+    for l in lineas:
+        if "base imponible" in l.lower():
+            nums = re.findall(r"\d+[.,]\d{2}", l)
+            if nums:
+                base_imponible = _parse_numero(nums[-1])
+                break
+    if total_ticket is None and base_imponible is not None:
+        total_ticket = base_imponible
 
+    iva_pct = 21.0
+    m_iva = re.search(r"\biva\b[^\d%]{0,12}(\d{1,2})(?:[.,](\d{1,2}))?\s*%?", texto, re.I)
+    if m_iva:
+        iva_pct = float(m_iva.group(1) + ("." + m_iva.group(2) if m_iva.group(2) else ""))
+    texto_l = (texto or "").lower()
+    es_factura = bool(
+        "base imponible" in texto_l
+        or "cuota iva" in texto_l
+        or re.search(r"\bfactura\b", texto_l)
+        or re.search(r"\balbaran\b|\balbarán\b", texto_l)
+    )
     fusionadas = []
     pendiente = ""
     for l in lineas:
@@ -4105,12 +4248,16 @@ def _json_ticket_desde_ocr(texto):
 
     if not articulos:
         return None
-    return {
+    data = {
         "proveedor": proveedor,
         "fecha": fecha,
         "total_ticket": total_ticket,
+        "tipo_documento": "factura" if es_factura else "ticket",
+        "iva_incluido": False if es_factura else True,
+        "iva_porcentaje": iva_pct,
         "articulos": articulos,
     }
+    return _asegurar_precios_con_iva(data, origen_tipo="documento" if es_factura else "ticket")
 
 
 def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=None, tipo="ticket", pdf_bytes=None):
@@ -4127,6 +4274,9 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             "proveedor": {"type": ["string", "null"]},
             "fecha": {"type": ["string", "null"]},
             "total_ticket": {"type": ["number", "integer", "null"]},
+            "tipo_documento": {"type": ["string", "null"]},
+            "iva_incluido": {"type": ["boolean", "null"]},
+            "iva_porcentaje": {"type": ["number", "integer", "null"]},
             "articulos": {
                 "type": "array",
                 "items": {
@@ -4151,8 +4301,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
 
     system = (
         f"Eres un extractor de materiales desde {tipo}. Devuelve SOLO JSON válido, sin texto extra. "
-        "Usa este formato: {proveedor, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion}]}. "
-        "Ignora IVA. Si un campo no existe, usa null. No copies textos de ejemplo. Si no hay artículos, articulos debe ser []."
+        "Usa este formato: {proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje, "
+        "articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion}]}. "
+        "Copia los importes de línea tal como aparecen en el documento. "
+        "Marca iva_incluido=true en tickets TPV (precio final) y false en facturas/albaranes (base imponible). "
+        "Si un campo no existe, usa null. No copies textos de ejemplo. Si no hay artículos, articulos debe ser []."
     )
     user_txt = instrucciones.strip()
     if texto:
@@ -4193,7 +4346,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             data = _extraer_json_de_texto(contenido)
             if not isinstance(data, dict) and tipo != "ticket":
                 data = _normalizar_json_materiales_con_ia(contenido, tipo=tipo, api_key=ticket_key, model=ticket_model)
-            data = _limpiar_resultado_ia(data)
+            data = _limpiar_resultado_ia(data, origen_tipo=tipo)
             if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
                 return data
         except Exception as e:
