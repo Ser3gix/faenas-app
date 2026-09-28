@@ -2355,11 +2355,17 @@ function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function abrirEnlaceProducto(url, ev) {
+function abrirEnlaceProducto(url, ev, opts) {
   if (ev) {
     try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
   }
-  const u = String(url || "").trim();
+  opts = opts || {};
+  let u = String(url || "").trim();
+  const buscar = String(opts.buscar || "").trim();
+  const proveedor = String(opts.proveedor || "").trim();
+  if (!u && buscar) {
+    u = urlBusquedaTienda(proveedor, buscar) || "";
+  }
   if (!u) { toast("No hay enlace", true); return false; }
   let win = null;
   try { win = window.open(u, "_blank"); } catch (e) { win = null; }
@@ -2401,13 +2407,71 @@ async function copiarEnlaceProducto(url) {
   }
 }
 
-function htmlEnlaceProducto(url, etiqueta) {
-  const u = String(url || "").trim();
-  if (!u) return `<span class="muted">—</span>`;
-  const label = etiqueta || "Ver";
-  return `<a href="${escHtml(u)}" onclick='return abrirEnlaceProducto(${JSON.stringify(u)}, event)'>${escHtml(label)}</a>
-    <button type="button" class="btn btn-s btn-sm" style="margin-left:4px;padding:2px 6px;min-height:26px;font-size:0.7rem"
-      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(u)})'>Copiar</button>`;
+function urlBusquedaTienda(proveedor, texto) {
+  const prov = String(proveedor || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const q = String(texto || "").trim();
+  const enc = encodeURIComponent(q);
+  if (!q && !prov) return "";
+  if (prov.includes("obramat") || prov.includes("obrama")) {
+    return q ? `https://www.obramat.es/search?text=${enc}` : "https://www.obramat.es/";
+  }
+  if (prov.includes("leroy")) {
+    return q ? `https://www.leroymerlin.es/search?q=${enc}` : "https://www.leroymerlin.es/";
+  }
+  if (prov.includes("brico") && prov.includes("depot")) {
+    return q ? `https://www.bricodepot.es/catalogsearch/result/?q=${enc}` : "https://www.bricodepot.es/";
+  }
+  if (prov.includes("manomano") || prov.includes("mano mano")) {
+    return q ? `https://www.manomano.es/busqueda/${enc}` : "https://www.manomano.es/";
+  }
+  if (prov.includes("bauhaus")) {
+    return q ? `https://www.bauhaus.es/search?query=${enc}` : "https://www.bauhaus.es/";
+  }
+  if (prov.includes("hornbach")) {
+    return q ? `https://www.hornbach.es/shop/busqueda/sortiment/?q=${enc}` : "https://www.hornbach.es/";
+  }
+  if (prov.includes("amazon")) {
+    return q ? `https://www.amazon.es/s?k=${enc}` : "https://www.amazon.es/";
+  }
+  let dominio = "";
+  if (prov.includes("aki")) dominio = "aki.es";
+  if (prov.includes("bigmat")) dominio = "bigmat.es";
+  if (dominio && q) return `https://www.google.es/search?q=${encodeURIComponent("site:" + dominio + " " + q)}`;
+  const partes = [proveedor, q].filter(Boolean).join(" ");
+  return partes ? `https://www.google.es/search?q=${encodeURIComponent(partes)}` : "";
+}
+
+function htmlEnlaceProducto(artOrUrl, etiqueta) {
+  let url = "";
+  let urlBuscar = "";
+  let proveedor = "";
+  let nombre = "";
+  let definicion = "";
+  if (artOrUrl && typeof artOrUrl === "object") {
+    url = String(artOrUrl.url || "").trim();
+    urlBuscar = String(artOrUrl.url_buscar || "").trim();
+    proveedor = String(artOrUrl.proveedor || "").trim();
+    nombre = String(artOrUrl.nombre || "").trim();
+    definicion = String(artOrUrl.definicion || "").trim();
+  } else {
+    url = String(artOrUrl || "").trim();
+  }
+  const textoBusqueda = [nombre, definicion].filter(Boolean).join(" ").trim();
+  if (!urlBuscar || !/^https?:\/\//i.test(urlBuscar)) {
+    urlBuscar = urlBusquedaTienda(proveedor, textoBusqueda || nombre) || "";
+  }
+  if (!url && !urlBuscar) return `<span class="muted">—</span>`;
+  let html = "";
+  if (urlBuscar) {
+    html += `<button type="button" class="btn btn-s btn-sm" style="padding:2px 8px;min-height:26px;font-size:0.72rem"
+      onclick='event.stopPropagation();abrirEnlaceProducto(${JSON.stringify(urlBuscar)}, event)'>Buscar</button>`;
+  }
+  if (url) {
+    html += ` <button type="button" class="btn btn-s btn-sm" style="padding:2px 6px;min-height:26px;font-size:0.7rem"
+      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(url)})'>Copiar</button>`;
+  }
+  return html || `<span class="muted">—</span>`;
 }
 
 function urlJimmi(u) {
@@ -2442,9 +2506,7 @@ function htmlPropuestasJimmi(propuestas, msgIdx) {
       ? precio.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
       : "—";
     const url = String(a.url || "").trim();
-    const link = url
-      ? htmlEnlaceProducto(url, "Ver")
-      : `<span class="muted">—</span>`;
+    const link = htmlEnlaceProducto(a);
     return `<tr>
       <td class="col-nombre"><strong>${nombre}</strong>${def ? `<div class="muted" style="font-size:0.7rem">${def}</div>` : ""}</td>
       <td class="col-tienda">${tienda}</td>
@@ -6156,7 +6218,7 @@ function _ticketArtBodyHtml(a, i, mostrarFaena) {
       return `<div class="ticket-art-field ticket-art-field-compact">
         <label>Enlace web</label>
         <div style="font-size:0.82rem;line-height:1.4;word-break:break-all">
-          ${htmlEnlaceProducto(url, "Abrir en tienda")}
+          ${htmlEnlaceProducto(a)}
         </div>
         <input type="hidden" data-k="url" value="${safe}">
       </div>`;

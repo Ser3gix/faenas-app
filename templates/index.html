@@ -1925,34 +1925,79 @@ async function copiarEnlaceProducto(url) {
   }
 }
 
+function urlBusquedaTienda(proveedor, texto) {
+  const prov = String(proveedor || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const q = String(texto || "").trim();
+  const enc = encodeURIComponent(q);
+  if (!q && !prov) return "";
+  if (prov.includes("obramat") || prov.includes("obrama")) {
+    return q ? `https://www.obramat.es/search?text=${enc}` : "https://www.obramat.es/";
+  }
+  if (prov.includes("leroy")) {
+    return q ? `https://www.leroymerlin.es/search?q=${enc}` : "https://www.leroymerlin.es/";
+  }
+  if (prov.includes("brico") && prov.includes("depot")) {
+    return q ? `https://www.bricodepot.es/catalogsearch/result/?q=${enc}` : "https://www.bricodepot.es/";
+  }
+  if (prov.includes("manomano") || prov.includes("mano mano")) {
+    return q ? `https://www.manomano.es/busqueda/${enc}` : "https://www.manomano.es/";
+  }
+  if (prov.includes("bauhaus")) {
+    return q ? `https://www.bauhaus.es/search?query=${enc}` : "https://www.bauhaus.es/";
+  }
+  if (prov.includes("hornbach")) {
+    return q ? `https://www.hornbach.es/shop/busqueda/sortiment/?q=${enc}` : "https://www.hornbach.es/";
+  }
+  if (prov.includes("amazon")) {
+    return q ? `https://www.amazon.es/s?k=${enc}` : "https://www.amazon.es/";
+  }
+  let dominio = "";
+  if (prov.includes("aki")) dominio = "aki.es";
+  if (prov.includes("bigmat")) dominio = "bigmat.es";
+  if (dominio && q) return `https://www.google.es/search?q=${encodeURIComponent("site:" + dominio + " " + q)}`;
+  const partes = [proveedor, q].filter(Boolean).join(" ");
+  return partes ? `https://www.google.es/search?q=${encodeURIComponent(partes)}` : "";
+}
+
 function htmlEnlaceProducto(artOrUrl, etiqueta) {
   // Acepta string URL o artículo {url, url_buscar, nombre, proveedor, definicion}
   let url = "";
-  let buscar = "";
+  let urlBuscar = "";
   let proveedor = "";
   let nombre = "";
+  let definicion = "";
   if (artOrUrl && typeof artOrUrl === "object") {
     url = String(artOrUrl.url || "").trim();
-    buscar = String(artOrUrl.url_buscar || "").trim();
+    urlBuscar = String(artOrUrl.url_buscar || "").trim();
     proveedor = String(artOrUrl.proveedor || "").trim();
     nombre = String(artOrUrl.nombre || "").trim();
-    if (!buscar && (nombre || artOrUrl.definicion)) {
-      // Se abre vía /api/ir?buscar=...
-      buscar = [nombre, artOrUrl.definicion].filter(Boolean).join(" ");
-    }
+    definicion = String(artOrUrl.definicion || "").trim();
   } else {
     url = String(artOrUrl || "").trim();
   }
-  if (!url && !buscar && !nombre) return `<span style="color:var(--muted)">—</span>`;
-  const optsBuscar = JSON.stringify({ buscar: buscar || nombre, proveedor });
-  // Prioridad: Buscar en tienda (fiable). Ficha solo como copiar si existe.
-  let html = `<button type="button" class="btn btn-s btn-sm" style="padding:2px 8px;min-height:26px;font-size:0.72rem"
-    onclick='event.stopPropagation();abrirEnlaceProducto("", event, ${optsBuscar})'>Buscar</button>`;
+  const textoBusqueda = [nombre, definicion].filter(Boolean).join(" ").trim();
+  if (!urlBuscar || !/^https?:\/\//i.test(urlBuscar)) {
+    urlBuscar = urlBusquedaTienda(proveedor, textoBusqueda || nombre) || "";
+  }
+  if (!url && !urlBuscar && !textoBusqueda) {
+    return `<span style="color:var(--muted)">—</span>`;
+  }
+
+  let html = "";
+  if (urlBuscar) {
+    html += `<button type="button" class="btn btn-s btn-sm" style="padding:2px 8px;min-height:26px;font-size:0.72rem"
+      onclick='event.stopPropagation();abrirEnlaceProducto(${JSON.stringify(urlBuscar)}, event)' title="Abrir búsqueda en la tienda">Buscar</button>`;
+  } else if (textoBusqueda || proveedor) {
+    const opts = JSON.stringify({ buscar: textoBusqueda || nombre, proveedor });
+    html += `<button type="button" class="btn btn-s btn-sm" style="padding:2px 8px;min-height:26px;font-size:0.72rem"
+      onclick='event.stopPropagation();abrirEnlaceProducto("", event, ${opts})'>Buscar</button>`;
+  }
   if (url) {
     html += ` <button type="button" class="btn btn-s btn-sm" style="padding:2px 6px;min-height:26px;font-size:0.7rem"
-      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(url)})' title="Copiar ficha (si la tienda bloquea el enlace)">Copiar</button>`;
+      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(url)})' title="Copiar enlace de ficha">Copiar</button>`;
   }
-  return html;
+  return html || `<span style="color:var(--muted)">—</span>`;
 }
 function urlJimmi(u) {
   u = String(u || "");
@@ -4534,6 +4579,7 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
         faena_id,
         fuente: String(a.fuente || "").trim(),
         url: String(a.url || "").trim(),
+        url_buscar: String(a.url_buscar || "").trim(),
         definicion: String(a.definicion || "").trim()
       };
     }).filter(a => a.nombre)
@@ -4571,9 +4617,11 @@ function abrirTicketLineaModal(idx, containerId) {
   const url = String(a.url || "").trim();
   document.getElementById("ticket-linea-url").value = url;
   const linkEl = document.getElementById("ticket-linea-link");
-  linkEl.innerHTML = url
-    ? htmlEnlaceProducto(url, "Abrir ficha del producto")
-    : `<span style="color:var(--muted)">Sin enlace</span>`;
+  linkEl.innerHTML = htmlEnlaceProducto({
+    ...a,
+    proveedor: a.proveedor || ticketAnalisisActual.proveedor || "",
+    url
+  });
   // Recalcular total al cambiar cant/precio
   const recalc = () => {
     const c = Number(document.getElementById("ticket-linea-cantidad").value || 0);
@@ -4656,7 +4704,11 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     const total = Number(a.total != null ? a.total : (cantidad * precio));
     const url = String(a.url || "").trim();
     const def = a.definicion ? `<div style="font-size:0.72rem;color:var(--muted)">${esc(a.definicion)}</div>` : "";
-    const linkCel = htmlEnlaceProducto(url, "Ver");
+    const linkCel = htmlEnlaceProducto({
+      ...a,
+      proveedor: a.proveedor || normalizado.proveedor || "",
+      url
+    });
     const cidJs = JSON.stringify(cid);
     return `<tr class="ticket-linea-row" data-i="${i}" style="cursor:pointer" onclick='abrirTicketLineaModal(${i}, ${cidJs})' title="Clic para editar o eliminar">
       <td>${esc(a.categoria || "Otros")}</td>
@@ -6059,9 +6111,7 @@ function pintarPropuestasJimmiPc(div, propuestas) {
     const precioTxt = Number.isFinite(precio) ? precio.toFixed(2) + " €" : "—";
     const url = String(a.url || "").trim();
     const def = a.definicion ? `<div class="muted" style="font-size:0.7rem">${esc(a.definicion)}</div>` : "";
-    const link = url
-      ? htmlEnlaceProducto(url, "Ver")
-      : `<span class="muted">—</span>`;
+    const link = htmlEnlaceProducto(a);
     return `<tr>
       <td><strong>${esc(a.nombre || "Producto")}</strong>${def}</td>
       <td class="col-tienda">${esc(a.proveedor || "—")}</td>
