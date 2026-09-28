@@ -6965,16 +6965,16 @@ def _tarifas_almacen_polyboard(espesores=None, herrajes=None):
         conn.close()
         return {"tableros": {}, "corte": None, "cantear": None, "canto": None, "herrajes": []}
 
-    espesores = []
+    espesores_in = []
     for x in (espesores or []):
         try:
-            espesores.append(int(re.search(r"\d+", str(x)).group(0)))
+            espesores_in.append(int(re.search(r"\d+", str(x)).group(0)))
         except Exception:
             pass
-    espesores = sorted(set(espesores))
+    espesores_in = sorted(set(espesores_in))
 
     tableros = {}
-    for esp in espesores:
+    for esp in espesores_in:
         candidatos = []
         for m in mats:
             nombre = str(m.get("nombre") or "")
@@ -6983,13 +6983,19 @@ def _tarifas_almacen_polyboard(espesores=None, herrajes=None):
                 continue
             cat = _norm_txt_poly(m.get("categoria") or "")
             nom = _norm_txt_poly(nombre)
-            if "tablero" not in cat and "tablero" not in nom and "agplast" not in nom and unid not in ("m2", "m2"):
-                if unid not in ("m2", "ud", "uds", "u"):
-                    continue
+            es_tablero = (
+                "tablero" in cat
+                or "tablero" in nom
+                or "agplast" in nom
+                or unid in ("m2", "m2")
+            )
+            if not es_tablero:
+                continue
             precio, prov = _precio_min_material(conn, m["id"])
             if precio is None:
                 continue
-            score = 0 if unid in ("m2", "m²") or unid == "m2" else 1
+            # Preferir m2; luego ud
+            score = 0 if unid in ("m2", "m2") else 1
             candidatos.append((score, precio, prov, m, unid))
         candidatos.sort(key=lambda x: (x[0], x[1]))
         if candidatos:
