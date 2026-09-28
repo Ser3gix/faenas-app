@@ -1014,7 +1014,8 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 <div id="s-optimizador" class="section">
   <div class="sec-header"><h2>Optimizador — Corte, canto y costes</h2></div>
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
-    Carga el TXT de despiece, revisa piezas y cantos, configura tarifas y calcula tableros, metros de canto y esquemas.
+    Carga el TXT de despiece o un PDF resumen corto de PolyBoard (Lista de Corte + herrajes, sin fichas de pieza).
+    Las piezas se agrupan por espesor; los precios salen del almacén.
   </p>
 
   <div class="form-box">
@@ -1027,9 +1028,10 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     </div>
     <div class="btn-row" style="flex-wrap:wrap;margin-top:10px">
       <label class="btn btn-p" style="cursor:pointer;margin:0">
-        Seleccionar TXT
-        <input type="file" id="opt-file-input" accept=".txt,text/plain" style="display:none" onchange="cargarOptimizadorDesdeInput(this)">
+        Seleccionar TXT / PDF
+        <input type="file" id="opt-file-input" accept=".txt,.pdf,text/plain,application/pdf" style="display:none" onchange="cargarOptimizadorDesdeInput(this)">
       </label>
+      <button type="button" class="btn btn-s btn-sm" onclick="aplicarTarifasAlmacenOptimizador()">Usar precios almacén</button>
     </div>
     <div id="opt-ruta" style="font-size:0.72rem;color:#aaa;margin-top:8px"></div>
     <div id="opt-resumen-piezas" style="font-size:0.8rem;color:var(--muted);margin-top:6px"></div>
@@ -1038,12 +1040,19 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   <div id="opt-piezas-box" style="display:none">
     <div class="form-box">
       <div class="sec-header" style="margin:0 0 10px 0">
-        <h2 style="font-size:1rem;margin:0">Tabla de piezas</h2>
+        <h2 style="font-size:1rem;margin:0">Tabla de piezas (por espesor)</h2>
         <div class="btn-row">
           <button type="button" class="btn btn-s btn-sm" onclick="generarPdfOptimizadorPc()">PDF pedido</button>
         </div>
       </div>
       <div id="opt-tabla"></div>
+    </div>
+  </div>
+
+  <div id="opt-herrajes-box" style="display:none">
+    <div class="form-box">
+      <div class="form-title">Herrajes</div>
+      <div id="opt-herrajes-tabla"></div>
     </div>
   </div>
 
@@ -1054,7 +1063,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
       <div><label>Espesor sierra / kerf (mm)</label><input type="number" id="opt-kerf" value="4" min="0" step="1"></div>
       <div><label>Stock máx. tableros</label><input type="number" id="opt-stock" value="50" min="1" step="1"></div>
       <div><label>Corte (€/ml)</label><input type="number" id="opt-precio-corte" value="0.50" min="0" step="0.05"></div>
-      <div><label>Servicio cantear (€/ml)</label><input type="number" id="opt-precio-cantear" value="0.75" min="0" step="0.05"></div>
+      <div><label>Canteado (€/ml)</label><input type="number" id="opt-precio-cantear" value="0.75" min="0" step="0.05"></div>
       <div><label>Material canto (€/ml)</label><input type="number" id="opt-precio-canto" value="0.40" min="0" step="0.05"></div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:0.82rem;cursor:pointer">
@@ -1066,7 +1075,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box" id="opt-tableros-box" style="display:none">
-    <div class="form-title">Dimensiones y precio por material</div>
+    <div class="form-title">Dimensiones y precio por espesor (almacén)</div>
     <div id="opt-tableros-config"></div>
   </div>
 
@@ -5133,6 +5142,7 @@ async function procesarTextoManual() {
 
 // ===== OPTIMIZADOR TABLEROS / CANTO =====
 let optDatos = {};
+let optHerrajes = [];
 let optResultado = null;
 // Compat: algunas rutas antiguas usaban pbDatos
 let pbDatos = optDatos;
@@ -5147,9 +5157,18 @@ function poblarSelectOptimizador() {
 }
 function poblarSelectPolyboard() { poblarSelectOptimizador(); }
 
-function aplicarDespieceOptimizador(piezas, ruta) {
+function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
   optDatos = piezas || {};
   pbDatos = optDatos;
+  optHerrajes = Array.isArray(herrajes) ? herrajes.map(h => ({
+    nombre: h.nombre || h.nombre_origen || "",
+    cantidad: parseInt(h.cantidad, 10) || 0,
+    unidad: h.unidad || "ud",
+    precio_unitario: h.precio_unitario != null ? h.precio_unitario : null,
+    nombre_almacen: h.nombre_almacen || null,
+    material_id: h.material_id || null,
+    aviso: h.aviso || "",
+  })) : [];
   optResultado = null;
   document.getElementById("opt-ruta").textContent = ruta ? ("📄 " + ruta) : "";
   document.getElementById("opt-resultado").style.display = "none";
@@ -5157,8 +5176,10 @@ function aplicarDespieceOptimizador(piezas, ruta) {
   const box = document.getElementById("opt-piezas-box");
   if (box) box.style.display = Object.keys(optDatos).length ? "" : "none";
   renderTablaOptimizador();
+  renderHerrajesOptimizador();
   renderConfigTablerosOptimizador();
   actualizarResumenOptimizador();
+  aplicarTarifasAlmacenOptimizador().catch(() => {});
 }
 
 async function cargarOptimizadorDesdeInput(input) {
@@ -5171,12 +5192,101 @@ async function cargarOptimizadorDesdeInput(input) {
     const r = await fetch(API + "/polyboard/procesar", { method: "POST", body: fd });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo cargar", true); return; }
-    aplicarDespieceOptimizador(d.data.piezas || {}, d.data.ruta || file.name);
-    toast("✓ Despiece cargado");
+    aplicarDespieceOptimizador(d.data.piezas || {}, d.data.ruta || file.name, d.data.herrajes || []);
+    const nH = (d.data.herrajes || []).length;
+    toast(nH ? `✓ Despiece cargado (${nH} herrajes)` : "✓ Despiece cargado");
   } catch (e) {
     toast("Error al subir el archivo", true);
   } finally {
     input.value = "";
+  }
+}
+
+function renderHerrajesOptimizador() {
+  const box = document.getElementById("opt-herrajes-box");
+  const el = document.getElementById("opt-herrajes-tabla");
+  if (!box || !el) return;
+  if (!optHerrajes.length) {
+    box.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+  box.style.display = "";
+  el.innerHTML = `<table class="pb-table"><thead><tr>
+    <th>Herraje</th><th>Cant.</th><th>Precio almacén</th><th>Total</th><th>Nota</th>
+  </tr></thead><tbody>
+  ${optHerrajes.map((h, i) => {
+    const pu = h.precio_unitario != null && h.precio_unitario !== "" ? parseFloat(h.precio_unitario) : null;
+    const tot = pu != null ? (pu * (parseInt(h.cantidad, 10) || 0)) : null;
+    return `<tr>
+      <td contenteditable="true" onblur="editarHerrajeOpt(${i},'nombre',this.textContent)">${esc(h.nombre || "")}</td>
+      <td contenteditable="true" onblur="editarHerrajeOpt(${i},'cantidad',this.textContent)">${h.cantidad || 0}</td>
+      <td contenteditable="true" onblur="editarHerrajeOpt(${i},'precio_unitario',this.textContent)">${pu != null ? pu.toFixed(2) : "—"}</td>
+      <td>${tot != null ? tot.toFixed(2) + " €" : "—"}</td>
+      <td style="font-size:0.72rem;color:#888">${esc(h.nombre_almacen || h.aviso || "")}</td>
+    </tr>`;
+  }).join("")}
+  </tbody></table>`;
+}
+
+function editarHerrajeOpt(idx, campo, valor) {
+  if (!optHerrajes[idx]) return;
+  const v = String(valor || "").trim();
+  if (campo === "nombre") optHerrajes[idx].nombre = v;
+  else if (campo === "cantidad") {
+    const n = parseInt(v, 10);
+    if (!isNaN(n)) optHerrajes[idx].cantidad = n;
+  } else if (campo === "precio_unitario") {
+    const n = parseFloat(v.replace(",", "."));
+    optHerrajes[idx].precio_unitario = isNaN(n) ? null : n;
+  }
+  renderHerrajesOptimizador();
+}
+
+async function aplicarTarifasAlmacenOptimizador() {
+  const mats = materialesVisiblesOptimizador();
+  if (!mats.length && !optHerrajes.length) return;
+  const espesores = mats.map(m => parseInt(String(m).replace(/\D/g, ""), 10)).filter(n => n > 0);
+  try {
+    const r = await api("POST", "/polyboard/tarifas-almacen", {
+      espesores,
+      herrajes: optHerrajes.map(h => ({ nombre: h.nombre, cantidad: h.cantidad })),
+    });
+    if (!r.ok) { toast(r.error || "No se pudieron leer tarifas", true); return; }
+    const d = r.data || {};
+    if (d.corte && d.corte.precio_ml != null) {
+      const el = document.getElementById("opt-precio-corte");
+      if (el) el.value = d.corte.precio_ml;
+    }
+    if (d.cantear && d.cantear.precio_ml != null) {
+      const el = document.getElementById("opt-precio-cantear");
+      if (el) el.value = d.cantear.precio_ml;
+    }
+    if (d.canto && d.canto.precio_ml != null) {
+      const el = document.getElementById("opt-precio-canto");
+      if (el) el.value = d.canto.precio_ml;
+    }
+    // Precios tablero por espesor
+    mats.forEach((m, idx) => {
+      const tar = (d.tableros || {})[m];
+      const inp = document.getElementById("opt-mat-" + idx + "-p");
+      if (inp && tar && tar.precio_m2 != null) inp.value = tar.precio_m2;
+    });
+    if (Array.isArray(d.herrajes) && d.herrajes.length) {
+      optHerrajes = d.herrajes.map(h => ({
+        nombre: h.nombre_origen || h.nombre || "",
+        cantidad: h.cantidad || 0,
+        unidad: h.unidad || "ud",
+        precio_unitario: h.precio_unitario,
+        nombre_almacen: h.nombre_almacen,
+        material_id: h.material_id,
+        aviso: h.aviso || "",
+      }));
+      renderHerrajesOptimizador();
+    }
+    toast("✓ Tarifas de almacén aplicadas");
+  } catch (e) {
+    toast("Error al cargar tarifas de almacén", true);
   }
 }
 
@@ -5292,7 +5402,8 @@ function actualizarResumenOptimizador() {
     refs += piezas.length;
     uds += piezas.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0);
   }
-  el.textContent = `${mats.length} material${mats.length !== 1 ? "es" : ""} · ${refs} referencias · ${uds} piezas`;
+  el.textContent = `${mats.length} espesor${mats.length !== 1 ? "es" : ""} · ${refs} referencias · ${uds} piezas`
+    + (optHerrajes.length ? ` · ${optHerrajes.length} herrajes` : "");
 }
 
 function renderConfigTablerosOptimizador() {
@@ -5309,11 +5420,11 @@ function renderConfigTablerosOptimizador() {
   wrap.innerHTML = mats.map((m, idx) => {
     const id = "opt-mat-" + idx;
     return `<div class="form-box" style="margin:0 0 10px 0;padding:12px;background:#faf8f4">
-      <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">${esc(m)}</div>
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">Espesor ${esc(m)}</div>
       <div class="form-grid">
         <div><label>Ancho tablero (mm)</label><input type="number" id="${id}-w" value="2440" step="10"></div>
         <div><label>Alto / largo (mm)</label><input type="number" id="${id}-h" value="1220" step="10"></div>
-        <div><label>Precio (€/m²)</label><input type="number" id="${id}-p" value="18" step="0.5" min="0"></div>
+        <div><label>Precio almacén (€/m²)</label><input type="number" id="${id}-p" value="18" step="0.5" min="0"></div>
       </div>
     </div>`;
   }).join("");
@@ -5342,7 +5453,14 @@ function leerTarifasOptimizadorPc() {
     excluir_materiales: excluirSep ? ["Separacion", "Separación", "separacion"] : [],
     tableros,
     generar_esquemas: true,
-    piezas: optDatos
+    piezas: optDatos,
+    herrajes: optHerrajes.map(h => ({
+      nombre: h.nombre,
+      cantidad: h.cantidad,
+      precio_unitario: h.precio_unitario,
+      nombre_almacen: h.nombre_almacen,
+      material_id: h.material_id,
+    })),
   };
 }
 
@@ -5351,7 +5469,8 @@ function renderResultadoOptimizadorPc(data) {
   if (!el) return;
   const mats = data.materiales || {};
   const keys = Object.keys(mats);
-  if (!keys.length) {
+  const herrajes = data.herrajes || [];
+  if (!keys.length && !herrajes.length) {
     el.style.display = "";
     el.innerHTML = `<div class="empty"><div class="empty-icon">🪵</div>Sin resultados</div>`;
     return;
@@ -5361,6 +5480,7 @@ function renderResultadoOptimizadorPc(data) {
       <span style="font-weight:700;font-size:1.1rem;color:var(--accent)">Coste total estimado</span>
       <span style="font-weight:700;font-size:1.5rem;color:var(--green)">${(data.coste_total || 0).toFixed(2)} €</span>
     </div>
+    ${(data.coste_herrajes != null) ? `<div style="font-size:0.78rem;color:#888;margin-top:6px">Incluye herrajes: ${(data.coste_herrajes || 0).toFixed(2)} €</div>` : ""}
   </div>`;
   for (const m of keys) {
     const r = mats[m];
@@ -5373,7 +5493,8 @@ function renderResultadoOptimizadorPc(data) {
       <div class="form-grid" style="margin-bottom:10px">
         <div><div class="presup-total-label">Tableros</div><div style="font-weight:700;font-size:1.15rem">${r.tableros_usados} uds</div><div style="font-size:0.75rem;color:#888">${r.area_bruta_m2} m²</div></div>
         <div><div class="presup-total-label">Piezas</div><div style="font-weight:700;font-size:1.15rem">${r.piezas_colocadas} / ${r.piezas_totales}</div></div>
-        <div><div class="presup-total-label">Canto</div><div style="font-weight:700;font-size:1.15rem">${r.metros_canto} m</div></div>
+        <div><div class="presup-total-label">Canto / canteado</div><div style="font-weight:700;font-size:1.15rem">${r.metros_canto} m</div></div>
+        <div><div class="presup-total-label">Corte</div><div style="font-weight:700;font-size:1.15rem">${r.metros_corte} m</div></div>
         <div><div class="presup-total-label">Subtotal</div><div style="font-weight:700;font-size:1.15rem;color:var(--green)">${(r.subtotal || 0).toFixed(2)} €</div></div>
       </div>
       ${r.aviso_stock ? (() => {
@@ -5393,10 +5514,10 @@ function renderResultadoOptimizadorPc(data) {
       <details style="margin-bottom:10px">
         <summary style="cursor:pointer;font-size:0.85rem;color:var(--accent)">Desglose de costes</summary>
         <ul style="margin:8px 0 0 18px;font-size:0.82rem;line-height:1.6;color:#555">
-          <li>Tableros (${r.tableros_usados} uds): ${(r.coste_tableros || 0).toFixed(2)} €</li>
+          <li>Tableros (${r.tableros_usados} uds · ${r.area_bruta_m2} m²): ${(r.coste_tableros || 0).toFixed(2)} €</li>
           <li>Material canto (${r.metros_canto} m): ${(r.coste_material_canto || 0).toFixed(2)} €</li>
-          <li>Servicio cantear: ${(r.coste_servicio_cantear || 0).toFixed(2)} €</li>
-          <li>Corte (~${r.metros_corte} m): ${(r.coste_corte || 0).toFixed(2)} €</li>
+          <li>Canteado (${r.metros_canto} m): ${(r.coste_servicio_cantear || 0).toFixed(2)} €</li>
+          <li>Corte (${r.metros_corte} m): ${(r.coste_corte || 0).toFixed(2)} €</li>
         </ul>
       </details>
       ${(r.esquemas || []).length ? `<div class="presup-section-title">Esquemas de corte</div>
@@ -5407,13 +5528,25 @@ function renderResultadoOptimizadorPc(data) {
         </div>` : ""}
     </div>`;
   }
+  if (herrajes.length) {
+    html += `<div class="form-box">
+      <div class="form-title">🔩 Herrajes</div>
+      <ul style="margin:0 0 0 18px;font-size:0.82rem;line-height:1.6;color:#555">
+        ${herrajes.map(h => {
+          const tot = h.total != null ? Number(h.total).toFixed(2) + " €" : "sin precio almacén";
+          return `<li>${esc(h.nombre || h.nombre_origen || "Herraje")} · ${h.cantidad || 0} ud · ${tot}</li>`;
+        }).join("")}
+      </ul>
+      <div style="margin-top:8px;font-weight:600">Subtotal herrajes: ${(data.coste_herrajes || 0).toFixed(2)} €</div>
+    </div>`;
+  }
   el.style.display = "";
   el.innerHTML = html;
 }
 
 async function calcularOptimizadorPc() {
   if (!optDatos || !Object.keys(optDatos).length) {
-    toast("Selecciona un TXT de despiece primero", true);
+    toast("Selecciona un TXT o PDF de despiece primero", true);
     return;
   }
   const btn = document.getElementById("opt-btn-calcular");

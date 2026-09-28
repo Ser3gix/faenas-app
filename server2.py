@@ -6796,18 +6796,30 @@ def abrir_en_cursor():
 # -------------------- POLYBOARD --------------------
 @app.route("/api/polyboard/procesar", methods=["POST"])
 def polyboard_procesar():
-    """Acepta TXT por multipart (archivo), JSON con contenido, o ruta local."""
-    from polyboard import leer_contenido_polyboard, leer_txt_polyboard
+    """Acepta TXT o PDF resumen PolyBoard (multipart, JSON o ruta local). Agrupa por espesor."""
+    from polyboard import (
+        leer_contenido_polyboard, leer_txt_polyboard,
+        procesar_archivo_polyboard, agrupar_por_espesor,
+    )
 
     archivo = request.files.get("archivo") or request.files.get("file")
     if archivo and getattr(archivo, "filename", None):
         try:
             raw = archivo.read()
-            piezas = leer_contenido_polyboard(raw)
-            if not piezas:
-                return jsonify({"ok": False, "error": "El TXT no tiene piezas válidas"}), 400
             nombre = os.path.basename(archivo.filename) or "despiece.txt"
-            return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": nombre}})
+            data = procesar_archivo_polyboard(nombre, raw)
+            piezas = data.get("piezas") or {}
+            if not piezas:
+                return jsonify({"ok": False, "error": "No se encontraron piezas (TXT o Lista de Corte del PDF)"}), 400
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "piezas": piezas,
+                    "herrajes": data.get("herrajes") or [],
+                    "agrupado_por": data.get("agrupado_por") or "espesor",
+                    "ruta": nombre,
+                },
+            })
         except Exception as e:
             return jsonify({"ok": False, "error": f"Error al leer el archivo: {str(e)}"}), 500
 
@@ -6815,17 +6827,25 @@ def polyboard_procesar():
     contenido = datos.get("contenido")
     if contenido is not None and str(contenido).strip():
         try:
-            piezas = leer_contenido_polyboard(contenido)
+            piezas_orig = leer_contenido_polyboard(contenido)
+            piezas = agrupar_por_espesor(piezas_orig)
             if not piezas:
                 return jsonify({"ok": False, "error": "El TXT no tiene piezas válidas"}), 400
             nombre = (datos.get("nombre") or datos.get("ruta") or "despiece.txt").strip()
-            return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": nombre}})
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "piezas": piezas,
+                    "herrajes": [],
+                    "agrupado_por": "espesor",
+                    "ruta": nombre,
+                },
+            })
         except Exception as e:
             return jsonify({"ok": False, "error": f"Error al leer el archivo: {str(e)}"}), 500
 
     ruta_txt = (datos.get("ruta_txt") or "").strip()
     if not ruta_txt:
-        # Solo en escritorio local con GUI; en servidor/headless no hay diálogo.
         try:
             import tkinter as tk
             from tkinter import filedialog
@@ -6833,20 +6853,40 @@ def polyboard_procesar():
             root.withdraw()
             ruta_txt = filedialog.askopenfilename(
                 initialdir=CARPETA_RAIZ,
-                title="Selecciona el TXT de PolyBoard",
-                filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
+                title="Selecciona TXT o PDF resumen de PolyBoard",
+                filetypes=[
+                    ("PolyBoard", "*.txt;*.pdf"),
+                    ("TXT despiece", "*.txt"),
+                    ("PDF resumen", "*.pdf"),
+                    ("Todos", "*.*"),
+                ],
             )
             root.destroy()
         except Exception:
             return jsonify({
                 "ok": False,
-                "error": "Sube el TXT desde el Optimizador (Seleccionar TXT)."
+                "error": "Sube el TXT o PDF desde el Optimizador (Seleccionar archivo)."
             }), 400
     if not ruta_txt:
         return jsonify({"ok": False, "error": "No se seleccionó ningún archivo"}), 400
     try:
-        piezas = leer_txt_polyboard(ruta_txt)
-        return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": ruta_txt}})
+        with open(ruta_txt, "rb") as fh:
+            raw = fh.read()
+        data = procesar_archivo_polyboard(os.path.basename(ruta_txt), raw)
+        piezas = data.get("piezas") or {}
+        if not piezas and str(ruta_txt).lower().endswith(".txt"):
+            piezas = agrupar_por_espesor(leer_txt_polyboard(ruta_txt))
+        if not piezas:
+            return jsonify({"ok": False, "error": "No se encontraron piezas"}), 400
+        return jsonify({
+            "ok": True,
+            "data": {
+                "piezas": piezas,
+                "herrajes": data.get("herrajes") or [],
+                "agrupado_por": "espesor",
+                "ruta": ruta_txt,
+            },
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error al leer el archivo: {str(e)}"}), 500
 
@@ -6889,6 +6929,167 @@ def polyboard_pdf():
         return jsonify({"ok": False, "error": f"Error generando PDF: {str(e)}"}), 500
 
 
+def _norm_txt_poly(t):
+    t = (t or "").lower()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n")):
+        t = t.replace(a, b)
+    return t
+
+
+def _precio_min_material(conn, material_id):
+    try:
+        fila = conn.execute(
+            "SELECT precio_unitario, proveedor FROM precios WHERE material_id=? ORDER BY precio_unitario ASC LIMIT 1",
+            (material_id,),
+        ).fetchone()
+    except Exception:
+        return None, ""
+    if not fila:
+        return None, ""
+    d = fila_a_dict(fila)
+    try:
+        return float(d.get("precio_unitario") or 0), str(d.get("proveedor") or "")
+    except Exception:
+        return None, ""
+
+
+def _tarifas_almacen_polyboard(espesores=None, herrajes=None):
+    """Precios de almacén por espesor (tablero) y servicios ml + herrajes."""
+    from polyboard import espesor_de_material
+    conn = get_connection()
+    try:
+        mats = filas_a_lista(conn.execute(
+            "SELECT id, nombre, unidad, categoria FROM materiales"
+        ).fetchall())
+    except Exception:
+        conn.close()
+        return {"tableros": {}, "corte": None, "cantear": None, "canto": None, "herrajes": []}
+
+    espesores = []
+    for x in (espesores or []):
+        try:
+            espesores.append(int(re.search(r"\d+", str(x)).group(0)))
+        except Exception:
+            pass
+    espesores = sorted(set(espesores))
+
+    tableros = {}
+    for esp in espesores:
+        candidatos = []
+        for m in mats:
+            nombre = str(m.get("nombre") or "")
+            unid = str(m.get("unidad") or "").lower().replace("²", "2")
+            if espesor_de_material(nombre) != esp:
+                continue
+            cat = _norm_txt_poly(m.get("categoria") or "")
+            nom = _norm_txt_poly(nombre)
+            if "tablero" not in cat and "tablero" not in nom and "agplast" not in nom and unid not in ("m2", "m2"):
+                if unid not in ("m2", "ud", "uds", "u"):
+                    continue
+            precio, prov = _precio_min_material(conn, m["id"])
+            if precio is None:
+                continue
+            score = 0 if unid in ("m2", "m²") or unid == "m2" else 1
+            candidatos.append((score, precio, prov, m, unid))
+        candidatos.sort(key=lambda x: (x[0], x[1]))
+        if candidatos:
+            _sc, precio, prov, m, unid = candidatos[0]
+            tableros[f"{esp} mm"] = {
+                "material_id": m["id"],
+                "nombre": m.get("nombre"),
+                "unidad": m.get("unidad"),
+                "precio_m2": precio,
+                "proveedor": prov,
+                "espesor": esp,
+            }
+
+    def _buscar_servicio(*claves):
+        for m in mats:
+            nombre = _norm_txt_poly(m.get("nombre") or "")
+            if any(c in nombre for c in claves):
+                precio, prov = _precio_min_material(conn, m["id"])
+                if precio is not None:
+                    return {
+                        "material_id": m["id"],
+                        "nombre": m.get("nombre"),
+                        "precio_ml": precio,
+                        "proveedor": prov,
+                        "unidad": m.get("unidad"),
+                    }
+        return None
+
+    corte = _buscar_servicio("corte seccion", "cortesecc", "seccionadora")
+    if not corte:
+        corte = _buscar_servicio("corte")
+    cantear = _buscar_servicio("canteado", "cantear")
+    canto = _buscar_servicio("canto pvc", "canto melamina")
+    if not canto:
+        canto = _buscar_servicio("canto")
+
+    herrajes_out = []
+    for h in herrajes or []:
+        nombre_h = str(h.get("nombre") or "").strip()
+        if not nombre_h:
+            continue
+        nh = _norm_txt_poly(nombre_h)
+        tokens = [t for t in re.split(r"\W+", nh) if len(t) >= 3]
+        mejor = None
+        mejor_score = 0
+        for m in mats:
+            nm = _norm_txt_poly(m.get("nombre") or "")
+            score = sum(1 for tok in tokens if tok in nm)
+            if score <= 0:
+                continue
+            precio, prov = _precio_min_material(conn, m["id"])
+            if precio is None:
+                continue
+            if score > mejor_score or (score == mejor_score and (mejor is None or precio < mejor["precio_unitario"])):
+                mejor_score = score
+                mejor = {
+                    "nombre_origen": nombre_h,
+                    "cantidad": int(h.get("cantidad") or 0),
+                    "material_id": m["id"],
+                    "nombre_almacen": m.get("nombre"),
+                    "precio_unitario": precio,
+                    "proveedor": prov,
+                    "unidad": m.get("unidad") or "ud",
+                    "total": round(precio * int(h.get("cantidad") or 0), 2),
+                }
+        if mejor:
+            herrajes_out.append(mejor)
+        else:
+            herrajes_out.append({
+                "nombre_origen": nombre_h,
+                "cantidad": int(h.get("cantidad") or 0),
+                "material_id": None,
+                "nombre_almacen": None,
+                "precio_unitario": None,
+                "proveedor": "",
+                "unidad": "ud",
+                "total": None,
+                "aviso": "Sin precio en almacén",
+            })
+
+    conn.close()
+    return {
+        "tableros": tableros,
+        "corte": corte,
+        "cantear": cantear,
+        "canto": canto,
+        "herrajes": herrajes_out,
+    }
+
+
+@app.route("/api/polyboard/tarifas-almacen", methods=["POST"])
+def polyboard_tarifas_almacen():
+    datos = request.json or {}
+    try:
+        data = _tarifas_almacen_polyboard(datos.get("espesores") or [], datos.get("herrajes") or [])
+        return jsonify({"ok": True, "data": data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/polyboard/optimizar", methods=["POST"])
 def polyboard_optimizar():
     """Optimiza corte, metros de canto y costes a partir del despiece PolyBoard."""
@@ -6896,6 +7097,7 @@ def polyboard_optimizar():
     piezas = datos.get("piezas") or {}
     if not piezas:
         return jsonify({"ok": False, "error": "No hay piezas para optimizar"}), 400
+    herrajes = datos.get("herrajes") or []
     opciones = {
         "margen_borde": datos.get("margen_borde", 10),
         "espesor_sierra": datos.get("espesor_sierra", 4),
@@ -6911,6 +7113,32 @@ def polyboard_optimizar():
     try:
         from polyboard_optimizar import optimizar_despiece
         resultado = optimizar_despiece(piezas, opciones)
+        coste_herrajes = 0.0
+        herrajes_val = []
+        for h in herrajes:
+            try:
+                cant = int(h.get("cantidad") or 0)
+            except Exception:
+                cant = 0
+            try:
+                pu = float(h.get("precio_unitario")) if h.get("precio_unitario") not in (None, "") else 0.0
+            except Exception:
+                pu = 0.0
+            total = round(cant * pu, 2) if pu else None
+            if total is not None:
+                coste_herrajes += total
+            item = dict(h)
+            item["cantidad"] = cant
+            item["precio_unitario"] = pu if pu else h.get("precio_unitario")
+            item["total"] = total
+            herrajes_val.append(item)
+        resultado["herrajes"] = herrajes_val
+        resultado["coste_herrajes"] = round(coste_herrajes, 2)
+        resultado["coste_total"] = round(float(resultado.get("coste_total") or 0) + coste_herrajes, 2)
+        for _m, r in (resultado.get("materiales") or {}).items():
+            if isinstance(r, dict) and "metros_canto" in r:
+                r["metros_canteado"] = r.get("metros_canto")
+                r["coste_canteado"] = r.get("coste_servicio_cantear")
         return jsonify({"ok": True, "data": resultado})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error al optimizar: {str(e)}"}), 500

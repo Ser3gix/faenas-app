@@ -1,8 +1,9 @@
 # ============================================================
-# polyboard.py — Lectura de TXT de PolyBoard y generación PDF
+# polyboard.py — Lectura de TXT/PDF de PolyBoard y generación PDF
 # ============================================================
 
 import os
+import re
 from config import POLYBOARD_ENCODING
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -15,6 +16,68 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 # ============================================================
 # LECTURA DEL TXT
 # ============================================================
+
+_RE_ESPESOR = re.compile(
+    r"(?:^|[^\d])(?:x|×|\bespesor\s*)?(\d{1,2})\s*(?:mm)?(?:\s*$|,|\s)",
+    re.I,
+)
+_RE_ESPESOR_FIN = re.compile(r"(?:^|[^\d])(\d{1,2})\s*$")
+_RE_ESPESOR_X = re.compile(r"[x×]\s*(\d{1,2})\s*(?:mm)?\b", re.I)
+
+
+def espesor_de_material(nombre):
+    """Extrae espesor en mm del nombre PolyBoard/almacén (19, 10, 18…)."""
+    t = str(nombre or "").strip()
+    if not t:
+        return None
+    # "PINO 19, 19" / "Melamina 10, 10"
+    m = re.search(r",\s*(\d{1,2})\s*$", t)
+    if m:
+        return int(m.group(1))
+    m = _RE_ESPESOR_X.search(t)
+    if m:
+        return int(m.group(1))
+    # "Mel 19", "PINO 19"
+    m = re.search(r"\b(\d{1,2})\b", t)
+    if m:
+        v = int(m.group(1))
+        if 3 <= v <= 40:
+            return v
+    return None
+
+
+def clave_espesor(mm):
+    if mm is None:
+        return ""
+    return f"{int(mm)} mm"
+
+
+def agrupar_por_espesor(piezas_por_material):
+    """
+    Reagrupa piezas por espesor (ignora nombre comercial).
+    Clave: \"19 mm\", \"10 mm\". Omite Separacion / espesor 0.
+    """
+    out = {}
+    for material, piezas in (piezas_por_material or {}).items():
+        mat = str(material or "").strip()
+        if not mat:
+            continue
+        low = mat.lower()
+        if "separac" in low:
+            continue
+        esp = espesor_de_material(mat)
+        if not esp:
+            continue
+        clave = clave_espesor(esp)
+        bucket = out.setdefault(clave, [])
+        for p in piezas or []:
+            item = dict(p)
+            item["material"] = clave
+            item["material_origen"] = mat
+            item["espesor"] = esp
+            bucket.append(item)
+    return out
+
 
 def _parsear_lineas_polyboard(lineas):
     """Parsea líneas TXT PolyBoard → piezas agrupadas por material."""
@@ -65,21 +128,213 @@ def leer_txt_polyboard(ruta_txt):
 
     Formato del TXT (separado por ;):
     cantidad ; largo ; canto_der ; canto_izq ; ancho ; canto_arr ; canto_ab ; pieza ; material
-
-    Devuelve:
-    {
-      "Mel 19": [
-        { "cantidad": 2, "largo": 1400, "canto_der": 1, "canto_izq": 0,
-          "ancho": 580, "canto_arr": 0, "canto_ab": 0, "pieza": "Costado De" }
-      ],
-      "Melamina 10": [ ... ]
-    }
     """
     if not os.path.exists(ruta_txt):
         raise FileNotFoundError(f"Archivo no encontrado: {ruta_txt}")
 
     with open(ruta_txt, encoding=POLYBOARD_ENCODING, errors="replace") as f:
         return _parsear_lineas_polyboard(f)
+
+
+def _lineas_words_pagina(page):
+    """Agrupa palabras de PyMuPDF por Y aproximada → texto de línea + palabras."""
+    words = page.get_text("words") or []
+    lineas = {}
+    for w in words:
+        y = round(float(w[1]) / 2.0) * 2
+        lineas.setdefault(y, []).append((float(w[0]), str(w[4])))
+    out = []
+    for y in sorted(lineas):
+        items = sorted(lineas[y], key=lambda t: t[0])
+        txt = " ".join(t for _, t in items)
+        out.append((y, txt, items))
+    return out
+
+
+_RE_FILA_PANEL = re.compile(
+    r"^(.+?),\s*(\d+)\s+(.+?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(S[ií]|No)\b(.*)$",
+    re.I,
+)
+
+
+def _cantos_desde_cola(cola):
+    """Cuenta menciones Textil/Canto en la cola y las reparte CI, CD, CA, CB."""
+    cola = (cola or "").strip()
+    if not cola:
+        return 0, 0, 0, 0
+    # Cada aparición de un canto tipográfico
+    n = len(re.findall(r"textil|canto|pvc|cancun", cola, re.I))
+    flags = [1 if i < n else 0 for i in range(4)]
+    # Orden cabecera PDF: Izquier, Derecho, Inferior, Superior → izq, der, ab, arr
+    return flags[1], flags[0], flags[3], flags[2]  # der, izq, arr, ab
+
+
+def _parsear_herrajes_lineas(lineas_txt):
+    herrajes = []
+    en_herrajes = False
+    vistos = set()
+    for raw in lineas_txt:
+        t = (raw or "").strip()
+        if not t:
+            continue
+        low = t.lower()
+        if low.startswith("herrajes"):
+            en_herrajes = True
+            continue
+        if not en_herrajes:
+            continue
+        if low.startswith("total"):
+            en_herrajes = False
+            continue
+        # Fuera del bloque resumen (fichas de pieza, etc.)
+        if (
+            "altura:" in low
+            or "espesor:" in low
+            or "taladro" in low
+            or "cremallera" in low
+            or low.startswith("polyboard")
+            or low.startswith("página")
+            or low.startswith("pagina")
+            or low.startswith("lista de")
+            or low.startswith("panel")
+            or low.startswith("perfil")
+            or low.startswith("canto ")
+        ):
+            en_herrajes = False
+            continue
+        m = re.match(
+            r"^(.+?)\s+(\d+)\s+([\d]+(?:[.,][\d]+)?)\s+([\d]+(?:[.,][\d]+)?)\s*€?\s*$",
+            t,
+        )
+        if not m:
+            continue
+        nombre = m.group(1).strip()
+        cant = int(m.group(2))
+        low_n = nombre.lower()
+        if low_n in ("cantidad", "precio unitario", "precio", "cara") or len(nombre) < 2:
+            continue
+        if re.fullmatch(r"[\d.,\s]+", nombre):
+            continue
+        clave = (low_n, cant)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        herrajes.append({"nombre": nombre, "cantidad": cant, "unidad": "ud"})
+    return herrajes
+
+
+def leer_pdf_resumen_polyboard(bruto):
+    """
+    Lee un PDF de resumen PolyBoard (Lista de Corte + Herrajes).
+    Devuelve {piezas: {material: [...]}, herrajes: [...], por_espesor: {...}}.
+    """
+    try:
+        import fitz
+    except Exception as exc:
+        raise RuntimeError("Falta PyMuPDF (fitz) para leer el PDF") from exc
+
+    if not bruto:
+        raise ValueError("PDF vacío")
+    doc = fitz.open(stream=bruto, filetype="pdf")
+    piezas_por_material = {}
+    todas_lineas = []
+    # Solo páginas de listados/resumen (evita 50+ fichas de pieza)
+    max_paginas = min(doc.page_count, 8)
+    for page in list(doc)[:max_paginas]:
+        for _y, txt, _items in _lineas_words_pagina(page):
+            todas_lineas.append(txt)
+            m = _RE_FILA_PANEL.match(txt.strip())
+            if not m:
+                continue
+            mat_base = m.group(1).strip()
+            esp = int(m.group(2))
+            ref = m.group(3).strip()
+            if ref.lower() in ("referencia", "material"):
+                continue
+            try:
+                largo = int(m.group(4))
+                ancho = int(m.group(5))
+                cantidad = int(m.group(6))
+            except ValueError:
+                continue
+            fibra_si = m.group(7).lower().startswith("s")
+            cola = m.group(8) or ""
+            if not fibra_si and "separac" in mat_base.lower():
+                continue
+            cd, ci, ca, cb = _cantos_desde_cola(cola)
+            material = f"{mat_base}, {esp}" if "," not in mat_base else mat_base
+            if not material.lower().endswith(str(esp)) and f", {esp}" not in material:
+                material = f"{mat_base}, {esp}"
+            pieza = {
+                "cantidad": cantidad,
+                "largo": largo,
+                "canto_der": cd,
+                "canto_izq": ci,
+                "ancho": ancho,
+                "canto_arr": ca,
+                "canto_ab": cb,
+                "pieza": ref,
+                "material": material,
+                "espesor": esp,
+            }
+            piezas_por_material.setdefault(material, []).append(pieza)
+
+    # Si no hubo Lista de Corte en las primeras páginas, barrer el resto solo buscando filas panel
+    if not piezas_por_material and doc.page_count > max_paginas:
+        for page in list(doc)[max_paginas:]:
+            for _y, txt, _items in _lineas_words_pagina(page):
+                m = _RE_FILA_PANEL.match(txt.strip())
+                if not m:
+                    continue
+                mat_base = m.group(1).strip()
+                esp = int(m.group(2))
+                ref = m.group(3).strip()
+                try:
+                    largo = int(m.group(4))
+                    ancho = int(m.group(5))
+                    cantidad = int(m.group(6))
+                except ValueError:
+                    continue
+                cola = m.group(8) or ""
+                cd, ci, ca, cb = _cantos_desde_cola(cola)
+                material = f"{mat_base}, {esp}"
+                pieza = {
+                    "cantidad": cantidad, "largo": largo, "canto_der": cd, "canto_izq": ci,
+                    "ancho": ancho, "canto_arr": ca, "canto_ab": cb, "pieza": ref,
+                    "material": material, "espesor": esp,
+                }
+                piezas_por_material.setdefault(material, []).append(pieza)
+
+    herrajes = _parsear_herrajes_lineas(todas_lineas)
+    por_espesor = agrupar_por_espesor(piezas_por_material)
+    return {
+        "piezas": piezas_por_material,
+        "piezas_por_espesor": por_espesor,
+        "herrajes": herrajes,
+    }
+
+
+def procesar_archivo_polyboard(nombre, bruto):
+    """
+    TXT o PDF → piezas agrupadas por espesor + herrajes.
+    """
+    nombre = (nombre or "").lower()
+    herrajes = []
+    if nombre.endswith(".pdf") or (bruto[:5] == b"%PDF-"):
+        data = leer_pdf_resumen_polyboard(bruto)
+        return {
+            "piezas": data["piezas_por_espesor"] or agrupar_por_espesor(data["piezas"]),
+            "piezas_origen": data["piezas"],
+            "herrajes": data.get("herrajes") or [],
+            "agrupado_por": "espesor",
+        }
+    piezas = leer_contenido_polyboard(bruto)
+    return {
+        "piezas": agrupar_por_espesor(piezas),
+        "piezas_origen": piezas,
+        "herrajes": herrajes,
+        "agrupado_por": "espesor",
+    }
 
 
 def calcular_resumen(piezas_por_material):
