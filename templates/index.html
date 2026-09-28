@@ -937,6 +937,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
     <textarea id="ticket-json-pc" style="display:none"></textarea>
     <div class="btn-row">
       <button class="btn btn-p" onclick="guardarTicketPc()">Aceptar y guardar</button>
+      <button class="btn btn-d" type="button" onclick="borrarResultadosTicketPc()">Borrar resultados</button>
     </div>
   </div>
 
@@ -1853,31 +1854,57 @@ async function procesarPdfViaCola(file, extra) {
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-function abrirEnlaceProducto(url, ev) {
+function abrirEnlaceProducto(url, ev, opts) {
   if (ev) {
     try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
   }
+  opts = opts || {};
   const u = String(url || "").trim();
-  if (!u) { toast("No hay enlace", true); return false; }
-  let win = null;
-  try { win = window.open(u, "_blank"); } catch (e) { win = null; }
-  if (!win) {
-    try {
-      const a = document.createElement("a");
-      a.href = u;
-      a.target = "_blank";
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (e2) {
-      copiarEnlaceProducto(u);
-      toast("No se pudo abrir. Enlace copiado: pégalo en el navegador", true);
-      return false;
-    }
+  const buscar = String(opts.buscar || "").trim();
+  const proveedor = String(opts.proveedor || "").trim();
+  if (!u && !buscar) { toast("No hay enlace", true); return false; }
+
+  // 1) En el PC local: abrir con el navegador del sistema (evita bloqueos de pestaña).
+  if (esAppDelPc()) {
+    const payload = buscar ? { buscar, proveedor } : { url: u };
+    fetch((API_OCR || API) + "/abrir-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(r => r.json()).then(d => {
+      if (d && d.ok) toast("Abierto en el navegador");
+      else _abrirEnlaceFallback(u, buscar, proveedor);
+    }).catch(() => _abrirEnlaceFallback(u, buscar, proveedor));
+    return false;
   }
+
+  _abrirEnlaceFallback(u, buscar, proveedor);
   return false;
 }
+
+function _abrirEnlaceFallback(url, buscar, proveedor) {
+  // 2) Preferir búsqueda en tienda (casi nunca la bloquean).
+  let ir = "";
+  if (buscar) {
+    const q = new URLSearchParams({ buscar, proveedor: proveedor || "" });
+    ir = API + "/ir?" + q.toString();
+  } else if (url) {
+    ir = API + "/ir?u=" + encodeURIComponent(url);
+  }
+  if (!ir) return;
+  // about:blank + replace: navegación “limpia”, menos bloqueos que target=_blank directo.
+  let w = null;
+  try { w = window.open("about:blank", "_blank"); } catch (e) { w = null; }
+  if (w) {
+    try { w.opener = null; } catch (e) {}
+    try { w.location.replace(ir); return; } catch (e) {}
+  }
+  try { window.open(ir, "_blank"); } catch (e2) {
+    copiarEnlaceProducto(url || ir);
+    toast("No se pudo abrir. Enlace copiado", true);
+  }
+}
+
 async function copiarEnlaceProducto(url) {
   const u = String(url || "").trim();
   if (!u) { toast("No hay enlace", true); return; }
@@ -1897,14 +1924,35 @@ async function copiarEnlaceProducto(url) {
     toast("No se pudo copiar el enlace", true);
   }
 }
-function htmlEnlaceProducto(url, etiqueta) {
-  const u = String(url || "").trim();
-  if (!u) return `<span style="color:var(--muted)">—</span>`;
-  const label = etiqueta || "Ver";
-  const safe = esc(u);
-  return `<a href="${safe}" onclick='return abrirEnlaceProducto(${JSON.stringify(u)}, event)'>${esc(label)}</a>
-    <button type="button" class="btn btn-s btn-sm" style="margin-left:6px;padding:2px 6px;min-height:24px;font-size:0.7rem"
-      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(u)})' title="Copiar enlace">Copiar</button>`;
+
+function htmlEnlaceProducto(artOrUrl, etiqueta) {
+  // Acepta string URL o artículo {url, url_buscar, nombre, proveedor, definicion}
+  let url = "";
+  let buscar = "";
+  let proveedor = "";
+  let nombre = "";
+  if (artOrUrl && typeof artOrUrl === "object") {
+    url = String(artOrUrl.url || "").trim();
+    buscar = String(artOrUrl.url_buscar || "").trim();
+    proveedor = String(artOrUrl.proveedor || "").trim();
+    nombre = String(artOrUrl.nombre || "").trim();
+    if (!buscar && (nombre || artOrUrl.definicion)) {
+      // Se abre vía /api/ir?buscar=...
+      buscar = [nombre, artOrUrl.definicion].filter(Boolean).join(" ");
+    }
+  } else {
+    url = String(artOrUrl || "").trim();
+  }
+  if (!url && !buscar && !nombre) return `<span style="color:var(--muted)">—</span>`;
+  const optsBuscar = JSON.stringify({ buscar: buscar || nombre, proveedor });
+  // Prioridad: Buscar en tienda (fiable). Ficha solo como copiar si existe.
+  let html = `<button type="button" class="btn btn-s btn-sm" style="padding:2px 8px;min-height:26px;font-size:0.72rem"
+    onclick='event.stopPropagation();abrirEnlaceProducto("", event, ${optsBuscar})'>Buscar</button>`;
+  if (url) {
+    html += ` <button type="button" class="btn btn-s btn-sm" style="padding:2px 6px;min-height:26px;font-size:0.7rem"
+      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(url)})' title="Copiar ficha (si la tienda bloquea el enlace)">Copiar</button>`;
+  }
+  return html;
 }
 function urlJimmi(u) {
   u = String(u || "");
@@ -4806,11 +4854,31 @@ function cancelarTicket(mostrarMensaje) {
   document.getElementById("btn-cancelar-ticket").style.display = "none";
   ticketFotoBase64 = null;
   window._ticketPdfFile = null;
+  ticketAnalisisActual = null;
   const pdfIn = document.getElementById("ticket-pdf-input");
   if (pdfIn) pdfIn.value = "";
   const info = document.getElementById("ticket-pdf-info");
   if (info) { info.style.display = "none"; info.textContent = ""; }
+  const estadoWeb = document.getElementById("mat-web-estado");
+  if (estadoWeb) { estadoWeb.style.display = "none"; estadoWeb.textContent = ""; }
   if (mostrarMensaje) toast("Ticket cancelado");
+}
+
+function borrarResultadosTicketPc() {
+  if (ticketAnalisisActual && (ticketAnalisisActual.articulos || []).length) {
+    if (!confirm("¿Borrar todos los resultados de la lista?")) return;
+  }
+  ticketAnalisisActual = null;
+  const jsonEl = document.getElementById("ticket-json-pc");
+  if (jsonEl) jsonEl.value = "";
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  if (tabla) tabla.innerHTML = "";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  const estadoWeb = document.getElementById("mat-web-estado");
+  if (estadoWeb) { estadoWeb.style.display = "none"; estadoWeb.textContent = ""; }
+  try { cerrarModal("m-ticket-linea"); } catch (e) {}
+  toast("Resultados borrados");
 }
 
 function limpiarImagenTicket() {

@@ -781,8 +781,114 @@ def _enriquecer_urls_productos(articulos, grounding_urls=None):
                     usados.add(cand)
                     break
             a["url"] = url
+        # Búsqueda en tienda: más fiable que la ficha (muchas cadenas bloquean deep-links).
+        consulta = " ".join(
+            x for x in (
+                str(a.get("nombre") or "").strip(),
+                str(a.get("definicion") or "").strip(),
+            ) if x
+        )
+        a["url_buscar"] = _url_busqueda_tienda(a.get("proveedor") or "", consulta) or ""
         out.append(a)
     return out
+
+
+def _norm_tienda_clave(txt):
+    t = unicodedata.normalize("NFKD", str(txt or "").lower())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def _url_busqueda_tienda(proveedor, texto):
+    """URL de búsqueda en la tienda (o Google site:) — suele abrirse sin bloqueos."""
+    from urllib.parse import quote_plus
+    prov = _norm_tienda_clave(proveedor)
+    q = " ".join(str(texto or "").split()).strip()
+    if not q and not prov:
+        return ""
+    # Dominios conocidos
+    dominio = ""
+    if "obramat" in prov or "obrama" in prov:
+        dominio = "obramat.es"
+        if q:
+            return f"https://www.obramat.es/search?text={quote_plus(q)}"
+    elif "leroy" in prov:
+        dominio = "leroymerlin.es"
+        if q:
+            return f"https://www.leroymerlin.es/search?q={quote_plus(q)}"
+    elif "brico" in prov and "depot" in prov:
+        dominio = "bricodepot.es"
+        if q:
+            return f"https://www.bricodepot.es/catalogsearch/result/?q={quote_plus(q)}"
+    elif "manomano" in prov or "mano mano" in prov:
+        dominio = "manomano.es"
+        if q:
+            return f"https://www.manomano.es/busqueda/{quote_plus(q)}"
+    elif "bauhaus" in prov:
+        dominio = "bauhaus.es"
+        if q:
+            return f"https://www.bauhaus.es/search?query={quote_plus(q)}"
+    elif "hornbach" in prov:
+        dominio = "hornbach.es"
+        if q:
+            return f"https://www.hornbach.es/shop/busqueda/sortiment/?q={quote_plus(q)}"
+    elif "amazon" in prov:
+        dominio = "amazon.es"
+        if q:
+            return f"https://www.amazon.es/s?k={quote_plus(q)}"
+    elif "aki" in prov:
+        dominio = "aki.es"
+    elif "bigmat" in prov:
+        dominio = "bigmat.es"
+
+    # Fallback robusto: Google con site:tienda (casi nunca lo bloquean)
+    if dominio and q:
+        return f"https://www.google.es/search?q={quote_plus('site:' + dominio + ' ' + q)}"
+    partes = []
+    if proveedor:
+        partes.append(str(proveedor).strip())
+    if q:
+        partes.append(q)
+    return f"https://www.google.es/search?q={quote_plus(' '.join(partes))}" if partes else ""
+
+
+@app.route("/api/ir", methods=["GET"])
+def ir_a_enlace():
+    """Resuelve redirects y redirige al destino (navegación limpia en el navegador)."""
+    from flask import redirect
+    raw = (request.args.get("u") or request.args.get("url") or "").strip()
+    buscar = (request.args.get("buscar") or "").strip()
+    proveedor = (request.args.get("proveedor") or "").strip()
+    if buscar:
+        dest = _url_busqueda_tienda(proveedor, buscar)
+    else:
+        dest = _desenredar_url_producto(raw)
+    if not dest or not dest.lower().startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error": "Enlace no válido"}), 400
+    return redirect(dest, code=302)
+
+
+@app.route("/api/abrir-url", methods=["POST"])
+def abrir_url_sistema():
+    """Abre la URL en el navegador del sistema (solo desde el PC local)."""
+    remoto = (request.remote_addr or "").strip()
+    if remoto not in {"127.0.0.1", "::1", "localhost"}:
+        return jsonify({"ok": False, "error": "Solo disponible en el PC local"}), 403
+    datos = request.json or {}
+    raw = str(datos.get("url") or "").strip()
+    buscar = str(datos.get("buscar") or "").strip()
+    proveedor = str(datos.get("proveedor") or "").strip()
+    if buscar:
+        dest = _url_busqueda_tienda(proveedor, buscar)
+    else:
+        dest = _desenredar_url_producto(raw)
+    if not dest or not dest.lower().startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error": "Enlace no válido"}), 400
+    try:
+        import webbrowser
+        webbrowser.open(dest, new=2)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, "data": {"url": dest}})
 
 
 def _gemini_imagen_part(data_url):

@@ -1523,6 +1523,7 @@ textarea { resize: vertical; min-height: 80px; }
       <textarea id="ticket-json-movil" style="display:none"></textarea>
       <div class="ticket-paso3-sticky">
         <button class="btn btn-p" type="button" onclick="cargarJsonTicketMovil()">✓ Guardar</button>
+        <button class="btn btn-d" type="button" onclick="borrarResultadosTicketMovil()">Borrar resultados</button>
       </div>
     </div>
     <div class="btn-row">
@@ -6731,6 +6732,26 @@ function cancelarTicket(mostrarMensaje = true) {
   cerrarTicketArticuloModal();
   _setBotonJimmiTicket(true);
   if (mostrarMensaje) toast("Ticket cancelado");
+}
+
+function borrarResultadosTicketMovil() {
+  const tabla = document.getElementById("ticket-tabla-wrap");
+  const n = (ticketAnalisisActual && ticketAnalisisActual.articulos) ? ticketAnalisisActual.articulos.length : 0;
+  const n2 = (tabla && tabla._analisisData && tabla._analisisData.articulos) ? tabla._analisisData.articulos.length : 0;
+  if ((n || n2) && !confirm("¿Borrar todos los resultados de la lista?")) return;
+  ticketAnalisisActual = null;
+  try { document.getElementById("ticket-json-movil").value = ""; } catch (e) {}
+  if (tabla) {
+    tabla._analisisData = null;
+    tabla.innerHTML = "";
+  }
+  try { delete ticketAnalisisStore["ticket-tabla-wrap"]; } catch (eStore) {}
+  const notas = document.getElementById("ticket-cruzar-notas");
+  if (notas) notas.innerHTML = "";
+  document.getElementById("ticket-paso3").style.display = "none";
+  document.getElementById("btn-cancelar-ticket").style.display = "none";
+  try { cerrarTicketArticuloModal(); } catch (e) {}
+  toast("Resultados borrados");
 }
 
 function limpiarImagenTicket() {
