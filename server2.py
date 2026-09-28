@@ -5844,23 +5844,55 @@ def abrir_en_cursor():
 # -------------------- POLYBOARD --------------------
 @app.route("/api/polyboard/procesar", methods=["POST"])
 def polyboard_procesar():
-    datos = request.json
-    ruta_txt = datos.get("ruta_txt", "")
+    """Acepta TXT por multipart (archivo), JSON con contenido, o ruta local."""
+    from polyboard import leer_contenido_polyboard, leer_txt_polyboard
+
+    archivo = request.files.get("archivo") or request.files.get("file")
+    if archivo and getattr(archivo, "filename", None):
+        try:
+            raw = archivo.read()
+            piezas = leer_contenido_polyboard(raw)
+            if not piezas:
+                return jsonify({"ok": False, "error": "El TXT no tiene piezas válidas"}), 400
+            nombre = os.path.basename(archivo.filename) or "despiece.txt"
+            return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": nombre}})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Error al leer el archivo: {str(e)}"}), 500
+
+    datos = request.get_json(silent=True) or {}
+    contenido = datos.get("contenido")
+    if contenido is not None and str(contenido).strip():
+        try:
+            piezas = leer_contenido_polyboard(contenido)
+            if not piezas:
+                return jsonify({"ok": False, "error": "El TXT no tiene piezas válidas"}), 400
+            nombre = (datos.get("nombre") or datos.get("ruta") or "despiece.txt").strip()
+            return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": nombre}})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Error al leer el archivo: {str(e)}"}), 500
+
+    ruta_txt = (datos.get("ruta_txt") or "").strip()
     if not ruta_txt:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        ruta_txt = filedialog.askopenfilename(
-            initialdir=CARPETA_RAIZ,
-            title="Selecciona el TXT de PolyBoard",
-            filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
-        )
-        root.destroy()
+        # Solo en escritorio local con GUI; en servidor/headless no hay diálogo.
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            ruta_txt = filedialog.askopenfilename(
+                initialdir=CARPETA_RAIZ,
+                title="Selecciona el TXT de PolyBoard",
+                filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
+            )
+            root.destroy()
+        except Exception:
+            return jsonify({
+                "ok": False,
+                "error": "Sube el TXT desde el Optimizador (Seleccionar TXT)."
+            }), 400
     if not ruta_txt:
-        return jsonify({"ok": False, "error": "No se seleccionó ningún archivo"})
+        return jsonify({"ok": False, "error": "No se seleccionó ningún archivo"}), 400
     try:
-        from polyboard import leer_txt_polyboard
         piezas = leer_txt_polyboard(ruta_txt)
         return jsonify({"ok": True, "data": {"piezas": piezas, "ruta": ruta_txt}})
     except Exception as e:

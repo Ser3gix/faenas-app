@@ -16,6 +16,49 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 # LECTURA DEL TXT
 # ============================================================
 
+def _parsear_lineas_polyboard(lineas):
+    """Parsea líneas TXT PolyBoard → piezas agrupadas por material."""
+    piezas_por_material = {}
+    for linea in lineas:
+        linea = (linea or "").strip()
+        if not linea:
+            continue
+        partes = linea.split(";")
+        if len(partes) < 9:
+            continue
+        try:
+            pieza = {
+                "cantidad":   int(partes[0].strip()),
+                "largo":      int(partes[1].strip()),
+                "canto_der":  int(partes[2].strip()),
+                "canto_izq":  int(partes[3].strip()),
+                "ancho":      int(partes[4].strip()),
+                "canto_arr":  int(partes[5].strip()),
+                "canto_ab":   int(partes[6].strip()),
+                "pieza":      partes[7].strip(),
+                "material":   partes[8].strip()
+            }
+        except (ValueError, IndexError):
+            continue
+        material = pieza["material"]
+        if material not in piezas_por_material:
+            piezas_por_material[material] = []
+        piezas_por_material[material].append(pieza)
+    return piezas_por_material
+
+
+def leer_contenido_polyboard(texto):
+    """
+    Lee el contenido (texto) de un TXT PolyBoard y agrupa piezas por material.
+    Misma forma de salida que leer_txt_polyboard.
+    """
+    if texto is None:
+        raise ValueError("Contenido vacío")
+    if isinstance(texto, bytes):
+        texto = texto.decode(POLYBOARD_ENCODING, errors="replace")
+    return _parsear_lineas_polyboard(str(texto).splitlines())
+
+
 def leer_txt_polyboard(ruta_txt):
     """
     Lee un archivo TXT de PolyBoard y devuelve las piezas agrupadas por material.
@@ -35,39 +78,8 @@ def leer_txt_polyboard(ruta_txt):
     if not os.path.exists(ruta_txt):
         raise FileNotFoundError(f"Archivo no encontrado: {ruta_txt}")
 
-    piezas_por_material = {}
-
     with open(ruta_txt, encoding=POLYBOARD_ENCODING, errors="replace") as f:
-        for linea in f:
-            linea = linea.strip()
-            if not linea:
-                continue
-
-            partes = linea.split(";")
-            if len(partes) < 9:
-                continue  # Línea incompleta, ignorar
-
-            try:
-                pieza = {
-                    "cantidad":   int(partes[0].strip()),
-                    "largo":      int(partes[1].strip()),
-                    "canto_der":  int(partes[2].strip()),
-                    "canto_izq":  int(partes[3].strip()),
-                    "ancho":      int(partes[4].strip()),
-                    "canto_arr":  int(partes[5].strip()),
-                    "canto_ab":   int(partes[6].strip()),
-                    "pieza":      partes[7].strip(),
-                    "material":   partes[8].strip()
-                }
-            except (ValueError, IndexError):
-                continue  # Línea con datos inválidos, ignorar
-
-            material = pieza["material"]
-            if material not in piezas_por_material:
-                piezas_por_material[material] = []
-            piezas_por_material[material].append(pieza)
-
-    return piezas_por_material
+        return _parsear_lineas_polyboard(f)
 
 
 def calcular_resumen(piezas_por_material):
