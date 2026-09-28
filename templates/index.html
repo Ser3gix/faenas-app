@@ -5431,10 +5431,9 @@ function rellenarSelectsServicioOpt(preferidos) {
 async function aplicarTarifasAlmacenOptimizador() {
   await asegurarMaterialesPc().catch(() => {});
   const mats = materialesVisiblesOptimizador();
-  if (!mats.length && !optHerrajes.length) {
-    rellenarSelectsServicioOpt();
-    return;
-  }
+  renderConfigTablerosOptimizador();
+  rellenarSelectsServicioOpt();
+  if (!mats.length && !optHerrajes.length) return;
   const espesores = mats.map(m => parseInt(String(m).replace(/\D/g, ""), 10)).filter(n => n > 0);
   try {
     const r = await api("POST", "/polyboard/tarifas-almacen", {
@@ -5464,8 +5463,17 @@ async function aplicarTarifasAlmacenOptimizador() {
       const tar = (d.tableros || {})[m];
       const sel = document.getElementById("opt-mat-" + idx + "-sel");
       const inp = document.getElementById("opt-mat-" + idx + "-p");
-      if (tar && tar.material_id != null && sel) {
-        sel.value = String(tar.material_id);
+      if (tar && tar.material_id != null) {
+        if (sel) {
+          const idStr = String(tar.material_id);
+          if (![...sel.options].some(o => o.value === idStr)) {
+            const opt = document.createElement("option");
+            opt.value = idStr;
+            opt.textContent = tar.nombre || idStr;
+            sel.appendChild(opt);
+          }
+          sel.value = idStr;
+        }
         asignarMaterialTableroOpt(idx, tar.material_id);
       } else if (inp && tar && tar.precio_m2 != null) {
         inp.value = tar.precio_m2;
