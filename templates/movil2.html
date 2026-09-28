@@ -2354,6 +2354,61 @@ function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function abrirEnlaceProducto(url, ev) {
+  if (ev) {
+    try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
+  }
+  const u = String(url || "").trim();
+  if (!u) { toast("No hay enlace", true); return false; }
+  let win = null;
+  try { win = window.open(u, "_blank"); } catch (e) { win = null; }
+  if (!win) {
+    try {
+      const a = document.createElement("a");
+      a.href = u;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e2) {
+      copiarEnlaceProducto(u);
+      toast("No se pudo abrir. Enlace copiado", true);
+      return false;
+    }
+  }
+  return false;
+}
+
+async function copiarEnlaceProducto(url) {
+  const u = String(url || "").trim();
+  if (!u) { toast("No hay enlace", true); return; }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(u);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = u;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    toast("Enlace copiado");
+  } catch (e) {
+    toast("No se pudo copiar", true);
+  }
+}
+
+function htmlEnlaceProducto(url, etiqueta) {
+  const u = String(url || "").trim();
+  if (!u) return `<span class="muted">—</span>`;
+  const label = etiqueta || "Ver";
+  return `<a href="${escHtml(u)}" onclick='return abrirEnlaceProducto(${JSON.stringify(u)}, event)'>${escHtml(label)}</a>
+    <button type="button" class="btn btn-s btn-sm" style="margin-left:4px;padding:2px 6px;min-height:26px;font-size:0.7rem"
+      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(u)})'>Copiar</button>`;
+}
+
 function urlJimmi(u) {
   u = String(u || "");
   if (!u) return "";
@@ -2387,7 +2442,7 @@ function htmlPropuestasJimmi(propuestas, msgIdx) {
       : "—";
     const url = String(a.url || "").trim();
     const link = url
-      ? `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Ver</a>`
+      ? htmlEnlaceProducto(url, "Ver")
       : `<span class="muted">—</span>`;
     return `<tr>
       <td class="col-nombre"><strong>${nombre}</strong>${def ? `<div class="muted" style="font-size:0.7rem">${def}</div>` : ""}</td>
@@ -6100,7 +6155,7 @@ function _ticketArtBodyHtml(a, i, mostrarFaena) {
       return `<div class="ticket-art-field ticket-art-field-compact">
         <label>Enlace web</label>
         <div style="font-size:0.82rem;line-height:1.4;word-break:break-all">
-          <a href="${safe}" target="_blank" rel="noopener noreferrer">Abrir en tienda</a>
+          ${htmlEnlaceProducto(url, "Abrir en tienda")}
         </div>
         <input type="hidden" data-k="url" value="${safe}">
       </div>`;

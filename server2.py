@@ -668,10 +668,69 @@ def _gemini_uris_grounding(raw):
     return urls
 
 
+def _es_url_redirect_busqueda(url):
+    """True si es redirect de Google / grounding (suelen bloquearse al abrir)."""
+    u = (url or "").strip().lower()
+    if not u:
+        return False
+    return (
+        "grounding-api-redirect" in u
+        or "vertexaisearch.cloud.google.com" in u
+        or "google.com/url?" in u
+        or "google.es/url?" in u
+        or "googleapis.com/grounding" in u
+    )
+
+
+def _desenredar_url_producto(url, timeout=8):
+    """Convierte redirects de Google/grounding a la URL final de la tienda."""
+    u = (url or "").strip()
+    if not u.lower().startswith(("http://", "https://")):
+        return ""
+    try:
+        from urllib.parse import urlparse, parse_qs, unquote
+        p = urlparse(u)
+        host = (p.netloc or "").lower()
+        # google.com/url?q=https://tienda...
+        if ("google." in host) and (p.path or "").startswith("/url"):
+            qs = parse_qs(p.query or "")
+            for key in ("q", "url", "u"):
+                vals = qs.get(key) or []
+                if vals and str(vals[0]).strip().lower().startswith("http"):
+                    return unquote(str(vals[0]).strip())
+    except Exception:
+        pass
+    if not _es_url_redirect_busqueda(u):
+        return u
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            u,
+            method="GET",
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            final = (resp.geturl() or u).strip()
+            if final and not _es_url_redirect_busqueda(final):
+                return final
+            return final or u
+    except Exception:
+        return u
+
+
 def _url_parece_ficha_producto(url):
     """True si la URL parece ficha de producto (no home ni buscador de tienda)."""
     u = (url or "").strip()
     if not u.lower().startswith(("http://", "https://")):
+        return False
+    if _es_url_redirect_busqueda(u):
+        # Los redirects de grounding no son fichas; hay que resolverlos antes.
         return False
     try:
         from urllib.parse import urlparse, unquote
@@ -697,14 +756,20 @@ def _url_parece_ficha_producto(url):
 
 def _enriquecer_urls_productos(articulos, grounding_urls=None):
     """Prioriza enlaces de ficha de producto; completa con URLs de grounding si hace falta."""
-    pool = [u for u in (grounding_urls or []) if _url_parece_ficha_producto(u)]
+    pool = []
+    vistos_pool = set()
+    for raw_u in grounding_urls or []:
+        final = _desenredar_url_producto(raw_u)
+        if final and _url_parece_ficha_producto(final) and final not in vistos_pool:
+            vistos_pool.add(final)
+            pool.append(final)
     usados = set()
     out = []
     for art in articulos or []:
         if not isinstance(art, dict):
             continue
         a = dict(art)
-        url = str(a.get("url") or "").strip()
+        url = _desenredar_url_producto(str(a.get("url") or "").strip())
         if url and _url_parece_ficha_producto(url):
             usados.add(url)
             a["url"] = url

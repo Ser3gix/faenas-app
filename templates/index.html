@@ -1853,6 +1853,59 @@ async function procesarPdfViaCola(file, extra) {
 function esc(value) {
   return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+function abrirEnlaceProducto(url, ev) {
+  if (ev) {
+    try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
+  }
+  const u = String(url || "").trim();
+  if (!u) { toast("No hay enlace", true); return false; }
+  let win = null;
+  try { win = window.open(u, "_blank"); } catch (e) { win = null; }
+  if (!win) {
+    try {
+      const a = document.createElement("a");
+      a.href = u;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e2) {
+      copiarEnlaceProducto(u);
+      toast("No se pudo abrir. Enlace copiado: pégalo en el navegador", true);
+      return false;
+    }
+  }
+  return false;
+}
+async function copiarEnlaceProducto(url) {
+  const u = String(url || "").trim();
+  if (!u) { toast("No hay enlace", true); return; }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(u);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = u;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    toast("Enlace copiado");
+  } catch (e) {
+    toast("No se pudo copiar el enlace", true);
+  }
+}
+function htmlEnlaceProducto(url, etiqueta) {
+  const u = String(url || "").trim();
+  if (!u) return `<span style="color:var(--muted)">—</span>`;
+  const label = etiqueta || "Ver";
+  const safe = esc(u);
+  return `<a href="${safe}" onclick='return abrirEnlaceProducto(${JSON.stringify(u)}, event)'>${esc(label)}</a>
+    <button type="button" class="btn btn-s btn-sm" style="margin-left:6px;padding:2px 6px;min-height:24px;font-size:0.7rem"
+      onclick='event.stopPropagation();copiarEnlaceProducto(${JSON.stringify(u)})' title="Copiar enlace">Copiar</button>`;
+}
 function urlJimmi(u) {
   u = String(u || "");
   if (!u) return "";
@@ -4471,7 +4524,7 @@ function abrirTicketLineaModal(idx, containerId) {
   document.getElementById("ticket-linea-url").value = url;
   const linkEl = document.getElementById("ticket-linea-link");
   linkEl.innerHTML = url
-    ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir ficha del producto</a>`
+    ? htmlEnlaceProducto(url, "Abrir ficha del producto")
     : `<span style="color:var(--muted)">Sin enlace</span>`;
   // Recalcular total al cambiar cant/precio
   const recalc = () => {
@@ -4555,9 +4608,7 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     const total = Number(a.total != null ? a.total : (cantidad * precio));
     const url = String(a.url || "").trim();
     const def = a.definicion ? `<div style="font-size:0.72rem;color:var(--muted)">${esc(a.definicion)}</div>` : "";
-    const linkCel = url
-      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Ver</a>`
-      : `<span style="color:var(--muted)">—</span>`;
+    const linkCel = htmlEnlaceProducto(url, "Ver");
     const cidJs = JSON.stringify(cid);
     return `<tr class="ticket-linea-row" data-i="${i}" style="cursor:pointer" onclick='abrirTicketLineaModal(${i}, ${cidJs})' title="Clic para editar o eliminar">
       <td>${esc(a.categoria || "Otros")}</td>
@@ -4567,7 +4618,7 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
       <td>${Number.isFinite(precio) ? precio.toFixed(2) + " €" : "—"}</td>
       <td>${Number.isFinite(total) ? total.toFixed(2) + " €" : "—"}</td>
       <td>${esc(a.unidad || "ud")}</td>
-      <td>${linkCel}</td>
+      <td onclick="event.stopPropagation()">${linkCel}</td>
     </tr>`;
   }).join("");
   wrap.innerHTML = `
@@ -5941,7 +5992,7 @@ function pintarPropuestasJimmiPc(div, propuestas) {
     const url = String(a.url || "").trim();
     const def = a.definicion ? `<div class="muted" style="font-size:0.7rem">${esc(a.definicion)}</div>` : "";
     const link = url
-      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Ver</a>`
+      ? htmlEnlaceProducto(url, "Ver")
       : `<span class="muted">—</span>`;
     return `<tr>
       <td><strong>${esc(a.nombre || "Producto")}</strong>${def}</td>
