@@ -2,7 +2,7 @@
 // sw.js — Service Worker Faenas móvil
 // ============================================================
 
-const CACHE = "faenas-v66o";
+const CACHE = "faenas-v66p";
 const ARCHIVOS_CACHE = [
   "/static/manifest.json",
   "/static/sw.js"
@@ -63,6 +63,9 @@ self.addEventListener("fetch", e => {
 const AVISO_TIEMPO = "faenas-crono";
 let _avisoTiempo = null;
 let _avisoTick = null;
+let _avisoGen = 0;
+let _avisoToken = 0;
+let _tokenParado = 0;
 
 function _fmtCronoSw(inicioIso) {
   const ini = new Date(inicioIso).getTime();
@@ -75,8 +78,27 @@ function _fmtCronoSw(inicioIso) {
   return m + ":" + String(sec).padStart(2, "0");
 }
 
+function _cerrarAvisosTiempo() {
+  const cerrar = (list) => {
+    (list || []).forEach(n => {
+      if (!n) return;
+      if (n.tag === AVISO_TIEMPO || (n.data && n.data.faena_id)) {
+        try { n.close(); } catch (e) {}
+      }
+    });
+  };
+  if (!self.registration || !self.registration.getNotifications) return Promise.resolve();
+  return self.registration.getNotifications({ tag: AVISO_TIEMPO })
+    .then(cerrar)
+    .catch(() => {})
+    .then(() => self.registration.getNotifications())
+    .then(cerrar)
+    .catch(() => {});
+}
+
 function _pintarAvisoTiempo() {
   if (!_avisoTiempo || !self.registration || !self.registration.showNotification) return;
+  const gen = _avisoGen;
   const t = _avisoTiempo;
   const crono = _fmtCronoSw(t.inicio);
   const titulo = "⏱ " + crono + "  " + (t.tipo || "Tiempo");
@@ -88,38 +110,49 @@ function _pintarAvisoTiempo() {
     badge: "/static/icon-192.png",
     renotify: false,
     silent: true,
-    requireInteraction: true,
+    requireInteraction: false,
     data: t,
     actions: [
       { action: "parar", title: "Parar" },
       { action: "abrir", title: "Abrir" }
     ]
+  }).then(() => {
+    if (gen !== _avisoGen || !_avisoTiempo) return _cerrarAvisosTiempo();
   }).catch(() => {});
 }
 
-function _arrancarAvisoTiempo(datos) {
+function _arrancarAvisoTiempo(datos, token) {
+  const tok = Number(token) || 0;
+  if (tok && tok === _tokenParado) return;
+  if (tok) _avisoToken = tok;
   _avisoTiempo = datos || null;
-  if (!_avisoTiempo) return;
+  if (!_avisoTiempo) {
+    _pararAvisoTiempo(tok);
+    return;
+  }
   if (!_avisoTick) {
     _pintarAvisoTiempo();
     _avisoTick = setInterval(_pintarAvisoTiempo, 1000);
   }
 }
 
-function _pararAvisoTiempo() {
+function _pararAvisoTiempo(token) {
+  const tok = Number(token) || _avisoToken || 0;
+  if (tok) _tokenParado = tok;
+  if (token && _avisoToken && Number(token) !== _avisoToken) return;
+  _avisoGen += 1;
+  _avisoToken = 0;
   _avisoTiempo = null;
   if (_avisoTick) { clearInterval(_avisoTick); _avisoTick = null; }
-  self.registration.getNotifications({ tag: AVISO_TIEMPO }).then(list => {
-    list.forEach(n => n.close());
-  }).catch(() => {});
+  _cerrarAvisosTiempo();
 }
 
 self.addEventListener("message", e => {
   const msg = e.data || {};
   if (msg.type === "TIMER_START" || msg.type === "TIMER_UPDATE") {
-    _arrancarAvisoTiempo(msg.datos || msg);
+    _arrancarAvisoTiempo(msg.datos || msg, msg.token);
   }
-  if (msg.type === "TIMER_STOP") _pararAvisoTiempo();
+  if (msg.type === "TIMER_STOP") _pararAvisoTiempo(msg.token);
 });
 
 self.addEventListener("notificationclick", e => {

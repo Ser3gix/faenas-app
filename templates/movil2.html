@@ -3050,6 +3050,7 @@ function pintarBannerTiempo() {
     banner.classList.remove("activo");
     document.body.classList.remove("hay-tiempo");
     if (ovBtn) ovBtn.textContent = "⏱ Tiempo";
+    cerrarAvisoCrono();
     return;
   }
   banner.classList.add("activo");
@@ -3066,7 +3067,9 @@ function pintarBannerTiempo() {
   if (tipoEl) tipoEl.textContent = labelCatTiempo(activo.categoria);
   if (cronoEl) cronoEl.textContent = formatoCrono(activo.inicio);
   if (ovBtn) ovBtn.textContent = "■ Parar";
-  avisarCronoFueraApp();
+  try {
+    document.title = `⏱ ${formatoCrono(activo.inicio)} · Faenas`;
+  } catch (e) {}
 }
 
 async function pedirPermisoAvisoTiempo() {
@@ -3081,30 +3084,69 @@ async function pedirPermisoAvisoTiempo() {
   }
 }
 
+let _tokenAvisoCrono = 0;
+
+function _postAvisoCrono(tipo, extra) {
+  if (!("serviceWorker" in navigator)) return Promise.resolve();
+  const payload = Object.assign({ type: tipo }, extra || {});
+  const enviar = (reg) => {
+    const worker = (reg && reg.active) || (navigator.serviceWorker && navigator.serviceWorker.controller);
+    if (worker) worker.postMessage(payload);
+    return reg;
+  };
+  if (navigator.serviceWorker.controller) {
+    try { enviar(); } catch (e) {}
+  }
+  return navigator.serviceWorker.ready.then(enviar).catch(() => null);
+}
+
+function _cerrarNotificacionesCrono(reg) {
+  const cerrar = (list) => {
+    (list || []).forEach(n => {
+      if (!n) return;
+      if (n.tag === "faenas-crono" || (n.data && n.data.faena_id)) {
+        try { n.close(); } catch (e) {}
+      }
+    });
+  };
+  if (!reg || !reg.getNotifications) return Promise.resolve();
+  return reg.getNotifications({ tag: "faenas-crono" })
+    .then(cerrar)
+    .catch(() => {})
+    .then(() => reg.getNotifications())
+    .then(cerrar)
+    .catch(() => {});
+}
+
+function cerrarAvisoCrono() {
+  const token = _tokenAvisoCrono;
+  _tokenAvisoCrono = 0;
+  try {
+    document.title = "Faenas";
+    if (navigator.clearAppBadge) navigator.clearAppBadge();
+  } catch (e) {}
+  _postAvisoCrono("TIMER_STOP", { token }).then(reg => _cerrarNotificacionesCrono(reg));
+}
+
 function avisarCronoFueraApp() {
   const activo = leerTiempoActivo();
+  if (!activo) {
+    cerrarAvisoCrono();
+    return;
+  }
   try {
-    document.title = activo ? (`⏱ ${formatoCrono(activo.inicio)} · Faenas`) : "Faenas";
-    if (navigator.setAppBadge) {
-      if (activo) navigator.setAppBadge(1);
-      else if (navigator.clearAppBadge) navigator.clearAppBadge();
-    }
+    document.title = `⏱ ${formatoCrono(activo.inicio)} · Faenas`;
+    if (navigator.setAppBadge) navigator.setAppBadge(1);
   } catch (e) {}
-  const f = activo && faenaDeTiempo(activo.faena_id);
-  const datos = activo ? {
+  if (!_tokenAvisoCrono) _tokenAvisoCrono = Date.now();
+  const f = faenaDeTiempo(activo.faena_id);
+  const datos = {
     inicio: activo.inicio,
     tipo: labelCatTiempo(activo.categoria),
     faena: (f && (f.numero || f.cliente_nombre)) ? `${f.numero || ""} · ${f.cliente_nombre || ""}`.trim() : "Faenas",
     faena_id: activo.faena_id
-  } : null;
-  const enviar = (reg) => {
-    const worker = (reg && reg.active) || (navigator.serviceWorker && navigator.serviceWorker.controller);
-    if (!worker) return;
-    worker.postMessage(activo ? { type: "TIMER_START", datos } : { type: "TIMER_STOP" });
   };
-  if (!("serviceWorker" in navigator)) return;
-  if (navigator.serviceWorker.controller) enviar();
-  else navigator.serviceWorker.ready.then(enviar).catch(() => {});
+  _postAvisoCrono("TIMER_START", { token: _tokenAvisoCrono, datos });
 }
 
 function abrirFaenaDelTiempo() {
@@ -3452,6 +3494,7 @@ function iniciarTiempoFaena(faenaId, categoria) {
   };
   localStorage.setItem("tiempo_activo", JSON.stringify(local));
   localStorage.setItem("tiempo_cat_" + faenaId, categoria);
+  _tokenAvisoCrono = Date.now();
   toast("Cronómetro: " + labelCatTiempo(categoria));
   pedirPermisoAvisoTiempo().then(ok => {
     avisarCronoFueraApp();
@@ -3494,8 +3537,8 @@ async function pararTiempoFaena(faenaId) {
   local.minutos = Math.round(Math.max(0, (Date.now() - ini) / 60000) * 100) / 100;
   localStorage.removeItem("tiempo_activo");
   pararTickTiempo();
+  cerrarAvisoCrono();
   pintarBannerTiempo();
-  avisarCronoFueraApp();
   const ok = await guardarSesionTiempo(local);
   toast(ok ? "Tiempo guardado en la faena" : "Tiempo apuntado en la faena (se sube al sincronizar)");
   renderFaenas();
@@ -8616,7 +8659,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66o";
+  const UI_VER = "66p";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8645,7 +8688,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66o", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66p", { updateViaCache: "none" }).catch(() => {});
     navigator.serviceWorker.addEventListener("message", ev => {
       if (ev.data && ev.data.type === "TIMER_PARAR") pararTiempoActivo();
     });
