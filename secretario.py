@@ -116,6 +116,8 @@ _QUITAR_BUSQUEDA = {
     "telefono",
     "ultima", "ultimo", "ultimas", "ultimos", "reciente", "recientes",
     "adicional", "adicionales",
+    "suma", "sumar", "sumamos", "resultado", "beneficio", "ganancia", "margen",
+    "esa", "ese", "eso", "esas", "esos", "dicha", "dicho", "dichas", "dichos",
 }
 
 _CLAVES_MATERIALES = (
@@ -594,13 +596,18 @@ def _ultima_pregunta_usuario(historial, pregunta=""):
 def _es_seguimiento(pregunta):
     txt = _norm_txt(pregunta)
     pal = set(txt.split())
-    if pal & {"esa", "ese", "eso", "tambien", "igual", "mismo", "misma", "anterior", "dicha", "dicho"}:
+    if pal & {
+        "esa", "ese", "eso", "esas", "esos", "esta", "este", "estas", "estos",
+        "tambien", "igual", "mismo", "misma", "anterior",
+        "dicha", "dicho", "dichas", "dichos",
+    }:
         return True
     if txt.startswith("y ") or txt.startswith("y las") or txt.startswith("y los") or txt.startswith("y la "):
         return True
-    if len(pal) <= 5 and (pal & {
+    if len(pal) <= 8 and (pal & {
         "nota", "notas", "anotacion", "anotaciones", "foto", "fotos",
-        "presupuesto", "gastos", "datos", "ficha", "tiempos",
+        "presupuesto", "presupuestos", "gastos", "datos", "ficha", "tiempos",
+        "suma", "resultado", "beneficio",
     }) and not _numeros_pregunta(pregunta):
         return True
     return False
@@ -623,9 +630,9 @@ def _pregunta_para_buscar(pregunta, historial):
     prev = _ultima_pregunta_usuario(historial, pregunta)
     if prev:
         extra.append(prev)
-    hilo = _mensajes_hilo(historial, pregunta)
-    if hilo:
-        extra.append(hilo[-1])
+    nums = _numeros_hilo(pregunta, historial)
+    if nums:
+        extra.append("faenas " + " ".join(nums))
     if not extra:
         return pregunta
     return (pregunta + " " + " ".join(extra)).strip()
@@ -635,11 +642,26 @@ def _numeros_hilo(pregunta, historial):
     nums = _numeros_pregunta(pregunta)
     if nums:
         return nums
-    for t in reversed(_mensajes_hilo(historial, pregunta)):
-        nums = _numeros_pregunta(t)
-        if nums:
-            return nums
-    return []
+    actual = _norm_txt(pregunta)
+    de_usuario = []
+    for m in reversed(historial or []):
+        if not isinstance(m, dict):
+            continue
+        t = str(m.get("texto") or "").strip()
+        if not t:
+            continue
+        if actual and _norm_txt(t) == actual:
+            continue
+        found = _numeros_pregunta(t)
+        if not found:
+            continue
+        rol = str(m.get("rol") or "").lower()
+        if rol in ("usuario", "user"):
+            if not de_usuario:
+                de_usuario = found
+            continue
+        return found
+    return de_usuario
 
 
 def _resolver_faena(conn, pregunta, faena_id=None, historial=None):
@@ -1607,12 +1629,12 @@ def _pide_resultado_economico(pregunta):
     hay_gasto = any(k in q for k in ("gasto", "gastos", "coste", "costes"))
     hay_res = any(k in q for k in (
         "resultado", "beneficio", "ganancia", "margen",
-        "resta", "restar", "restamos", "sumamos", "suma",
+        "resta", "restar", "restamos", "sumamos", "suma", "sumar", "sume",
     ))
     hay_faena = "faena" in q or "faenas" in q
-    return (hay_pres and hay_gasto) or (hay_res and (hay_pres or hay_gasto)) or (
-        hay_res and hay_faena and any(k in q for k in ("resultado", "beneficio", "ganancia", "margen"))
-    )
+    return (hay_pres and hay_gasto) or (hay_res and (hay_pres or hay_gasto or hay_faena)) or (
+        hay_pres and (hay_faena or _es_seguimiento(pregunta))
+    ) or (hay_res and _es_seguimiento(pregunta))
 
 
 def _presupuesto_y_gastos_faena(conn, faena):
@@ -1649,23 +1671,48 @@ def _presupuesto_y_gastos_faena(conn, faena):
     return pres, gast
 
 
+def _faenas_por_numeros(conn, numeros):
+    pool = []
+    vistos = set()
+    for num in numeros or []:
+        f = _buscar_faena_por_numero(conn, num)
+        if not f:
+            continue
+        fid = f.get("id")
+        if fid in vistos:
+            continue
+        vistos.add(fid)
+        pool.append(f)
+    return pool
+
+
 def _texto_resultado_economico(conn, pregunta, historial=None):
-    texto = pregunta or ""
-    for m in historial or []:
-        if isinstance(m, dict):
-            texto += " " + str(m.get("texto") or "")
-    tokens = _tokens_busqueda(texto)
-    pool = _todas_faenas(conn) or (_faenas_activas(conn, 500) + _faenas_terminadas(conn, 500))
-    if tokens:
-        filtrado = _filtra_por_tokens(
-            pool,
-            tokens,
-            lambda f: " ".join(str(f.get(k) or "") for k in (
-                "numero", "tipo_trabajo", "cliente_nombre", "direccion",
-            )),
-        )
-        if filtrado:
-            pool = filtrado
+    pool = _faenas_por_numeros(conn, _numeros_hilo(pregunta or "", historial))
+    if not pool:
+        busqueda = _pregunta_para_buscar(pregunta, historial)
+        tokens = _tokens_busqueda(busqueda)
+        todos = _todas_faenas(conn) or (_faenas_activas(conn, 500) + _faenas_terminadas(conn, 500))
+        if tokens:
+            filtrado = _filtra_por_tokens(
+                todos,
+                tokens,
+                lambda f: " ".join(str(f.get(k) or "") for k in (
+                    "numero", "tipo_trabajo", "cliente_nombre", "direccion",
+                )),
+            )
+            nombres = sorted({
+                (f.get("cliente_nombre") or "").strip()
+                for f in filtrado
+                if (f.get("cliente_nombre") or "").strip()
+            })
+            if len(nombres) == 1:
+                cli = nombres[0]
+                pool = [
+                    f for f in todos
+                    if (f.get("cliente_nombre") or "").strip() == cli
+                ]
+            else:
+                pool = filtrado
     nombres = sorted({(f.get("cliente_nombre") or "").strip() for f in pool if (f.get("cliente_nombre") or "").strip()})
     cliente = nombres[0] if len(nombres) == 1 else ("esas faenas" if pool else "ese cliente")
     lineas = []
