@@ -105,6 +105,67 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .sync-banner.pend { background: #d97706; }
 .sync-banner.busy { background: #2563eb; animation: sync-pulse 1s ease-in-out infinite; }
 .sync-banner.err { background: #dc2626; }
+
+#banner-tiempo {
+  display: none;
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 0; right: 0;
+  z-index: 95;
+  background: var(--green);
+  color: #fff;
+  padding: 10px 12px;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+#banner-tiempo.activo { display: flex; }
+.banner-tiempo-info { flex: 1; min-width: 0; cursor: pointer; }
+.banner-tiempo-faena {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.banner-tiempo-linea { display: flex; align-items: baseline; gap: 10px; }
+.banner-tiempo-tipo { font-size: 0.92rem; font-weight: 700; }
+.banner-tiempo-crono {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+#banner-tiempo .btn { width: auto; margin: 0; padding: 8px 14px; }
+.tipo-tiempo-lista { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.tipo-tiempo-btn {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 2px solid var(--sawdust);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.tipo-tiempo-btn:active { background: var(--paper-dark); }
+.tipo-tiempo-btn strong { display: block; color: var(--accent); }
+.tipo-tiempo-btn span { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.tiempos-tipo-elegir {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--sawdust);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.88rem;
+}
 .btn-terminar-sesion {
   border: 1px solid rgba(255,255,255,0.35);
   background: rgba(255,255,255,0.14);
@@ -1450,6 +1511,16 @@ textarea { resize: vertical; min-height: 80px; }
   <span id="sesion-badge">0</span>
   <button type="button" class="btn-terminar-sesion" id="btn-terminar-sesion" onclick="abrirTerminarSesion()">Terminar</button>
 </header>
+<div id="banner-tiempo" role="status">
+  <div class="banner-tiempo-info" onclick="abrirFaenaDelTiempo()">
+    <div class="banner-tiempo-faena" id="banner-tiempo-faena">Temporizador</div>
+    <div class="banner-tiempo-linea">
+      <span class="banner-tiempo-tipo" id="banner-tiempo-tipo"></span>
+      <span class="banner-tiempo-crono" id="banner-tiempo-crono">0:00</span>
+    </div>
+  </div>
+  <button type="button" class="btn btn-d btn-inline" onclick="pararTiempoActivo()">Parar</button>
+</div>
 <div class="sync-banner" id="sync-banner" aria-live="polite"></div>
 
 <!-- ═══════════ MAIN CAROUSEL ═══════════ -->
@@ -1623,6 +1694,7 @@ textarea { resize: vertical; min-height: 80px; }
       <div class="overlay-cliente" id="ov-cliente"></div>
     </div>
     <button class="overlay-edit-btn" onclick="abrirEditarFaena(state.faenaActualId)">✏️ Editar</button>
+    <button type="button" class="overlay-edit-btn" id="ov-tiempo-btn" onclick="pedirTipoTiempo(state.faenaActualId)">⏱ Tiempo</button>
   </div>
 
   <div class="faena-hub-header" id="faena-hub-header">
@@ -1696,6 +1768,29 @@ textarea { resize: vertical; min-height: 80px; }
 </div><!-- fin faena-overlay -->
 
 <!-- ═══════════ MODALES ═══════════ -->
+
+<div class="overlay-modal" id="m-tipo-tiempo">
+  <div class="modal-box">
+    <div class="form-title">⏱ Tipo de tiempo</div>
+    <p style="font-size:0.88rem;color:var(--muted);margin-bottom:4px;line-height:1.45">Elige qué estás haciendo. El cronómetro se ve arriba aunque cambies de pantalla.</p>
+    <input type="hidden" id="tipo-tiempo-faena-id">
+    <div class="tipo-tiempo-lista">
+      <button type="button" class="tipo-tiempo-btn" onclick="iniciarTiempoFaenaDesdeTipo('medicion_diseno')">
+        <strong>Medición y diseño</strong>
+        <span>Medir, dibujar, preparar el trabajo</span>
+      </button>
+      <button type="button" class="tipo-tiempo-btn" onclick="iniciarTiempoFaenaDesdeTipo('compras_gestion')">
+        <strong>Compras y gestión</strong>
+        <span>Comprar, recados, papeles</span>
+      </button>
+      <button type="button" class="tipo-tiempo-btn" onclick="iniciarTiempoFaenaDesdeTipo('trabajo')">
+        <strong>Trabajo</strong>
+        <span>Fabricar, montar, instalar</span>
+      </button>
+    </div>
+    <button class="btn btn-s" onclick="cerrarModal('m-tipo-tiempo')">Cancelar</button>
+  </div>
+</div>
 
 <!-- Modal: Nueva faena -->
 <div class="overlay-modal" id="m-nueva-faena">
@@ -2924,6 +3019,66 @@ function pintarCronoTiempo() {
   const txt = activo ? formatoCrono(activo.inicio) : "0:00";
   const elP = document.getElementById("tiempos-panel-crono");
   if (elP) elP.textContent = txt;
+  pintarBannerTiempo();
+}
+
+function pintarBannerTiempo() {
+  const banner = document.getElementById("banner-tiempo");
+  const ovBtn = document.getElementById("ov-tiempo-btn");
+  const activo = leerTiempoActivo();
+  if (!banner) return;
+  if (!activo) {
+    banner.classList.remove("activo");
+    if (ovBtn) ovBtn.textContent = "⏱ Tiempo";
+    return;
+  }
+  banner.classList.add("activo");
+  const f = faenaDeTiempo(activo.faena_id);
+  const faenaEl = document.getElementById("banner-tiempo-faena");
+  const tipoEl = document.getElementById("banner-tiempo-tipo");
+  const cronoEl = document.getElementById("banner-tiempo-crono");
+  if (faenaEl) {
+    faenaEl.textContent = (f && (f.numero || f.cliente_nombre))
+      ? `${f.numero || ""} · ${f.cliente_nombre || ""}`.trim()
+      : "Temporizador en marcha";
+  }
+  if (tipoEl) tipoEl.textContent = labelCatTiempo(activo.categoria);
+  if (cronoEl) cronoEl.textContent = formatoCrono(activo.inicio);
+  if (ovBtn) ovBtn.textContent = "■ Parar";
+}
+
+function abrirFaenaDelTiempo() {
+  const activo = leerTiempoActivo();
+  if (activo && activo.faena_id) abrirFaena(activo.faena_id, { seccion: 6 });
+}
+
+function pedirTipoTiempo(faenaId, event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  const id = faenaId || state.faenaActualId;
+  const activo = leerTiempoActivo();
+  if (activo) {
+    pararTiempoFaena(activo.faena_id);
+    return;
+  }
+  if (!id) { toast("Abre una faena primero", true); return; }
+  if (typeof esIdFaenaTemporal === "function" && esIdFaenaTemporal(id)) {
+    toast("Sincroniza la faena primero", true);
+    return;
+  }
+  const hid = document.getElementById("tipo-tiempo-faena-id");
+  if (hid) hid.value = id;
+  abrirModal("m-tipo-tiempo");
+}
+
+function iniciarTiempoFaenaDesdeTipo(categoria) {
+  const id = document.getElementById("tipo-tiempo-faena-id")?.value;
+  cerrarModal("m-tipo-tiempo");
+  iniciarTiempoFaena(id, categoria);
+}
+
+function pararTiempoActivo() {
+  const activo = leerTiempoActivo();
+  if (activo) pararTiempoFaena(activo.faena_id);
 }
 
 function faenaDeTiempo(id) {
@@ -2987,10 +3142,7 @@ function _ligarControlTiempo(selId, playId) {
       const id = state.faenaActualId;
       const activo = leerTiempoActivo();
       if (activo) pararTiempoFaena(activo.faena_id);
-      else if (id) {
-        const cat = (document.getElementById("tiempos-panel-sel") || {}).value;
-        iniciarTiempoFaena(id, cat);
-      }
+      else if (id) pedirTipoTiempo(id);
     });
   }
 }
@@ -3064,7 +3216,8 @@ function renderPanelTiempos(f) {
     <div class="form-title" style="border:none;margin:0 0 10px;padding:0">Tiempos</div>
     ${esTemp ? `<div style="font-size:0.84rem;color:var(--muted);margin-bottom:10px">Sincroniza la faena para usar el cronómetro.</div>` : ""}
     <div class="tiempos-panel-controles">
-      <select class="tiempos-sel" id="tiempos-panel-sel" aria-label="Categoría de tiempo" ${esTemp ? "disabled" : ""}>${opts}</select>
+      <button type="button" class="tiempos-tipo-elegir" id="tiempos-panel-tipo-btn" ${esTemp ? "disabled" : ""} onclick="pedirTipoTiempo('${id}')">Elegir tipo</button>
+      <select class="tiempos-sel" id="tiempos-panel-sel" aria-label="Categoría de tiempo" ${esTemp ? "disabled" : ""} style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">${opts}</select>
       <button type="button" class="btn btn-p tiempos-play" id="tiempos-panel-play" aria-label="Iniciar" ${esTemp ? "disabled" : ""}>▶</button>
       <div class="tiempos-panel-meta">
         <div class="tiempos-crono" id="tiempos-panel-crono">0:00</div>
@@ -3196,6 +3349,8 @@ async function refrescarTiemposFaena(f, opts) {
     sel.value = catOk;
     sel.disabled = !!(activo && String(activo.faena_id) === String(id));
   }
+  const tipoBtn = document.getElementById("tiempos-panel-tipo-btn");
+  if (tipoBtn) tipoBtn.textContent = labelCatTiempo(catOk);
   const mins = totMap[catOk] || 0;
   for (const totEl of totEls) {
     if (!document.body.contains(totEl)) continue;
@@ -3222,7 +3377,10 @@ async function refrescarTiemposFaena(f, opts) {
 
 function iniciarTiempoFaena(faenaId, categoria) {
   if (esIdFaenaTemporal(faenaId)) { toast("Sincroniza la faena primero", true); return; }
-  if (!CATS_TIEMPO.some(c => c.id === categoria)) categoria = "trabajo";
+  if (!CATS_TIEMPO.some(c => c.id === categoria)) {
+    pedirTipoTiempo(faenaId);
+    return;
+  }
   const ya = leerTiempoActivo();
   if (ya) { toast("Ya hay un cronómetro en marcha", true); return; }
   const local = {
@@ -3234,7 +3392,8 @@ function iniciarTiempoFaena(faenaId, categoria) {
   };
   localStorage.setItem("tiempo_activo", JSON.stringify(local));
   localStorage.setItem("tiempo_cat_" + faenaId, categoria);
-  toast("Cronómetro en marcha");
+  toast("Cronómetro: " + labelCatTiempo(categoria));
+  pintarBannerTiempo();
   renderFaenas();
   const f = faenaDeTiempo(faenaId) || faenaDeTiempo(state.faenaActualId);
   if (f) refrescarTiemposFaena(f, { sinRed: true });
@@ -3269,8 +3428,9 @@ async function pararTiempoFaena(faenaId) {
   local.minutos = Math.round(Math.max(0, (Date.now() - ini) / 60000) * 100) / 100;
   localStorage.removeItem("tiempo_activo");
   pararTickTiempo();
+  pintarBannerTiempo();
   const ok = await guardarSesionTiempo(local);
-  toast(ok ? "Tiempo guardado en el registro" : "Tiempo guardado para sincronizar");
+  toast(ok ? "Tiempo guardado en la faena" : "Tiempo apuntado en la faena (se sube al sincronizar)");
   renderFaenas();
   const f = faenaDeTiempo(state.faenaActualId) || faenaDeTiempo(faenaId);
   if (f) refrescarTiemposFaena(f);
@@ -5443,8 +5603,7 @@ function renderFaenas() {
 }
 
 function abrirFaenaDesdeTiempos(event, id) {
-  if (event) { event.preventDefault(); event.stopPropagation(); }
-  abrirFaena(id, { seccion: 6 });
+  pedirTipoTiempo(id, event);
 }
 
 function eliminarFaenaDesdeTarjeta(event, id) {
@@ -8390,7 +8549,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66l";
+  const UI_VER = "66m";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8415,10 +8574,11 @@ async function init() {
   state._cargando = !state.faenas.length;
   initBarraTiempos();
   if (leerTiempoActivo()) arrancarTickTiempo();
+  pintarBannerTiempo();
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66l", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66m", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");

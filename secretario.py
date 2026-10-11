@@ -129,7 +129,7 @@ _CLAVES_FAENAS = (
     "terminadas", "archivada", "archivadas",
     "nota", "notas", "anotacion", "anotaciones",
     "informacion", "datos", "resumen", "ficha", "gastos", "tiempos", "fotos",
-    "telefono",
+    "telefono", "resultado", "beneficio", "ganancia",
 )
 
 
@@ -1581,6 +1581,105 @@ def _estado_faena_pregunta(pregunta):
     return "todas"
 
 
+def _num_eur(valor):
+    try:
+        return round(float(valor or 0), 2)
+    except Exception:
+        return 0.0
+
+
+def _pide_resultado_economico(pregunta):
+    q = _norm_txt(pregunta)
+    if not q:
+        return False
+    hay_pres = any(k in q for k in ("presupuesto", "presupuestos", "importe", "cobrar"))
+    hay_gasto = any(k in q for k in ("gasto", "gastos", "coste", "costes"))
+    hay_res = any(k in q for k in (
+        "resultado", "beneficio", "ganancia", "margen",
+        "resta", "restar", "restamos", "sumamos", "suma",
+    ))
+    hay_faena = "faena" in q or "faenas" in q
+    return (hay_pres and hay_gasto) or (hay_res and (hay_pres or hay_gasto or hay_faena))
+
+
+def _presupuesto_y_gastos_faena(conn, faena):
+    fid = faena.get("id")
+    pres = 0.0
+    try:
+        row = conn.execute(
+            "SELECT SUM(total) AS t FROM presupuestos_faena WHERE faena_id=?",
+            (fid,),
+        ).fetchone()
+        pres = _num_eur(row["t"] if isinstance(row, dict) else (row[0] if row else 0))
+    except Exception:
+        pres = 0.0
+    if pres <= 0:
+        try:
+            row = conn.execute(
+                "SELECT SUM(total) AS t FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))='presupuesto'",
+                (fid,),
+            ).fetchone()
+            pres = _num_eur(row["t"] if isinstance(row, dict) else (row[0] if row else 0))
+        except Exception:
+            pass
+    if pres <= 0:
+        pres = _num_eur(faena.get("importe"))
+    gast = 0.0
+    try:
+        row = conn.execute(
+            "SELECT SUM(total) AS t FROM gastos_faena WHERE faena_id=? AND LOWER(COALESCE(tipo,''))<>'presupuesto'",
+            (fid,),
+        ).fetchone()
+        gast = _num_eur(row["t"] if isinstance(row, dict) else (row[0] if row else 0))
+    except Exception:
+        gast = 0.0
+    return pres, gast
+
+
+def _texto_resultado_economico(conn, pregunta, historial=None):
+    texto = pregunta or ""
+    for m in historial or []:
+        if isinstance(m, dict):
+            texto += " " + str(m.get("texto") or "")
+    tokens = _tokens_busqueda(texto)
+    pool = _todas_faenas(conn) or (_faenas_activas(conn, 500) + _faenas_terminadas(conn, 500))
+    if tokens:
+        filtrado = _filtra_por_tokens(
+            pool,
+            tokens,
+            lambda f: " ".join(str(f.get(k) or "") for k in (
+                "numero", "tipo_trabajo", "cliente_nombre", "direccion",
+            )),
+        )
+        if filtrado:
+            pool = filtrado
+    nombres = sorted({(f.get("cliente_nombre") or "").strip() for f in pool if (f.get("cliente_nombre") or "").strip()})
+    cliente = nombres[0] if len(nombres) == 1 else ("esas faenas" if pool else "ese cliente")
+    lineas = []
+    suma_p = 0.0
+    suma_g = 0.0
+    for f in pool[:40]:
+        fila = _faena_por_id(conn, f.get("id")) or f
+        p, g = _presupuesto_y_gastos_faena(conn, fila)
+        r = round(p - g, 2)
+        suma_p += p
+        suma_g += g
+        lineas.append(
+            f"- {f.get('numero') or f.get('id')} · {f.get('tipo_trabajo') or 'sin tipo'}: "
+            f"presupuesto {p:.2f} €, gastos {g:.2f} €, resultado {r:.2f} €"
+        )
+    if not lineas:
+        return "No encuentro faenas de ese cliente para sumar presupuestos y gastos."
+    return (
+        f"Resultado de las faenas de {cliente}:\n\n"
+        + "\n".join(lineas)
+        + f"\n\nSuma de presupuestos: {suma_p:.2f} €"
+        + f"\nSuma de gastos: {suma_g:.2f} €"
+        + f"\nResultado (presupuestos menos gastos): {round(suma_p - suma_g, 2):.2f} €"
+        + "\n\nEl presupuesto es lo presupuestado al cliente. Los gastos son los costes de fabricación."
+    )
+
+
 def _fmt_precio(valor):
     try:
         n = float(valor or 0)
@@ -1648,6 +1747,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
     guardar_nota = _pide_guardar_nota(pregunta)
     if _numeros_pregunta(pregunta) or _pide_ficha(pregunta) or _pide_ultima(pregunta) or guardar_nota:
         quiere_f = True
+    if _pide_resultado_economico(pregunta):
+        quiere_f = True
     if modo == "faenas":
         quiere_m = False
     if not quiere_m and not quiere_f:
@@ -1676,9 +1777,13 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                 )
             texto_m = _texto_materiales(mats, tokens)
         if quiere_f:
-            if guardar_nota:
+            concreta = None
+            if _pide_resultado_economico(pregunta) and not guardar_nota:
+                texto_f = _texto_resultado_economico(conn, pregunta, historial)
+            if not texto_f:
+              if guardar_nota:
                 concreta = _resolver_faena_para_guardar(conn, pregunta, faena_id, historial=historial)
-            else:
+              else:
                 concreta = _resolver_faena(conn, pregunta, faena_id, historial=historial)
             detalle_todas = _pide_detalle_todas(pregunta) and not guardar_nota
             listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
@@ -1916,6 +2021,7 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         "{proveedor:null, fecha, total_ticket, articulos:[{nombre,cantidad,precio_unitario,total,unidad,categoria,definicion,fuente,url,proveedor}]}. "
         "Cada artículo = una tienda distinta. url = ficha DIRECTA del producto (nunca la home ni el buscador). "
         "fuente es catalogo o web. proveedor de cada línea = nombre de esa tienda. "
+        "Si preguntan el resultado de un cliente (sumar presupuestos y restar gastos), calcula el total de TODAS sus faenas: presupuesto, gastos y resultado en euros. No digas que no puedes. "
         "Si preguntan por una faena concreta (número, notas, datos), usa datos_app.faenas_completas: cliente, dirección, presupuesto, gastos, anotaciones, tiempos y fotos. "
         "Si preguntan solo las fotos, responde únicamente con las fotos. No repitas el resto de la ficha. "
         "Si preguntan cuáles están terminadas, usa faenas_terminadas. Las correcciones en memoria_jimmi prevalecen. "
