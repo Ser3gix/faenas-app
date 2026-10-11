@@ -2,7 +2,7 @@
 // sw.js — Service Worker Faenas móvil
 // ============================================================
 
-const CACHE = "faenas-v66p";
+const CACHE = "faenas-v66q";
 const ARCHIVOS_CACHE = [
   "/static/manifest.json",
   "/static/sw.js"
@@ -66,6 +66,7 @@ let _avisoTick = null;
 let _avisoGen = 0;
 let _avisoToken = 0;
 let _tokenParado = 0;
+let _primerAviso = true;
 
 function _fmtCronoSw(inicioIso) {
   const ini = new Date(inicioIso).getTime();
@@ -97,20 +98,24 @@ function _cerrarAvisosTiempo() {
 }
 
 function _pintarAvisoTiempo() {
-  if (!_avisoTiempo || !self.registration || !self.registration.showNotification) return;
+  if (!_avisoTiempo || !self.registration || !self.registration.showNotification) {
+    return Promise.resolve();
+  }
   const gen = _avisoGen;
   const t = _avisoTiempo;
   const crono = _fmtCronoSw(t.inicio);
   const titulo = "⏱ " + crono + "  " + (t.tipo || "Tiempo");
   const cuerpo = (t.faena || "Faenas") + " · pulsa para abrir o Parar";
-  self.registration.showNotification(titulo, {
+  const primer = _primerAviso;
+  _primerAviso = false;
+  return self.registration.showNotification(titulo, {
     body: cuerpo,
     tag: AVISO_TIEMPO,
     icon: "/static/icon-192.png",
     badge: "/static/icon-192.png",
-    renotify: false,
-    silent: true,
-    requireInteraction: false,
+    renotify: primer,
+    silent: !primer,
+    requireInteraction: true,
     data: t,
     actions: [
       { action: "parar", title: "Parar" },
@@ -123,36 +128,51 @@ function _pintarAvisoTiempo() {
 
 function _arrancarAvisoTiempo(datos, token) {
   const tok = Number(token) || 0;
-  if (tok && tok === _tokenParado) return;
+  if (tok && tok === _tokenParado) return Promise.resolve();
   if (tok) _avisoToken = tok;
   _avisoTiempo = datos || null;
-  if (!_avisoTiempo) {
-    _pararAvisoTiempo(tok);
-    return;
-  }
+  if (!_avisoTiempo) return _pararAvisoTiempo(tok);
   if (!_avisoTick) {
-    _pintarAvisoTiempo();
+    _primerAviso = true;
+    const p = _pintarAvisoTiempo();
     _avisoTick = setInterval(_pintarAvisoTiempo, 1000);
+    return p;
   }
+  return _pintarAvisoTiempo();
 }
 
-function _pararAvisoTiempo(token) {
-  const tok = Number(token) || _avisoToken || 0;
-  if (tok) _tokenParado = tok;
-  if (token && _avisoToken && Number(token) !== _avisoToken) return;
+function _pararAvisoTiempo(token, soloSiParado) {
+  const tok = Number(token) || 0;
+  if (soloSiParado || !tok) {
+    if (_avisoToken) return Promise.resolve();
+    _avisoGen += 1;
+    _avisoTiempo = null;
+    _primerAviso = true;
+    if (_avisoTick) { clearInterval(_avisoTick); _avisoTick = null; }
+    return _cerrarAvisosTiempo();
+  }
+  if (_avisoToken && tok !== _avisoToken) return Promise.resolve();
+  _tokenParado = tok;
   _avisoGen += 1;
   _avisoToken = 0;
   _avisoTiempo = null;
+  _primerAviso = true;
   if (_avisoTick) { clearInterval(_avisoTick); _avisoTick = null; }
-  _cerrarAvisosTiempo();
+  return _cerrarAvisosTiempo();
 }
 
 self.addEventListener("message", e => {
   const msg = e.data || {};
+  let p = Promise.resolve();
   if (msg.type === "TIMER_START" || msg.type === "TIMER_UPDATE") {
-    _arrancarAvisoTiempo(msg.datos || msg, msg.token);
+    p = Promise.resolve(_arrancarAvisoTiempo(msg.datos || msg, msg.token));
   }
-  if (msg.type === "TIMER_STOP") _pararAvisoTiempo(msg.token);
+  if (msg.type === "TIMER_STOP") {
+    p = Promise.resolve(_pararAvisoTiempo(msg.token, msg.soloSiParado));
+  }
+  if (e.waitUntil) {
+    try { e.waitUntil(p); } catch (err) {}
+  }
 });
 
 self.addEventListener("notificationclick", e => {
@@ -161,7 +181,7 @@ self.addEventListener("notificationclick", e => {
   e.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     if (accion === "parar") {
-      _pararAvisoTiempo();
+      await _pararAvisoTiempo(_avisoToken);
       for (const c of clientsList) {
         try { c.postMessage({ type: "TIMER_PARAR" }); } catch (err) {}
       }

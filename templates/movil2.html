@@ -3050,7 +3050,6 @@ function pintarBannerTiempo() {
     banner.classList.remove("activo");
     document.body.classList.remove("hay-tiempo");
     if (ovBtn) ovBtn.textContent = "⏱ Tiempo";
-    cerrarAvisoCrono();
     return;
   }
   banner.classList.add("activo");
@@ -3072,15 +3071,15 @@ function pintarBannerTiempo() {
   } catch (e) {}
 }
 
-async function pedirPermisoAvisoTiempo() {
-  if (!("Notification" in window)) return false;
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission === "denied") return false;
+function pedirPermisoAvisoTiempo() {
+  if (!("Notification" in window)) return Promise.resolve(false);
+  if (Notification.permission === "granted") return Promise.resolve(true);
+  if (Notification.permission === "denied") return Promise.resolve(false);
   try {
-    const p = await Notification.requestPermission();
-    return p === "granted";
+    const p = Notification.requestPermission();
+    return Promise.resolve(p).then(x => x === "granted");
   } catch (e) {
-    return false;
+    return Promise.resolve(false);
   }
 }
 
@@ -3128,24 +3127,49 @@ function cerrarAvisoCrono() {
   _postAvisoCrono("TIMER_STOP", { token }).then(reg => _cerrarNotificacionesCrono(reg));
 }
 
-function avisarCronoFueraApp() {
-  const activo = leerTiempoActivo();
-  if (!activo) {
-    cerrarAvisoCrono();
-    return;
-  }
-  try {
-    document.title = `⏱ ${formatoCrono(activo.inicio)} · Faenas`;
-    if (navigator.setAppBadge) navigator.setAppBadge(1);
-  } catch (e) {}
-  if (!_tokenAvisoCrono) _tokenAvisoCrono = Date.now();
+function datosAvisoCrono(activo) {
   const f = faenaDeTiempo(activo.faena_id);
-  const datos = {
+  return {
     inicio: activo.inicio,
     tipo: labelCatTiempo(activo.categoria),
     faena: (f && (f.numero || f.cliente_nombre)) ? `${f.numero || ""} · ${f.cliente_nombre || ""}`.trim() : "Faenas",
     faena_id: activo.faena_id
   };
+}
+
+function _mostrarAvisoCronoPagina(datos) {
+  if (!datos || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (!("serviceWorker" in navigator)) return;
+  const crono = formatoCrono(datos.inicio);
+  navigator.serviceWorker.ready.then(reg => {
+    if (!reg || !reg.showNotification) return;
+    return reg.showNotification("⏱ " + crono + "  " + (datos.tipo || "Tiempo"), {
+      body: (datos.faena || "Faenas") + " · pulsa para abrir o Parar",
+      tag: "faenas-crono",
+      icon: "/static/icon-192.png",
+      badge: "/static/icon-192.png",
+      renotify: true,
+      silent: false,
+      requireInteraction: true,
+      data: datos,
+      actions: [
+        { action: "parar", title: "Parar" },
+        { action: "abrir", title: "Abrir" }
+      ]
+    });
+  }).catch(() => {});
+}
+
+function avisarCronoFueraApp() {
+  const activo = leerTiempoActivo();
+  if (!activo) return;
+  try {
+    document.title = `⏱ ${formatoCrono(activo.inicio)} · Faenas`;
+    if (navigator.setAppBadge) navigator.setAppBadge(1);
+  } catch (e) {}
+  if (!_tokenAvisoCrono) _tokenAvisoCrono = Date.now();
+  const datos = datosAvisoCrono(activo);
+  _mostrarAvisoCronoPagina(datos);
   _postAvisoCrono("TIMER_START", { token: _tokenAvisoCrono, datos });
 }
 
@@ -3169,10 +3193,12 @@ function pedirTipoTiempo(faenaId, event) {
   }
   const hid = document.getElementById("tipo-tiempo-faena-id");
   if (hid) hid.value = id;
+  pedirPermisoAvisoTiempo();
   abrirModal("m-tipo-tiempo");
 }
 
 function iniciarTiempoFaenaDesdeTipo(categoria) {
+  pedirPermisoAvisoTiempo();
   const id = document.getElementById("tipo-tiempo-faena-id")?.value;
   cerrarModal("m-tipo-tiempo");
   iniciarTiempoFaena(id, categoria);
@@ -3496,6 +3522,7 @@ function iniciarTiempoFaena(faenaId, categoria) {
   localStorage.setItem("tiempo_cat_" + faenaId, categoria);
   _tokenAvisoCrono = Date.now();
   toast("Cronómetro: " + labelCatTiempo(categoria));
+  avisarCronoFueraApp();
   pedirPermisoAvisoTiempo().then(ok => {
     avisarCronoFueraApp();
     if (!ok && "Notification" in window && Notification.permission !== "granted") {
@@ -8659,7 +8686,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66p";
+  const UI_VER = "66q";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8688,7 +8715,13 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66p", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66q", { updateViaCache: "none" })
+      .then(() => navigator.serviceWorker.ready)
+      .then(() => {
+        if (leerTiempoActivo()) avisarCronoFueraApp();
+        else _postAvisoCrono("TIMER_STOP", { token: 0, soloSiParado: true });
+      })
+      .catch(() => {});
     navigator.serviceWorker.addEventListener("message", ev => {
       if (ev.data && ev.data.type === "TIMER_PARAR") pararTiempoActivo();
     });
@@ -8720,7 +8753,11 @@ async function init() {
       preguntarSalidaSiPendiente();
     }
   });
-  window.addEventListener("pagehide", () => preguntarSalidaSiPendiente());
+  window.addEventListener("pagehide", () => {
+    avisarCronoFueraApp();
+    preguntarSalidaSiPendiente();
+  });
+  document.addEventListener("freeze", () => avisarCronoFueraApp());
   try {
     await cargarDatosIniciales(true, true);
     state._cargando = false;
