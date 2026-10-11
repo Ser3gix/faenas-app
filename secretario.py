@@ -539,6 +539,17 @@ def _pide_listado_faenas(pregunta):
     txt = _norm_txt(pregunta)
     return any(k in txt for k in (
         "cuantas", "cuantos", "activas", "terminadas", "listado", "todas las faenas", "que faenas",
+        "faenas de", "las faenas de", "de quien", "de que cliente", "quien tiene",
+        "cuales son las faenas", "que faena es de",
+    ))
+
+
+def _pide_faenas_de_cliente(pregunta):
+    txt = _norm_txt(pregunta)
+    return any(k in txt for k in (
+        "de quien", "de que cliente", "faenas de", "las faenas de",
+        "que faenas", "cuales son las faenas", "quien tiene",
+        "que faena es de", "faena de",
     ))
 
 
@@ -1599,7 +1610,9 @@ def _pide_resultado_economico(pregunta):
         "resta", "restar", "restamos", "sumamos", "suma",
     ))
     hay_faena = "faena" in q or "faenas" in q
-    return (hay_pres and hay_gasto) or (hay_res and (hay_pres or hay_gasto or hay_faena))
+    return (hay_pres and hay_gasto) or (hay_res and (hay_pres or hay_gasto)) or (
+        hay_res and hay_faena and any(k in q for k in ("resultado", "beneficio", "ganancia", "margen"))
+    )
 
 
 def _presupuesto_y_gastos_faena(conn, faena):
@@ -1719,11 +1732,30 @@ def _texto_materiales(filas, tokens, limite=15):
     return f"Hay {n} material(es) que coinciden con «{q}»:\n" + "\n".join(lineas) + extra
 
 
-def _texto_faenas(filas, tokens, etiqueta, limite=12):
+def _texto_faenas(filas, tokens, etiqueta, limite=12, agrupar_cliente=False):
     n = len(filas)
     q = " ".join(tokens) if tokens else etiqueta
     if n == 0:
         return f"No hay faenas {etiqueta} que coincidan con «{q}»." if tokens else f"No hay faenas {etiqueta}."
+    if agrupar_cliente:
+        grupos = []
+        vistos = {}
+        for f in filas:
+            cli = (f.get("cliente_nombre") or "Sin cliente").strip() or "Sin cliente"
+            if cli not in vistos:
+                vistos[cli] = []
+                grupos.append(cli)
+            vistos[cli].append(f)
+        lineas = []
+        for cli in grupos:
+            lineas.append(f"{cli}:")
+            for f in vistos[cli]:
+                lineas.append(
+                    f"  - {f.get('numero') or f.get('id') or ''} · "
+                    f"{f.get('tipo_trabajo') or 'Sin trabajo'}"
+                )
+        cab = f"Faenas por cliente ({n}):"
+        return cab + "\n" + "\n".join(lineas)
     lineas = []
     for f in filas[:limite]:
         lineas.append(
@@ -1789,6 +1821,8 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
             listado = _pide_listado_faenas(pregunta) and not detalle_todas and not guardar_nota
             if (_pide_notas(pregunta) or _pide_solo_fotos(pregunta)) and not guardar_nota:
                 listado = False
+            if _pide_faenas_de_cliente(pregunta) and not guardar_nota:
+                listado = True
             if guardar_nota:
                 contenido = _texto_a_guardar(pregunta, historial)
                 if not concreta:
@@ -1884,7 +1918,13 @@ def _respuesta_local_datos(pregunta, modo="todo", faena_id=None, historial=None)
                             "numero", "tipo_trabajo", "cliente_nombre", "direccion", "fase", "importe",
                         )),
                     )
-                texto_f = _texto_faenas(pool, tokens, etiqueta or "en total")
+                texto_f = _texto_faenas(
+                    pool,
+                    tokens,
+                    etiqueta or "en total",
+                    limite=40 if _pide_faenas_de_cliente(pregunta) else 12,
+                    agrupar_cliente=_pide_faenas_de_cliente(pregunta),
+                )
     finally:
         conn.close()
 

@@ -109,9 +109,9 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 #banner-tiempo {
   display: none;
   position: fixed;
-  top: env(safe-area-inset-top, 0px);
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
   left: 0; right: 0;
-  z-index: 95;
+  z-index: 85;
   background: var(--green);
   color: #fff;
   padding: 10px 12px;
@@ -121,6 +121,9 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
   box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 #banner-tiempo.activo { display: flex; }
+body.hay-tiempo #main-carousel {
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 52px);
+}
 .banner-tiempo-info { flex: 1; min-width: 0; cursor: pointer; }
 .banner-tiempo-faena {
   font-size: 0.72rem;
@@ -1271,6 +1274,22 @@ header h1 { font-family: var(--font-sans); font-size: 1.2rem; font-weight: 700; 
 .btn-g { background: #DCFCE7; color: var(--green); }
 .btn-d { background: #FEE2E2; color: var(--red); }
 .btn-inline { width: auto; margin-bottom: 0; padding: 10px 14px; font-size: 0.9rem; }
+.tiempos-panel-controles .tiempos-play.btn {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 44px;
+  border-radius: 50%;
+}
+.tiempos-panel-controles .tiempos-tipo-elegir {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
 .btn-row { display: flex; gap: 8px; margin-bottom: 8px; }
 
 .form-box {
@@ -3029,10 +3048,12 @@ function pintarBannerTiempo() {
   if (!banner) return;
   if (!activo) {
     banner.classList.remove("activo");
+    document.body.classList.remove("hay-tiempo");
     if (ovBtn) ovBtn.textContent = "⏱ Tiempo";
     return;
   }
   banner.classList.add("activo");
+  document.body.classList.add("hay-tiempo");
   const f = faenaDeTiempo(activo.faena_id);
   const faenaEl = document.getElementById("banner-tiempo-faena");
   const tipoEl = document.getElementById("banner-tiempo-tipo");
@@ -8549,7 +8570,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66m";
+  const UI_VER = "66n";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8578,7 +8599,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66m", { updateViaCache: "none" }).catch(() => {});
+    navigator.serviceWorker.register("/static/sw.js?v=66n", { updateViaCache: "none" }).catch(() => {});
   }
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
