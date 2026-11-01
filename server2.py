@@ -67,17 +67,25 @@ IA_PROVIDER = (os.environ.get("IA_PROVIDER") or "gemini").strip().lower()
 IA_API_URL = os.environ.get("IA_API_URL", "").strip()
 IA_MODEL = (os.environ.get("IA_MODEL") or "").strip()
 _GEMINI_MODELO_POR_DEFECTO = "gemini-3.5-flash-lite"
-TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or _GEMINI_MODELO_POR_DEFECTO).strip()
+# Tickets/fotos de recibo: flash-lite falla mucho en OCR; usar un flash completo.
+_TICKET_MODELO_POR_DEFECTO = "gemini-3.5-flash"
+TICKET_IA_MODEL = (os.environ.get("TICKET_IA_MODEL") or _TICKET_MODELO_POR_DEFECTO).strip()
 IA_MODO = (os.environ.get("IA_MODO") or "local").strip().lower()
 _GEMINI_MODEL_CACHE = {}
 _GEMINI_ULTIMO_MODELO = ""
 _GEMINI_MODELOS_CANDIDATOS = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.6-flash",
     "gemini-3.5-flash",
-    "gemini-flash-lite-latest",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
     "gemini-flash-latest",
+    "gemini-flash-lite-latest",
     "gemini-pro-latest",
+]
+_TICKET_MODELOS_CANDIDATOS = [
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
 ]
 
 if pytesseract is not None:
@@ -507,20 +515,23 @@ def _ia_provider_activo():
 
 
 def _prompt_ticket_base():
-    return """Analiza la imagen o el PDF de compra adjunto y extrae las líneas reales.
+    return """Analiza la imagen del ticket/recibo de compra (caja TPV, papel térmico) y extrae TODAS las líneas de producto.
 
 Devuelve SOLO un JSON con: proveedor, fecha (si aparece), total_ticket, tipo_documento, iva_incluido, iva_porcentaje, articulos.
 tipo_documento: "ticket" | "factura" | "albaran" | "otro".
-iva_incluido: true si los importes de línea YA llevan IVA (típico en tickets de caja/TPV); false si son base imponible sin IVA (típico en facturas).
-iva_porcentaje: el % de IVA del documento si aparece (si no, 21).
-Cada artículo: nombre, cantidad, precio_unitario, total, unidad, categoria (Trabajo, Tableros, Molduras-Maderas, Herrajes, Otros), definicion (referencia o medida).
-REGLA DE PRECIOS: copia precio_unitario y total de cada línea TAL COMO aparecen en el documento (no recalcules el IVA tú).
-- Ticket/recibo TPV: suele ir con IVA → iva_incluido=true.
-- Factura/albarán con base imponible: la línea suele ir sin IVA → iva_incluido=false.
-total_ticket: el total final del documento si aparece (con IVA si es el total a pagar; si solo ves base imponible, pon esa base).
-Lee tablas de presupuesto, albarán o factura. Si hay descuento, total es lo pagado de esa línea y precio_unitario = total / cantidad.
-Importes con coma → números JSON con punto. Ignora portes y textos legales.
-Si no ves líneas, articulos es []. No inventes nombres genéricos."""
+iva_incluido: true en tickets de caja/TPV (precios finales con IVA); false en facturas/albaranes (base).
+iva_porcentaje: % IVA del documento si aparece (si no, 21).
+Cada artículo: nombre, cantidad, precio_unitario, total, unidad, categoria (Tableros, Molduras-Maderas, Herrajes, Otros, Pintura), definicion (referencia/EAN si se lee).
+
+REGLAS DE LECTURA (importante):
+- Lee el nombre comercial COMPLETO de cada línea (p. ej. \"TABLERO MEL BCO...\", \"CANTO PREEN...\", \"CAJA 24 BISAGRAS...\").
+- Ignora códigos de barras/EAN numéricos largos y secciones (MADERA, FERRETERIA, PINTURA) como si fueran productos.
+- Si una línea pone \"2 x 6,60\" o \"2 X 8,50\": cantidad=2, precio_unitario=6.60, total=13.20.
+- Si solo hay un importe a la derecha: cantidad=1, total=ese importe, precio_unitario=ese importe.
+- Importes con coma → números JSON con punto.
+- No mezcles el EAN dentro del nombre. No inventes líneas. No omitas productos visibles.
+- total_ticket = TOTAL a pagar del ticket (no el efectivo ni el cambio).
+- Si no ves líneas, articulos es []."""
 
 
 def _prompt_documento_base(nombre="documento"):
@@ -5131,33 +5142,47 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
             }
         ]
         contents[0]["parts"] = [p for p in contents[0]["parts"] if p]
+        modelos_ticket = []
+        for m in [ticket_model] + list(_TICKET_MODELOS_CANDIDATOS):
+            n = _gemini_nombre_modelo(m)
+            if n and n not in modelos_ticket and not _gemini_modelo_retirado(n):
+                modelos_ticket.append(n)
+        if not modelos_ticket:
+            modelos_ticket = [_TICKET_MODELO_POR_DEFECTO]
+        ultimo_error = None
+        for modelo_intento in modelos_ticket:
+            try:
+                raw = _peticion_gemini(
+                    contents=contents,
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    max_tokens=3500 if tipo in {"ticket", "documento"} else 1200,
+                    temperature=0,
+                    api_key=ticket_key,
+                    model=modelo_intento,
+                    timeout=90 if tipo in {"ticket", "documento"} else 90,
+                )
+                contenido = _gemini_extraer_texto(raw)
+                data = _extraer_json_de_texto(contenido)
+                if not isinstance(data, dict) and tipo != "ticket":
+                    data = _normalizar_json_materiales_con_ia(
+                        contenido, tipo=tipo, api_key=ticket_key, model=modelo_intento
+                    )
+                data = _limpiar_resultado_ia(data, origen_tipo=tipo)
+                if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
+                    data["_modelo"] = modelo_intento
+                    return data
+                # Sin artículos: probar siguiente modelo (flash-lite a menudo falla en tickets).
+                ultimo_error = RuntimeError(f"Sin artículos con modelo {modelo_intento}")
+            except Exception as e:
+                ultimo_error = e
+                mensaje = str(e).lower()
+                is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "too many requests"])
+                if is_quota:
+                    break
+                continue
         try:
-            raw = _peticion_gemini(
-                contents=contents,
-                system_instruction=system,
-                response_mime_type="application/json",
-                max_tokens=2500 if tipo == "documento" else 1200,
-                temperature=0,
-                api_key=ticket_key,
-                model=ticket_model,
-                timeout=70 if tipo in {"ticket", "documento"} else 90,
-            )
-            contenido = _gemini_extraer_texto(raw)
-            data = _extraer_json_de_texto(contenido)
-            if not isinstance(data, dict) and tipo != "ticket":
-                data = _normalizar_json_materiales_con_ia(contenido, tipo=tipo, api_key=ticket_key, model=ticket_model)
-            data = _limpiar_resultado_ia(data, origen_tipo=tipo)
-            if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
-                return data
-        except Exception as e:
-            mensaje = str(e).lower()
-            is_timeout = any(k in mensaje for k in ["timeout", "timed out", "time out", "socket timeout", "read timed out"])
-            is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "rate", "too many requests"])
-            is_unavailable = any(k in mensaje for k in ["503", "service unavailable", "temporarily unavailable", "currently experiencing high demand"])
-            is_conn = any(k in mensaje for k in ["connection refused", "errno 111", "failed to establish", "name or service not known", "nodename nor servname"])
-            if tipo not in {"ticket", "documento"} and not (is_timeout or is_quota or is_unavailable or is_conn):
-                raise
-            # Fallback local cuando Gemini tarda demasiado o se queda sin cuota.
+            # Fallback local cuando Gemini no saca líneas o falla.
             for img in imgs:
                 texto_ocr = _texto_ocr_desde_imagen_base64(img)
                 data = _json_ticket_desde_ocr(texto_ocr)
@@ -5165,28 +5190,21 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                     return data
             if texto:
                 data = _json_ticket_desde_ocr(texto)
-                if isinstance(data, dict):
+                if isinstance(data, dict) and data.get("articulos"):
                     return data
             data = _extraer_json_de_texto(texto or user_txt or "")
-            if isinstance(data, dict):
-                return data
-            if tipo in {"ticket", "documento"}:
-                return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
-            if is_timeout:
-                raise RuntimeError(f"La IA tardó demasiado en responder. Se intentó fallback local y no pudo extraer artículos. {e}")
-            raise RuntimeError(f"La IA no devolvió JSON válido. Fallback local insuficiente. {e}")
-        for img in (imgs or ([imagen] if imagen else [])):
-            texto_ocr = _texto_ocr_desde_imagen_base64(img)
-            data = _json_ticket_desde_ocr(texto_ocr)
             if isinstance(data, dict) and data.get("articulos"):
                 return data
-        if texto:
-            data = _json_ticket_desde_ocr(texto)
-            if isinstance(data, dict):
-                return data
+        except Exception:
+            pass
         if tipo in {"ticket", "documento"}:
-            return {"proveedor": None, "fecha": None, "total_ticket": None, "articulos": [], "fallback_local": True}
-        raise RuntimeError("La IA no devolvió JSON válido")
+            detalle = str(ultimo_error or "sin detalle")[:240]
+            raise RuntimeError(
+                "No se pudieron leer las líneas del ticket. "
+                "Prueba otra foto más nítida y de frente. "
+                f"({detalle})"
+            )
+        raise RuntimeError(f"La IA no devolvió JSON válido. {ultimo_error}")
 
     # Fallback local con Ollama
     for img in imgs:
