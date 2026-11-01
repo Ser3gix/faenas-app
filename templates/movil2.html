@@ -667,7 +667,9 @@ body.hay-tiempo #main-carousel {
 .fase-tab-mov.active { color: var(--ink); }
 .fase-tab-mov[data-fase="medicion"].active { background: #DBEAFE; color: #1D4ED8; }
 .fase-tab-mov[data-fase="presupuestada"].active { background: #FEF3C7; color: #B45309; }
+.fase-tab-mov[data-fase="aplazada"].active { background: #EDE9FE; color: #5B21B6; }
 .fase-tab-mov[data-fase="en_proceso"].active { background: #DCFCE7; color: #15803D; }
+.fase-tab-mov[data-fase="no_aceptada"].active { background: #FEE2E2; color: #991B1B; }
 .fase-tab-mov[data-fase="terminada"].active { background: #E7E5E4; color: #44403C; }
 .fase-sel-mov {
   width: auto;
@@ -1555,7 +1557,9 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="fase-tabs-mov" id="fase-tabs-mov">
       <button class="fase-tab-mov" data-fase="medicion" onclick="seleccionarFaseMovil('medicion')">Medición</button>
       <button class="fase-tab-mov" data-fase="presupuestada" onclick="seleccionarFaseMovil('presupuestada')">Presupuestada</button>
+      <button class="fase-tab-mov" data-fase="aplazada" onclick="seleccionarFaseMovil('aplazada')">Aplazada</button>
       <button class="fase-tab-mov active" data-fase="en_proceso" onclick="seleccionarFaseMovil('en_proceso')">En proceso</button>
+      <button class="fase-tab-mov" data-fase="no_aceptada" onclick="seleccionarFaseMovil('no_aceptada')">No aceptadas</button>
       <button class="fase-tab-mov" data-fase="terminada" onclick="seleccionarFaseMovil('terminada')">Terminadas</button>
     </div>
     <div id="lista-faenas"></div>
@@ -2595,6 +2599,24 @@ function htmlFotosJimmi(imagenes) {
 
 function htmlPropuestasJimmi(propuestas, msgIdx) {
   if (!Array.isArray(propuestas) || !propuestas.length) return "";
+  const esGestion = propuestas.some(p => p && p.tipo && !p.nombre);
+  if (esGestion) {
+    const filas = propuestas.map((p, i) => {
+      const tipo = escHtml(p.tipo || "cambio");
+      const det = escHtml(p.contenido || p.descripcion || p.nota || p.nombre || "—");
+      const imp = Number(p.importe || p.precio_unitario || 0);
+      const impTxt = imp ? imp.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €" : "";
+      return `<tr>
+        <td class="col-nombre"><strong>${tipo}</strong><div class="muted" style="font-size:0.7rem">${det}</div></td>
+        <td class="col-precio">${impTxt || "—"}</td>
+        <td><button type="button" class="btn btn-p btn-sm" data-jimmi-add="${msgIdx}:${i}">Aplicar</button></td>
+      </tr>`;
+    }).join("");
+    return `<div class="jimmi-propuestas"><table class="jimmi-prop-table">
+      <thead><tr><th>Cambio propuesto</th><th>Importe</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>`;
+  }
   const filas = propuestas.map((a, i) => {
     const nombre = escHtml(a.nombre || "Producto");
     const tienda = escHtml(a.proveedor || "—");
@@ -2603,7 +2625,6 @@ function htmlPropuestasJimmi(propuestas, msgIdx) {
     const precioTxt = Number.isFinite(precio)
       ? precio.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
       : "—";
-    const url = String(a.url || "").trim();
     const link = htmlEnlaceProducto(a);
     return `<tr>
       <td class="col-nombre"><strong>${nombre}</strong>${def ? `<div class="muted" style="font-size:0.7rem">${def}</div>` : ""}</td>
@@ -2643,7 +2664,31 @@ async function aceptarPropuestaJimmi(msgIdx, artIdx) {
   const hist = window._jimmiHistorial || [];
   const msg = hist[msgIdx];
   const art = msg && Array.isArray(msg.propuestas) ? msg.propuestas[artIdx] : null;
-  if (!art || !String(art.nombre || "").trim()) {
+  if (!art) {
+    toast("No hay propuesta para aplicar", true);
+    return;
+  }
+  const tipoGest = String(art.tipo || "").toLowerCase();
+  if (["anotacion", "gasto", "cobro", "presupuesto", "material"].includes(tipoGest)) {
+    try {
+      const body = { ...art, tipo: tipoGest };
+      if (tipoGest === "material") body.tipo = "material";
+      const r = await fetch(`${getServerUrl()}/secretario/aplicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: faenasAbortTimeout(30000)
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "No se pudo aplicar");
+      toast("✓ Cambio aplicado");
+      try { await cargarDatosIniciales(true, true); refrescarPantallaActual(); } catch (eR) {}
+    } catch (e) {
+      toast(e.message || "Error al aplicar", true);
+    }
+    return;
+  }
+  if (!String(art.nombre || "").trim()) {
     toast("No hay producto para guardar", true);
     return;
   }
@@ -4408,20 +4453,22 @@ async function rescatarFaenaZipMovil(input) {
   }
 }
 
-async function reabrirFaenaMovil(event, id) {
+async function reabrirFaenaMovil(event, id, faseDestino) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
+  const destino = faseDestino || "en_proceso";
   try {
     const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fase: "medicion" }),
+      body: JSON.stringify({ fase: destino }),
       signal: faenasAbortTimeout(8000)
     });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo reabrir", true); return; }
-    toast("Faena reabierta en Medición");
+    const etiqueta = destino === "en_proceso" ? "En proceso" : destino;
+    toast("Faena restaurada en " + etiqueta);
     await cargarDatosIniciales(true);
-    seleccionarFaseMovil("medicion");
+    seleccionarFaseMovil(destino);
   } catch (e) {
     toast("No se pudo reabrir", true);
   }
@@ -5598,10 +5645,15 @@ function verFotoGrande(src) {
 
 function faseDeFaena(f) {
   if (!f) return "en_proceso";
-  if (Number(f.archivada) === 1 || f.fase === "terminada") return "terminada";
-  const fase = f.fase || "en_proceso";
-  if (fase === "medicion" || fase === "presupuestada" || fase === "en_proceso") return fase;
+  const fase = f.fase || "";
+  if (fase === "no_aceptada") return "no_aceptada";
+  if (fase === "terminada" || Number(f.archivada) === 1) return "terminada";
+  if (fase === "medicion" || fase === "presupuestada" || fase === "aplazada" || fase === "en_proceso") return fase;
   return "en_proceso";
+}
+
+function esFaseArchivoMovil(fase) {
+  return fase === "terminada" || fase === "no_aceptada";
 }
 
 function seleccionarFaseMovil(fase) {
@@ -5614,8 +5666,8 @@ function seleccionarFaseMovil(fase) {
 
 async function cambiarFaseMovil(event, id, fase) {
   if (event) event.stopPropagation();
-  if (fase === "terminada") {
-    toast("Las faenas se terminan desde el PC para guardar el ZIP", true);
+  if (fase === "terminada" || fase === "no_aceptada") {
+    toast("Terminar o no aceptar se hace desde el PC para guardar el ZIP", true);
     renderFaenas();
     return;
   }
@@ -5659,14 +5711,16 @@ function renderFaenas() {
   const cola = cargarCola();
   const el = document.getElementById("lista-faenas");
   actualizarSelectorFaenasIA();
-  if (state.faseVista === "terminada") {
-    const lista = state.terminadas || [];
+  if (esFaseArchivoMovil(state.faseVista)) {
+    const lista = (state.terminadas || []).filter(f => faseDeFaena(f) === state.faseVista);
+    const vacio = state.faseVista === "no_aceptada" ? "Sin faenas no aceptadas" : "Sin faenas terminadas";
     if (!lista.length) {
-      el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : "Sin faenas terminadas"}</div>`;
+      el.innerHTML = `<div class="empty"><div class="empty-icon">🔨</div>${state._cargando ? "Cargando faenas..." : vacio}</div>`;
       return;
     }
     el.innerHTML = lista.map(f => {
       const precio = parseFloat(f.importe) || 0;
+      const btnLabel = state.faseVista === "no_aceptada" ? "Aceptar / Restaurar" : "Reabrir";
       return `<div class="faena-card">
         <div class="fc-top">
           <span class="num-faena">${escHtml(f.numero || "")}</span>
@@ -5675,7 +5729,7 @@ function renderFaenas() {
         <div class="fc-cliente">${escHtml(f.cliente_nombre || "—")}</div>
         <div class="fc-tipo">${escHtml(f.tipo_trabajo || "Sin descripción")}</div>
         <div class="fc-footer">
-          <button class="btn btn-p btn-inline" onclick="reabrirFaenaMovil(event,'${f.id}')">Reabrir</button>
+          <button class="btn btn-p btn-inline" onclick="reabrirFaenaMovil(event,'${f.id}','en_proceso')">${btnLabel}</button>
         </div>
       </div>`;
     }).join("");
@@ -5714,10 +5768,11 @@ function renderFaenas() {
         <select class="fase-sel-mov" onclick="event.stopPropagation()" onchange="cambiarFaseMovil(event,'${id}',this.value)">
           <option value="medicion" ${fase==="medicion"?"selected":""}>Medición</option>
           <option value="presupuestada" ${fase==="presupuestada"?"selected":""}>Presupuestada</option>
+          <option value="aplazada" ${fase==="aplazada"?"selected":""}>Aplazada</option>
           <option value="en_proceso" ${fase==="en_proceso"?"selected":""}>En proceso</option>
         </select>
         <button class="btn btn-s btn-inline" style="min-width:44px" onclick="abrirFaenaDesdeTiempos(event,'${id}')">${cronoActivo && String(cronoActivo.faena_id)===String(id) ? "■" : "⏱"}</button>
-        <button class="btn btn-d btn-inline" style="min-width:44px" onclick="eliminarFaenaDesdeTarjeta(event,'${id}')">🗑️</button>
+        <button class="btn btn-d btn-inline" style="min-width:44px" title="Anular" onclick="eliminarFaenaDesdeTarjeta(event,'${id}')">🗑️</button>
       </div>
     </div>`;
   }).join("");
@@ -5783,12 +5838,13 @@ async function enviarFaenasEliminadas() {
 }
 
 async function eliminarFaenaLocal(id) {
-  if (!confirm("¿Eliminar esta faena? Se borrará también del registro (servidor/PC) y no se podrá recuperar.")) return;
+  if (!confirm("¿ANULAR esta faena? Se borrará por completo (datos y carpeta) y no se podrá recuperar.")) return;
+  if (!confirm("Confirma de nuevo: se eliminará la faena del registro.")) return;
   quitarFaenaDeListasLocales(id);
   if (String(state.faenaActualId) === String(id)) cerrarFaena();
   renderFaenas();
   const enviadas = await enviarFaenasEliminadas();
-  toast(enviadas ? "✓ Faena eliminada del registro" : "✓ Faena quitada del móvil — se borrará del registro al conectar");
+  toast(enviadas ? "✓ Faena anulada y borrada" : "✓ Faena anulada en el móvil — se borrará del registro al conectar");
 }
 
 function buscarClientePorId(id) {
@@ -7399,6 +7455,45 @@ function aplicarAnotacionGuardadaJimmi(ag) {
   }
 }
 
+async function esperarJobJimmi(jobId, box) {
+  const maxIntentos = 90;
+  for (let i = 0; i < maxIntentos; i++) {
+    await new Promise(r => setTimeout(r, 2500));
+    try {
+      const r = await fetch(`${getServerUrl()}/secretario/jobs/${encodeURIComponent(jobId)}`, {
+        signal: faenasAbortTimeout(15000)
+      });
+      const d = await r.json();
+      if (!d.ok || !d.data) continue;
+      const st = String(d.data.status || "");
+      if (st === "pending" || st === "running") {
+        if (box) {
+          const hint = box.querySelector(".jimmi-hint:last-child");
+          if (hint) hint.textContent = st === "running" ? "Jimmi (Cursor) está trabajando…" : "Jimmi en cola…";
+        }
+        continue;
+      }
+      if (st === "error") {
+        return { ok: false, error: d.data.error || "Error en gestión Cursor" };
+      }
+      if (st === "done") {
+        const res = d.data.resultado || {};
+        return {
+          ok: true,
+          data: {
+            respuesta: res.respuesta || "Listo.",
+            propuestas: Array.isArray(res.propuestas) ? res.propuestas : [],
+            ticket: null,
+            motor: res.motor || "cursor",
+            modelo: res.modelo || "",
+          }
+        };
+      }
+    } catch (e) {}
+  }
+  return { ok: false, error: "Jimmi tarda demasiado. Revisa CURSOR_API_KEY o inténtalo de nuevo." };
+}
+
 async function enviarConsultaIA() {
   const pregunta = (document.getElementById("ia-pregunta").value || "").trim();
   if (!pregunta) { toast("Escribe una pregunta primero", true); return; }
@@ -7419,7 +7514,15 @@ async function enviarConsultaIA() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pregunta, faena_id: faenaId || null, historial: window._jimmiHistorial.slice(-16), modo })
     });
-    const data = await r.json();
+    let data = await r.json();
+    if (data.ok && data.data && data.data.pendiente && data.data.job_id) {
+      if (box) {
+        box.innerHTML = (window._jimmiHistorial || []).map((m, i) => htmlMsgJimmi(m, i)).join("")
+          + `<div class="jimmi-hint">Jimmi (Cursor) está gestionando…</div>`;
+        box.scrollTop = box.scrollHeight;
+      }
+      data = await esperarJobJimmi(data.data.job_id, box);
+    }
     const texto = (data.ok && data.data && data.data.respuesta) ? data.data.respuesta : (data.error || "Sin respuesta");
     const imagenes = (data.ok && data.data && data.data.imagenes) ? data.data.imagenes : [];
     const propuestas = (data.ok && data.data && Array.isArray(data.data.propuestas) && data.data.propuestas.length)
@@ -7443,8 +7546,12 @@ async function enviarConsultaIA() {
       aplicarAnotacionGuardadaJimmi(data.data.anotacion_guardada);
     }
     if (propuestas && propuestas.length) {
-      toast(`${propuestas.length} opciones para comparar. Añade desde Jimmi las que quieras.`);
-    }  } catch (e) {
+      const gest = propuestas.some(p => p && p.tipo && !p.nombre);
+      toast(gest
+        ? `${propuestas.length} cambio${propuestas.length > 1 ? "s" : ""} propuesto${propuestas.length > 1 ? "s" : ""}. Pulsa Aplicar para confirmar.`
+        : `${propuestas.length} opciones para comparar. Añade desde Jimmi las que quieras.`);
+    }
+  } catch (e) {
     toast("Error al conectar con Jimmi", true);
   }
 }
@@ -8658,7 +8765,7 @@ async function recargarDatos() {
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "66q";
+  const UI_VER = "68-jimmi-cursor";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8687,7 +8794,7 @@ async function init() {
   refrescarPantallaActual();
   actualizarIndicadorSyncEstado();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("/static/sw.js?v=66q", { updateViaCache: "none" })
+    navigator.serviceWorker.register("/static/sw.js?v=69-fases-aplazada", { updateViaCache: "none" })
       .then(() => navigator.serviceWorker.ready)
       .then(() => {
         if (leerTiempoActivo()) avisarCronoFueraApp();

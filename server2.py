@@ -1829,28 +1829,49 @@ def editar_faena(id):
 @app.route("/api/faenas/<int:id>", methods=["DELETE"])
 def eliminar_faena(id):
     conn = get_connection()
-    conn.execute("DELETE FROM anotaciones WHERE faena_id=?", (id,))
-    conn.execute("DELETE FROM gastos_faena WHERE faena_id=?", (id,))
-    conn.execute("DELETE FROM fotos_faena WHERE faena_id=?", (id,))
-    try:
-        conn.execute("DELETE FROM presupuestos_faena WHERE faena_id=?", (id,))
-    except Exception:
-        pass
-    try:
-        conn.execute("DELETE FROM book_fotos WHERE faena_id=?", (id,))
-    except Exception:
-        pass
-    try:
-        conn.execute("DELETE FROM archivos_faena WHERE faena_id=?", (id,))
-    except Exception:
-        pass
+    faena = conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone()
+    if not faena:
+        conn.close()
+        return jsonify({"ok": False, "error": "Faena no encontrada"}), 404
+    faena = fila_a_dict(faena)
+    carpetas = []
+    resuelta = _resolver_carpeta_local(faena)
+    if resuelta:
+        carpetas.append(resuelta)
+    raw = (faena.get("carpeta") or "").strip()
+    if raw and raw not in carpetas:
+        carpetas.append(raw)
+    for sql in (
+        "DELETE FROM anotaciones WHERE faena_id=?",
+        "DELETE FROM gastos_faena WHERE faena_id=?",
+        "DELETE FROM fotos_faena WHERE faena_id=?",
+        "DELETE FROM presupuestos_faena WHERE faena_id=?",
+        "DELETE FROM book_fotos WHERE faena_id=?",
+        "DELETE FROM archivos_faena WHERE faena_id=?",
+        "DELETE FROM tiempos_faena WHERE faena_id=?",
+        "DELETE FROM cobros_faena WHERE faena_id=?",
+    ):
+        try:
+            conn.execute(sql, (id,))
+        except Exception:
+            pass
     conn.execute("DELETE FROM faenas WHERE id=?", (id,))
     conn.commit()
     conn.close()
+    for carpeta in carpetas:
+        if carpeta and os.path.isdir(carpeta):
+            try:
+                shutil.rmtree(carpeta, ignore_errors=False)
+            except Exception:
+                try:
+                    shutil.rmtree(carpeta, ignore_errors=True)
+                except Exception:
+                    pass
     return jsonify({"ok": True})
 
-FASES_ACTIVAS = ("medicion", "presupuestada", "en_proceso")
-FASES_VALIDAS = FASES_ACTIVAS + ("terminada",)
+FASES_ACTIVAS = ("medicion", "presupuestada", "aplazada", "en_proceso")
+FASES_ARCHIVO = ("terminada", "no_aceptada")
+FASES_VALIDAS = FASES_ACTIVAS + FASES_ARCHIVO
 
 
 def _importe_para_terminar(conn, faena_id, importe_actual):
@@ -1879,7 +1900,9 @@ def _importe_para_terminar(conn, faena_id, importe_actual):
     return total
 
 
-def _terminar_faena(id):
+def _terminar_faena(id, fase_archivo="terminada"):
+    if fase_archivo not in FASES_ARCHIVO:
+        fase_archivo = "terminada"
     conn = get_connection()
     faena = conn.execute("SELECT * FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
@@ -1889,8 +1912,8 @@ def _terminar_faena(id):
     importe = _importe_para_terminar(conn, id, faena.get("importe"))
     try:
         conn.execute(
-            "UPDATE faenas SET archivada=1, fase='terminada', importe=? WHERE id=?",
-            (importe, id),
+            "UPDATE faenas SET archivada=1, fase=?, importe=? WHERE id=?",
+            (fase_archivo, importe, id),
         )
     except Exception:
         conn.execute("UPDATE faenas SET archivada=1 WHERE id=?", (id,))
@@ -1910,6 +1933,7 @@ def _terminar_faena(id):
         "zip": f"/api/faenas/{id}/archivo-zip",
         "zip_local": zip_local,
         "importe": importe,
+        "fase": fase_archivo,
     }
     if zip_error and not zip_local:
         data["zip_error"] = zip_error
@@ -1918,7 +1942,11 @@ def _terminar_faena(id):
 
 @app.route("/api/faenas/<int:id>/archivar", methods=["POST"])
 def archivar_faena(id):
-    return _terminar_faena(id)
+    body = request.json or {}
+    fase = (body.get("fase") or "terminada").strip()
+    if fase not in FASES_ARCHIVO:
+        fase = "terminada"
+    return _terminar_faena(id, fase)
 
 
 @app.route("/api/faenas/<int:id>/fase", methods=["PUT"])
@@ -1926,8 +1954,8 @@ def cambiar_fase_faena(id):
     fase = ((request.json or {}).get("fase") or "").strip()
     if fase not in FASES_VALIDAS:
         return jsonify({"ok": False, "error": "Fase no válida"}), 400
-    if fase == "terminada":
-        return _terminar_faena(id)
+    if fase in FASES_ARCHIVO:
+        return _terminar_faena(id, fase)
     conn = get_connection()
     faena = conn.execute("SELECT id FROM faenas WHERE id=?", (id,)).fetchone()
     if not faena:
@@ -5335,6 +5363,18 @@ def secretario_chat():
         return jsonify({"ok": False, "error": f"Jimmi: {str(e)}"}), 500
 
 
+@app.route("/api/secretario/jobs/<job_id>", methods=["GET"])
+def secretario_job_estado(job_id):
+    try:
+        from jimmi_cursor import obtener_job
+        job = obtener_job(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "Trabajo no encontrado"}), 404
+        return jsonify({"ok": True, "data": job})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/secretario/chat/cerrar", methods=["POST"])
 def secretario_chat_cerrar():
     datos = request.json or {}
@@ -5391,6 +5431,57 @@ def secretario_aplicar():
             conn.close()
             anotar_contexto(f"Aceptó partida de presupuesto en faena {faena_id}: {desc} {total:.2f} €")
             return jsonify({"ok": True, "data": {"faena_id": faena_id}})
+        if tipo == "anotacion":
+            faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+            contenido = str(datos.get("contenido") or datos.get("descripcion") or "").strip()
+            if not faena_id or not contenido:
+                return jsonify({"ok": False, "error": "Falta faena o contenido"}), 400
+            nuevo = insertar_anotacion_faena(faena_id, tipo=datos.get("tipo_anotacion") or "texto", contenido=contenido)
+            anotar_contexto(f"Jimmi anotación en faena {faena_id}: {contenido[:120]}")
+            return jsonify({"ok": True, "data": {"anotacion": nuevo}})
+        if tipo == "gasto":
+            faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+            if not faena_id:
+                return jsonify({"ok": False, "error": "Falta la faena"}), 400
+            desc = str(datos.get("descripcion") or "").strip() or "Gasto"
+            cantidad = _to_float_seguro(datos.get("cantidad") or 1) or 1
+            precio = _to_float_seguro(datos.get("precio_unitario") or datos.get("importe") or 0)
+            total = round(cantidad * precio, 2) if precio else _to_float_seguro(datos.get("importe") or 0)
+            if precio <= 0 and total:
+                precio = total
+                cantidad = 1
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO gastos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total, ticket_foto) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (faena_id, "gasto", desc, cantidad, precio, total, ""),
+            )
+            gid = cur.lastrowid
+            conn.commit()
+            conn.close()
+            anotar_contexto(f"Jimmi gasto en faena {faena_id}: {desc} {total:.2f} €")
+            return jsonify({"ok": True, "data": {"id": gid, "faena_id": faena_id}})
+        if tipo == "cobro":
+            faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+            if not faena_id:
+                return jsonify({"ok": False, "error": "Falta la faena"}), 400
+            importe = _to_float_seguro(datos.get("importe") or datos.get("precio_unitario") or 0)
+            nota = str(datos.get("nota") or datos.get("descripcion") or "").strip()
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO cobros_faena (faena_id, importe, fecha, nota, origen) VALUES (?, ?, datetime('now'), ?, ?)",
+                (faena_id, importe, nota, "jimmi"),
+            )
+            cid = cur.lastrowid
+            conn.commit()
+            conn.close()
+            anotar_contexto(f"Jimmi cobro en faena {faena_id}: {importe:.2f} €")
+            return jsonify({"ok": True, "data": {"id": cid, "faena_id": faena_id}})
+        if tipo == "material":
+            payload = {"articulos": [datos.get("data") or datos], "proveedor": datos.get("proveedor") or ""}
+            resumen = _persistir_resultado_ia_en_nube(None, "almacen", payload)
+            return jsonify({"ok": True, "data": resumen})
         return jsonify({"ok": False, "error": "Tipo no reconocido"}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -6183,7 +6274,8 @@ def sync_datos():
     terminadas = []
     try:
         filas_t = conn.execute("""
-            SELECT f.id, f.numero, f.tipo_trabajo, f.importe, c.nombre AS cliente_nombre
+            SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.fase, f.archivada,
+                   c.nombre AS cliente_nombre
             FROM faenas f
             LEFT JOIN clientes c ON f.cliente_id = c.id
             WHERE f.archivada = 1
@@ -6196,6 +6288,8 @@ def sync_datos():
                 "cliente_nombre": fila.get("cliente_nombre") or "",
                 "tipo_trabajo": fila.get("tipo_trabajo") or "",
                 "importe": fila.get("importe") or 0,
+                "fase": fila.get("fase") or "terminada",
+                "archivada": 1,
             })
     except Exception:
         terminadas = []

@@ -110,6 +110,7 @@ _QUITAR_BUSQUEDA = {
     "faena", "faenas", "cliente", "clientes", "presupuesto", "importe",
     "direccion", "trabajo", "trabajos", "activa", "activas", "activo", "activos",
     "terminada", "terminadas", "archivada", "archivadas", "abierta", "abiertas",
+    "aplazada", "aplazadas", "aceptada", "aceptadas",
     "curso", "pendiente", "pendientes", "taller",
     "nota", "notas", "anotacion", "anotaciones",
     "informacion", "datos", "resumen", "gastos", "tiempos", "fotos",
@@ -128,7 +129,7 @@ _CLAVES_MATERIALES = (
 _CLAVES_FAENAS = (
     "faena", "faenas", "cliente", "clientes", "presupuesto", "importe",
     "direccion", "trabajo", "trabajos", "activa", "activas", "terminada",
-    "terminadas", "archivada", "archivadas",
+    "terminadas", "archivada", "archivadas", "aplazada", "aplazadas",
     "nota", "notas", "anotacion", "anotaciones",
     "informacion", "datos", "resumen", "ficha", "gastos", "tiempos", "fotos",
     "telefono", "resultado", "beneficio", "ganancia",
@@ -832,10 +833,29 @@ def _linea_importe(item):
     return f"- {desc}{extra}: {total}"
 
 
+_ETIQUETA_FASE = {
+    "medicion": "medición",
+    "presupuestada": "presupuestada",
+    "aplazada": "aplazada",
+    "en_proceso": "en proceso",
+    "no_aceptada": "no aceptada",
+    "terminada": "terminada",
+}
+
+
+def _etiqueta_estado_faena(f):
+    fase = (f.get("fase") or "").strip()
+    if fase in _ETIQUETA_FASE:
+        return _ETIQUETA_FASE[fase]
+    if int(float(f.get("archivada") or 0)):
+        return "terminada"
+    return _ETIQUETA_FASE.get(fase or "en_proceso", fase or "en proceso")
+
+
 def _texto_faena_completa(datos):
     f = datos.get("faena") or {}
     num = f.get("numero") or f.get("id") or ""
-    estado = "archivada" if int(float(f.get("archivada") or 0)) else (f.get("fase") or "en_proceso")
+    estado = _etiqueta_estado_faena(f)
     partes = [
         f"Faena {num}",
         f"- Cliente: {f.get('cliente_nombre') or 'sin cliente'}",
@@ -1204,7 +1224,8 @@ def _faenas_activas(conn, limite):
             """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.direccion, f.archivada, f.fase,
                       c.nombre AS cliente_nombre
                FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
-               WHERE f.archivada=0 AND COALESCE(f.fase,'')<>'terminada'
+               WHERE f.archivada=0
+                 AND COALESCE(f.fase,'') NOT IN ('terminada','no_aceptada')
                ORDER BY f.id DESC LIMIT ?""",
             (limite,),
         ).fetchall())
@@ -1221,10 +1242,10 @@ def _faenas_activas(conn, limite):
 def _faenas_terminadas(conn, limite):
     try:
         return filas_a_lista(conn.execute(
-            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe,
+            """SELECT f.id, f.numero, f.tipo_trabajo, f.importe, f.fase, f.archivada,
                       c.nombre AS cliente_nombre
                FROM faenas f LEFT JOIN clientes c ON f.cliente_id=c.id
-               WHERE f.archivada=1 OR f.fase='terminada'
+               WHERE f.archivada=1 OR f.fase IN ('terminada','no_aceptada')
                ORDER BY f.id DESC LIMIT ?""",
             (limite,),
         ).fetchall())
@@ -1238,18 +1259,37 @@ def _faenas_terminadas(conn, limite):
         ).fetchall())
 
 
-def snapshot_negocio(faena_id=None, modo="todo", pregunta=None, historial=None):
+def snapshot_negocio(faena_id=None, modo="todo", pregunta=None, historial=None, ligero=False):
     modo = normalizar_modo(modo)
     incluir_faenas = modo in ("todo", "faenas")
     incluir_mats = modo in ("todo", "materiales")
-    lim_act = 25 if modo == "todo" else 40
-    lim_ter = 20 if modo == "todo" else 40
-    lim_mat = 40 if modo == "todo" else 60
+    # Consultas rápidas / jobs Cursor: menos filas y menos scans.
+    if ligero:
+        lim_act = 12 if modo == "todo" else 20
+        lim_ter = 8 if modo == "todo" else 15
+        lim_mat = 20 if modo == "todo" else 30
+        scan_mult = 2
+        lim_extra = 6
+        lim_ref = 6
+        lim_tiempos = 15
+        max_completas = 1
+    else:
+        lim_act = 25 if modo == "todo" else 40
+        lim_ter = 20 if modo == "todo" else 40
+        lim_mat = 40 if modo == "todo" else 60
+        scan_mult = 1
+        lim_extra = 15
+        lim_ref = 15
+        lim_tiempos = 40
+        max_completas = 3
     tokens = _tokens_busqueda(pregunta or "")
     conn = get_connection()
     try:
-        scan_f = 400 if tokens else lim_act
-        scan_t = 400 if tokens else lim_ter
+        scan_f = (200 if ligero else 400) if tokens else lim_act
+        scan_t = (200 if ligero else 400) if tokens else lim_ter
+        if not tokens and ligero:
+            scan_f = lim_act * scan_mult
+            scan_t = lim_ter * scan_mult
         faenas = _faenas_activas(conn, scan_f) if incluir_faenas else []
         terminadas = _faenas_terminadas(conn, scan_t) if incluir_faenas else []
         if tokens and incluir_faenas:
@@ -1293,7 +1333,7 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None, historial=None):
             resuelta = _resolver_faena(conn, pregunta or "", faena_id, historial=historial)
             if resuelta and resuelta.get("id") and resuelta.get("id") not in ids_detalle:
                 ids_detalle.append(resuelta.get("id"))
-            for fid in ids_detalle[:3]:
+            for fid in ids_detalle[:max_completas]:
                 fila_id = conn.execute(_sql_faena_campos() + " WHERE f.id=?", (fid,)).fetchone()
                 if not fila_id:
                     continue
@@ -1323,14 +1363,30 @@ def snapshot_negocio(faena_id=None, modo="todo", pregunta=None, historial=None):
             "faenas": faenas,
             "faenas_terminadas": terminadas,
             "materiales": mats,
-            "extracciones_compra": _extracciones_snapshot(conn, 15) if incluir_mats or incluir_faenas else [],
-            "referencias_faena": _referencias_snapshot(conn, 15) if incluir_faenas else [],
-            "tiempos_resumen": _tiempos_resumen(conn, 40) if incluir_faenas else [],
+            "extracciones_compra": _extracciones_snapshot(conn, lim_extra) if incluir_mats or incluir_faenas else [],
+            "referencias_faena": _referencias_snapshot(conn, lim_ref) if incluir_faenas else [],
+            "tiempos_resumen": _tiempos_resumen(conn, lim_tiempos) if incluir_faenas else [],
             "faena_detalle": extra,
             "faenas_completas": faenas_completas,
         }
     finally:
         conn.close()
+
+
+def _pide_gestion(pregunta):
+    """Detecta peticiones de gestionar/cambiar datos (no solo consultar)."""
+    t = _norm_txt(pregunta or "")
+    if not t:
+        return False
+    verbos = (
+        "anade", "añade", "añadir", "agrega", "agregar", "crea", "crear", "guarda", "guardar",
+        "apunta", "apuntar", "registra", "registrar", "edita", "editar", "modifica", "modificar",
+        "cambia", "cambiar", "pon", "poner", "borra", "borrar", "elimina", "eliminar",
+        "actualiza", "actualizar", "aplica", "aplicar", "sube", "subir", "marca", "marcar",
+        "cobrale", "cobrar", "anota gasto", "añade gasto", "añade cobro", "añade partida",
+        "linea de presupuesto", "línea de presupuesto",
+    )
+    return any(v in t for v in verbos)
 
 
 def _extracciones_snapshot(conn, limite):
@@ -1607,9 +1663,11 @@ def _resumen_heuristico_faena(datos):
 
 def _estado_faena_pregunta(pregunta):
     txt = _norm_txt(pregunta)
+    if any(k in txt for k in ("no aceptad", "noaceptad")):
+        return "terminadas"
     if any(k in txt for k in ("terminad", "archivad")):
         return "terminadas"
-    if any(k in txt for k in ("activ", "abierta", "en curso", "pendient")):
+    if any(k in txt for k in ("aplazad", "activ", "abierta", "en curso", "pendient", "presupuestad", "medicion", "medición")):
         return "activas"
     return "todas"
 
@@ -2074,6 +2132,15 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
             "No he podido guardar la anotación. Dime el número de la faena y el texto.",
             modo,
         )
+    # Gestión (crear/editar/añadir…) → job Cursor (antes del atajo local de ficha).
+    if _pide_gestion(pregunta) and not (_pide_web_materiales(pregunta, modo) or aclarando):
+        try:
+            from jimmi_cursor import iniciar_job_gestion
+            return iniciar_job_gestion(pregunta, faena_id=faena_id, modo=modo, historial=historial)
+        except Exception as e:
+            print("jimmi cursor job:", e)
+            return {"ok": False, "error": f"Jimmi gestión: {e}"}
+
     forzar_datos = (
         _pide_notas(pregunta) or _pide_ficha(pregunta) or _pide_fotos(pregunta)
         or _es_seguimiento(pregunta)
@@ -2090,7 +2157,12 @@ def _chat_jimmi_turno(pregunta, historial=None, faena_id=None, modo="todo"):
         return {"ok": False, "error": "Jimmi necesita CLAVE_API (Gemini) en Render"}
 
     memoria = memoria_para_modo(modo)
-    datos = snapshot_negocio(faena_id, modo, pregunta=_pregunta_para_buscar(pregunta, historial), historial=historial)
+    datos = snapshot_negocio(
+        faena_id, modo,
+        pregunta=_pregunta_para_buscar(pregunta, historial),
+        historial=historial,
+        ligero=True,
+    )
     system = (
         "Eres Jimmi, secretario de un taller de carpintería. Hablas español, claro y breve. "
         "Mantén el hilo: esa, esta, las notas o las fotos se refieren a lo último de lo que habéis hablado. "

@@ -63,10 +63,16 @@ Opcionales:
 | Clave | Uso |
 |---|---|
 | `PUBLIC_BASE_URL` | URL pública; si no, se usa `RENDER_EXTERNAL_URL` |
-| `CLAVE_API` / `IA_API_KEY` | Jimmi (Gemini) |
+| `CLAVE_API` / `IA_API_KEY` | Jimmi consultas (Gemini) |
 | `IA_MODO` | `local` o el modo cloud que uses |
 | `IA_PROVIDER` | p. ej. `gemini` |
 | `TICKET_CLAVE_API` | tickets |
+| `GROK_API_KEY` / `XAI_API_KEY` | Jimmi gestión (xAI Grok; preferido si está definida) |
+| `GROK_MODEL` | Modelo Grok (p. ej. `grok-3-mini`) |
+| `CURSOR_API_KEY` | Jimmi gestión alternativa (Cursor SDK) |
+| `CURSOR_AGENT_MODEL` | Modelo del agente Cursor (p. ej. `composer-2.5`) |
+| `CURSOR_REPO_URL` | Repo GitHub para el agente cloud (opcional) |
+| `FAENAS_PUBLIC_URL` | URL de la app (si no, `PUBLIC_BASE_URL`) |
 
 El certificado `isrgrootx1.pem` va en el repo para SSL de MySQL.
 

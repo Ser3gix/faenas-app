@@ -847,6 +847,20 @@ def _crear_esquema_sqlite(cursor):
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jimmi_jobs (
+            id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'pending',
+            pregunta TEXT NOT NULL DEFAULT '',
+            faena_id INTEGER DEFAULT 0,
+            modo TEXT DEFAULT 'todo',
+            resultado_json TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS extracciones_compra (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             origen TEXT NOT NULL DEFAULT 'ticket',
@@ -1117,6 +1131,19 @@ def _crear_esquema_mysql(cursor):
             id INT NOT NULL PRIMARY KEY,
             resumen LONGTEXT NOT NULL,
             actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS jimmi_jobs (
+            id VARCHAR(64) NOT NULL PRIMARY KEY,
+            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            pregunta VARCHAR(4000) NOT NULL DEFAULT '',
+            faena_id INT NOT NULL DEFAULT 0,
+            modo VARCHAR(50) NOT NULL DEFAULT 'todo',
+            resultado_json LONGTEXT,
+            error VARCHAR(2000) NOT NULL DEFAULT '',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
         """
