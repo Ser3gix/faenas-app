@@ -7202,8 +7202,16 @@ async function procesarTicketConIA() {
     });
     let data = null;
     try { data = await r.json(); } catch (eJson) { data = null; }
-    if (!r.ok || !data) {
-      throw new Error((data && data.error) || `Error del servidor (${r.status})`);
+    if (!r.ok || !data || data.ok === false) {
+      const rawErr = (data && data.error) || `Error del servidor (${r.status})`;
+      const low = String(rawErr).toLowerCase();
+      if (low.includes("429") || low.includes("cuota") || low.includes("quota")) {
+        throw new Error(
+          "Gemini sin cuota (límite de la API). Espera el reinicio de cuota o cambia CLAVE_API / TICKET_CLAVE_API. " +
+          "Si estás en WiFi, abre http://IP-del-PC:5000/movil2 con el PC encendido."
+        );
+      }
+      throw new Error(rawErr);
     }
     if (data.ok && data.data) {
       ticketOrigenAnalisis = "ticket";

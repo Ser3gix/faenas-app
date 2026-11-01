@@ -81,10 +81,12 @@ _GEMINI_MODELOS_CANDIDATOS = [
     "gemini-flash-lite-latest",
     "gemini-pro-latest",
 ]
-# En Render free el proxy corta ~30s: un solo modelo fuerte y rápido.
+# Preferir flash completo; si hay 429 de cuota, probar lite/otro (a veces el cupo es por modelo).
 _TICKET_MODELOS_CANDIDATOS = [
     "gemini-3.5-flash",
     "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
 ]
 
 if pytesseract is not None:
@@ -5153,10 +5155,10 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                 modelos_ticket.append(n)
         if not modelos_ticket:
             modelos_ticket = [_TICKET_MODELO_POR_DEFECTO]
-        # Una sola pasada en tickets (evitar superar el timeout del proxy).
-        if tipo == "ticket":
-            modelos_ticket = modelos_ticket[:1]
         ultimo_error = None
+        # En tickets: como mucho 2 modelos para no pasarnos del corte ~30s de Render.
+        if tipo == "ticket":
+            modelos_ticket = modelos_ticket[:2]
         for modelo_intento in modelos_ticket:
             try:
                 raw = _peticion_gemini(
@@ -5167,7 +5169,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                     temperature=0,
                     api_key=ticket_key,
                     model=modelo_intento,
-                    timeout=26 if tipo == "ticket" else (70 if tipo == "documento" else 90),
+                    timeout=20 if tipo == "ticket" else (70 if tipo == "documento" else 90),
                 )
                 contenido = _gemini_extraer_texto(raw)
                 data = _extraer_json_de_texto(contenido)
@@ -5184,8 +5186,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                 ultimo_error = e
                 mensaje = str(e).lower()
                 is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "too many requests"])
-                if is_quota or tipo == "ticket":
-                    break
+                # Si un modelo se queda sin cuota, probar el siguiente (lite a veces aún responde).
+                if is_quota:
+                    continue
+                if tipo == "ticket":
+                    continue
                 continue
         try:
             # Fallback OCR solo si Gemini no aportó líneas (rápido, 1 imagen).
