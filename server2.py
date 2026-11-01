@@ -1328,7 +1328,9 @@ _CLIENTES_BACKFILL_HECHO = False
 
 @app.route("/movil2")
 def movil2():
-    resp = make_response(render_template("movil2.html", faenas_api_base=_url_api_publica()))
+    # En el PC: API local (tickets/Jimmi más fiables). En la nube: PUBLIC_BASE_URL.
+    api_base = _url_api_publica() if en_servidor_nube() else ""
+    resp = make_response(render_template("movil2.html", faenas_api_base=api_base))
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return resp
 
@@ -5165,7 +5167,7 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                     temperature=0,
                     api_key=ticket_key,
                     model=modelo_intento,
-                    timeout=22 if tipo == "ticket" else (70 if tipo == "documento" else 90),
+                    timeout=26 if tipo == "ticket" else (70 if tipo == "documento" else 90),
                 )
                 contenido = _gemini_extraer_texto(raw)
                 data = _extraer_json_de_texto(contenido)
