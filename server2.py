@@ -81,11 +81,10 @@ _GEMINI_MODELOS_CANDIDATOS = [
     "gemini-flash-lite-latest",
     "gemini-pro-latest",
 ]
+# En Render free el proxy corta ~30s: un solo modelo fuerte y rápido.
 _TICKET_MODELOS_CANDIDATOS = [
     "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
 ]
 
 if pytesseract is not None:
@@ -5131,8 +5130,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
     ticket_key = TICKET_IA_API_KEY or IA_API_KEY
     ticket_model = TICKET_IA_MODEL or IA_MODEL
     if ticket_key and _ia_provider_activo() == "gemini":
+        # Comprimir en servidor: menos latencia/memoria (Render free corta ~30s).
+        if tipo in {"ticket", "documento"} and imgs:
+            imgs = [_comprimir_imagen_data_url(x, max_lado=1280, calidad=75) or x for x in imgs[:2]]
         parts_pdf = [_gemini_pdf_part(pdf_bytes)] if pdf_bytes else []
-        parts_img = [_gemini_imagen_part(img) for img in imgs[:4]]
+        parts_img = [_gemini_imagen_part(img) for img in imgs[:2]]
         contents = [
             {
                 "role": "user",
@@ -5149,6 +5151,9 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                 modelos_ticket.append(n)
         if not modelos_ticket:
             modelos_ticket = [_TICKET_MODELO_POR_DEFECTO]
+        # Una sola pasada en tickets (evitar superar el timeout del proxy).
+        if tipo == "ticket":
+            modelos_ticket = modelos_ticket[:1]
         ultimo_error = None
         for modelo_intento in modelos_ticket:
             try:
@@ -5156,11 +5161,11 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                     contents=contents,
                     system_instruction=system,
                     response_mime_type="application/json",
-                    max_tokens=3500 if tipo in {"ticket", "documento"} else 1200,
+                    max_tokens=2500 if tipo in {"ticket", "documento"} else 1200,
                     temperature=0,
                     api_key=ticket_key,
                     model=modelo_intento,
-                    timeout=90 if tipo in {"ticket", "documento"} else 90,
+                    timeout=22 if tipo == "ticket" else (70 if tipo == "documento" else 90),
                 )
                 contenido = _gemini_extraer_texto(raw)
                 data = _extraer_json_de_texto(contenido)
@@ -5172,18 +5177,17 @@ def _extraer_materiales_json_con_ia(prompt, texto=None, imagen=None, imagenes=No
                 if isinstance(data, dict) and (data.get("articulos") or tipo not in {"ticket", "documento"}):
                     data["_modelo"] = modelo_intento
                     return data
-                # Sin artículos: probar siguiente modelo (flash-lite a menudo falla en tickets).
                 ultimo_error = RuntimeError(f"Sin artículos con modelo {modelo_intento}")
             except Exception as e:
                 ultimo_error = e
                 mensaje = str(e).lower()
                 is_quota = any(k in mensaje for k in ["429", "quota", "rate limit", "too many requests"])
-                if is_quota:
+                if is_quota or tipo == "ticket":
                     break
                 continue
         try:
-            # Fallback local cuando Gemini no saca líneas o falla.
-            for img in imgs:
+            # Fallback OCR solo si Gemini no aportó líneas (rápido, 1 imagen).
+            for img in imgs[:1]:
                 texto_ocr = _texto_ocr_desde_imagen_base64(img)
                 data = _json_ticket_desde_ocr(texto_ocr)
                 if isinstance(data, dict) and data.get("articulos"):
@@ -5571,24 +5575,40 @@ def ia_procesar_texto():
 
 @app.route("/api/ia/procesar-ticket", methods=["POST"])
 def ia_procesar_ticket():
-    datos = request.json or {}
-    imagen = datos.get("imagen") or datos.get("ticketFotoBase64") or datos.get("data")
-    imagen = limpiar_data_b64(imagen)
-    prompt = (datos.get("prompt") or "").strip()
-    faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
-    guardar = _parse_bool_seguro(datos.get("guardar"), True)
-    if not imagen:
-        return jsonify({"ok": False, "error": "Falta la imagen del ticket"}), 400
     try:
+        datos = request.get_json(silent=True) or {}
+        imagen = datos.get("imagen") or datos.get("ticketFotoBase64") or datos.get("data")
+        # Mantener data URL completa para comprimir/MIME; limpiar solo al enviar a Gemini.
+        if isinstance(imagen, str) and imagen.startswith("data:") and ";base64," in imagen:
+            pass
+        else:
+            limpio = limpiar_data_b64(imagen)
+            imagen = ("data:image/jpeg;base64," + limpio) if limpio else ""
+        prompt = (datos.get("prompt") or "").strip()
+        faena_id = _parse_faena_id_seguro(datos.get("faena_id"))
+        guardar = _parse_bool_seguro(datos.get("guardar"), True)
+        if not imagen:
+            return jsonify({"ok": False, "error": "Falta la imagen del ticket"}), 400
         prompt_base = prompt or _prompt_ticket_base()
         data = _extraer_materiales_json_con_ia(prompt_base, imagen=imagen, tipo="ticket")
         articulos = data.get("articulos") or []
-        data["articulos"] = [_normalizar_articulo(a) for a in articulos if isinstance(a, dict) and (a.get("nombre") or "").strip()]
+        data["articulos"] = [
+            _normalizar_articulo(a)
+            for a in articulos
+            if isinstance(a, dict) and (a.get("nombre") or "").strip()
+        ]
+        data.pop("_modelo", None)
         data["tipo_fuente"] = "ticket"
         data["guardado_en_nube"] = guardar
         if guardar:
-            data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "ticket", data)
-        data["ficha"] = guardar_extraccion_compra("ticket", data, faena_id)
+            try:
+                data["resumen_guardado"] = _persistir_resultado_ia_en_nube(faena_id, "ticket", data)
+            except Exception:
+                data["resumen_guardado"] = None
+        try:
+            data["ficha"] = guardar_extraccion_compra("ticket", data, faena_id)
+        except Exception:
+            data["ficha"] = None
         return jsonify({"ok": True, "data": data})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error procesando ticket con IA: {str(e)}"}), 502

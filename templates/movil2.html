@@ -2758,7 +2758,7 @@ function fileToBase64(file) {
   });
 }
 
-async function comprimirImagenParaTicket(dataUrl, maxWidth = 1600, quality = 0.72) {
+async function comprimirImagenParaTicket(dataUrl, maxWidth = 1280, quality = 0.72) {
   if (!dataUrl || typeof dataUrl !== "string") return dataUrl;
   try {
     const img = new Image();
@@ -5176,7 +5176,7 @@ async function procesarGastoFotoTicket(faenaId, file) {
   if (estado) { estado.style.display = "block"; estado.style.color = "#666"; estado.textContent = "🤖 La IA está analizando…"; }
   try {
     const original = await fileToBase64(file);
-    const imagen = await comprimirImagenParaTicket(original, 1900, 0.82);
+    const imagen = await comprimirImagenParaTicket(original, 1280, 0.72);
     const r = await fetch(`${getServerUrl()}/ia/procesar-ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
