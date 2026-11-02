@@ -6860,6 +6860,7 @@ def eliminar_documento(id, nombre):
 
 @app.route("/api/faenas/<int:id>/documentos/<path:nombre>/descargar", methods=["GET"])
 def descargar_documento(id, nombre):
+    """Sirve el archivo vía API (proxy R2). Evita redirect a URLs R2 que el móvil/CF bloquean (403)."""
     conn = _conn_para_faena(id)
     faena = conn.execute("SELECT carpeta FROM faenas WHERE id=?", (id,)).fetchone()
     fila = None
@@ -6870,19 +6871,49 @@ def descargar_documento(id, nombre):
     except Exception:
         fila = None
     conn.close()
+    mime = _mime_archivo(nombre)
     if fila:
         fila = fila_a_dict(fila)
-        if fila.get("public_url"):
-            return redirect(fila["public_url"])
+        mime = fila.get("mime_type") or mime
+        # Preferir object_key + proxy (funciona en móvil). Solo redirect si no hay otra vía.
         if fila.get("object_key"):
-            contenido = descargar_bytes(fila["object_key"])
+            try:
+                contenido = descargar_bytes(fila["object_key"])
+            except Exception:
+                contenido = None
             if contenido:
                 buf = io.BytesIO(contenido)
-                return send_file(buf, as_attachment=True, download_name=nombre, mimetype=fila.get("mime_type") or _mime_archivo(nombre))
+                return send_file(
+                    buf,
+                    as_attachment=True,
+                    download_name=nombre,
+                    mimetype=mime or "application/octet-stream",
+                )
+        if fila.get("public_url"):
+            # Intentar bajar nosotros la URL pública y servirla; si falla, redirect.
+            try:
+                req = urllib.request.Request(
+                    fila["public_url"],
+                    headers={"User-Agent": "faenas-app/1.0"},
+                    method="GET",
+                )
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    contenido = resp.read()
+                if contenido:
+                    buf = io.BytesIO(contenido)
+                    return send_file(
+                        buf,
+                        as_attachment=True,
+                        download_name=nombre,
+                        mimetype=mime or "application/octet-stream",
+                    )
+            except Exception:
+                return redirect(fila["public_url"])
     if faena and faena["carpeta"]:
         ruta = os.path.join(faena["carpeta"], "Documentos", nombre)
         if os.path.exists(ruta):
-            return send_file(ruta, as_attachment=True, download_name=nombre)
+            return send_file(ruta, as_attachment=True, download_name=nombre, mimetype=mime or "application/octet-stream")
+    # Último recurso: buscar object_key por nombre en R2 vía listado DB sin mime
     return jsonify({"ok": False, "error": "Archivo no encontrado. Si es un plano de PolyBoard, está en el PC."}), 404
 
 @app.route("/api/faenas/<int:id>/documentos/<path:nombre>/abrir", methods=["POST"])

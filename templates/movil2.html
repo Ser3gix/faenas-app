@@ -4541,9 +4541,38 @@ function renderNotaLibreta(a, faenaId) {
   </div>`;
 }
 
+function urlDescargaDocumento(faenaId, nombre) {
+  const base = getServerUrl().replace(/\/$/, "");
+  return `${base}/faenas/${faenaId}/documentos/${encodeURIComponent(nombre)}/descargar`;
+}
+
+function abrirDocumentoMovil(faenaId, nombre) {
+  if (!faenaId || !nombre) {
+    toast("Documento no válido", true);
+    return;
+  }
+  const url = urlDescargaDocumento(faenaId, nombre);
+  let win = null;
+  try { win = window.open(url, "_blank"); } catch (e) { win = null; }
+  if (!win) {
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e2) {
+      toast("No se pudo abrir. Prueba de nuevo con conexión.", true);
+    }
+  }
+}
+
 async function cargarDocumentosPC(faenaId) {
   try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: faenasAbortTimeout(6000) });
+    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: faenasAbortTimeout(20000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
@@ -4561,17 +4590,22 @@ async function cargarDocumentosPC(faenaId) {
       localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
     }
     el.innerHTML = d.data.map(doc => {
-      const ext = doc.nombre.split(".").pop().toUpperCase();
-      const iconos = { PDF:"📕", TXT:"📝", DXF:"📐", OCP:"🔩", PNG:"🖼️", JPG:"🖼️", JPEG:"🖼️" };
+      const nombre = doc.nombre || "";
+      const ext = (nombre.split(".").pop() || "").toUpperCase();
+      const iconos = { PDF:"📕", TXT:"📝", DXF:"📐", OCP:"🔩", PRN:"🖨️", PNG:"🖼️", JPG:"🖼️", JPEG:"🖼️" };
       const icono = iconos[ext] || "📎";
       const kb = doc.tamaño ? Math.round(doc.tamaño / 1024) : 0;
+      const nomJs = String(nombre).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
       return `<div class="doc-item">
         <div class="doc-icon">${icono}</div>
-        <div class="doc-info">
-          <div class="doc-nombre">${escHtml(doc.nombre)}</div>
-          <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""}</div>
+        <div class="doc-info" onclick="abrirDocumentoMovil('${faenaId}','${nomJs}')" style="cursor:pointer">
+          <div class="doc-nombre">${escHtml(nombre)}</div>
+          <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""} · tocar para abrir</div>
         </div>
-        <button class="btn btn-s btn-inline" style="margin-left:auto" onclick="analizarDocumentoPC('${faenaId}','${escHtml(doc.ruta || "")}','${escHtml(doc.nombre || "")}')">🤖 IA</button>
+        <div style="display:flex;gap:6px;margin-left:auto;flex-shrink:0">
+          <button class="btn btn-p btn-inline" onclick="event.stopPropagation();abrirDocumentoMovil('${faenaId}','${nomJs}')">Abrir</button>
+          <button class="btn btn-s btn-inline" onclick="event.stopPropagation();analizarDocumentoPC('${faenaId}','${escHtml(doc.ruta || "")}','${escHtml(nombre)}')">🤖</button>
+        </div>
       </div>`;
     }).join("");
     toast(`✓ ${d.data.length} documento${d.data.length!==1?"s":""} cargado${d.data.length!==1?"s":""}`);
