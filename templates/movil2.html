@@ -4497,32 +4497,35 @@ function renderPanelDocumentos(f) {
     ? todasAnot.map(a => renderNotaLibreta(a, f.id || f._tempId)).join("")
     : `<div style="padding:20px 12px;font-size:0.85rem;color:#bbb;text-align:center">Sin anotaciones.<br>Pulsa + para añadir una nota.</div>`;
 
+  const fidDocs = f.id || f._tempId;
   document.getElementById("p-documentos-content").innerHTML = `
     <div class="section-sep">
       📄 Documentos del PC
-      <button class="btn btn-s btn-inline" onclick="cargarDocumentosPC('${f.id || f._tempId}')">↻ Cargar</button>
+      <button class="btn btn-s btn-inline" id="btn-docs-cargar-${fidDocs}" onclick="cargarDocumentosPC('${fidDocs}')">↻ Cargar</button>
     </div>
-    <div id="docs-ia-result-${f.id||f._tempId}" style="display:none;margin:10px 0;padding:10px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)">
+    <div id="docs-ia-result-${fidDocs}" style="display:none;margin:10px 0;padding:10px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)">
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px">
         <strong style="font-size:0.86rem">Resultado IA</strong>
-        <button class="btn btn-s btn-inline" onclick="importarJsonDocumentos('${f.id || f._tempId}')">Añadir a materiales</button>
+        <button class="btn btn-s btn-inline" onclick="importarJsonDocumentos('${fidDocs}')">Añadir a materiales</button>
       </div>
-      <textarea id="docs-ia-json-${f.id||f._tempId}" style="width:100%;min-height:140px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#10131a;color:#fff;padding:10px;font-size:0.8rem"></textarea>
+      <textarea id="docs-ia-json-${fidDocs}" style="width:100%;min-height:140px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#10131a;color:#fff;padding:10px;font-size:0.8rem"></textarea>
     </div>
-    <div id="docs-list-${f.id||f._tempId}">
-      <div style="font-size:0.82rem;color:#aaa;padding:8px 0">Pulsa ↻ Cargar para ver los archivos del PC.</div>
+    <div id="docs-list-${fidDocs}">
+      <div style="font-size:0.82rem;color:#aaa;padding:8px 0">Cargando documentos…</div>
     </div>
 
     <div style="height:16px"></div>
 
     <div class="section-sep">
       📝 Anotaciones
-      <button class="btn btn-p btn-inline" onclick="nuevaAnotacion('${f.id || f._tempId}')">+ Nota</button>
+      <button class="btn btn-p btn-inline" onclick="nuevaAnotacion('${fidDocs}')">+ Nota</button>
     </div>
-    <div class="notebook" id="notebook-${f.id||f._tempId}">
+    <div class="notebook" id="notebook-${fidDocs}">
       ${htmlAnot}
     </div>
   `;
+  // Auto-carga al abrir el panel (con reintentos internos).
+  setTimeout(() => { try { cargarDocumentosPC(fidDocs); } catch (eAuto) {} }, 50);
 }
 
 function renderNotaLibreta(a, faenaId) {
@@ -4571,47 +4574,80 @@ function abrirDocumentoMovil(faenaId, nombre) {
 }
 
 async function cargarDocumentosPC(faenaId) {
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, { signal: faenasAbortTimeout(20000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error);
-    const el = document.getElementById(`docs-list-${faenaId}`);
-    if (!el) return;
-    if (!d.data.length) {
-      const faenaVacia = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-      if (faenaVacia) faenaVacia.documentos = [];
-      el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Sin documentos en esta faena.</div>`;
-      return;
+  const el = document.getElementById(`docs-list-${faenaId}`);
+  const btn = document.getElementById(`btn-docs-cargar-${faenaId}`);
+  if (btn) { btn.disabled = true; btn.textContent = "…"; }
+  if (el) el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Cargando documentos…</div>`;
+
+  const maxIntentos = 3;
+  let ultimoError = "";
+  let data = null;
+  for (let intento = 1; intento <= maxIntentos; intento++) {
+    try {
+      if (el && intento > 1) {
+        el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Reintentando (${intento}/${maxIntentos})…</div>`;
+      }
+      const r = await fetch(`${getServerUrl()}/faenas/${faenaId}/documentos`, {
+        signal: faenasAbortTimeout(35000)
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Respuesta no válida");
+      data = d;
+      break;
+    } catch (e) {
+      ultimoError = (e && e.name === "TimeoutError")
+        ? "tiempo de espera agotado"
+        : ((e && e.message) || "error de red");
+      if (intento < maxIntentos) {
+        await new Promise(res => setTimeout(res, 800 * intento));
+        continue;
+      }
     }
-    const faena = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-    if (faena) {
-      faena.documentos = d.data;
-      localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-    }
-    el.innerHTML = d.data.map(doc => {
-      const nombre = doc.nombre || "";
-      const ext = (nombre.split(".").pop() || "").toUpperCase();
-      const iconos = { PDF:"📕", TXT:"📝", DXF:"📐", OCP:"🔩", PRN:"🖨️", PNG:"🖼️", JPG:"🖼️", JPEG:"🖼️" };
-      const icono = iconos[ext] || "📎";
-      const kb = doc.tamaño ? Math.round(doc.tamaño / 1024) : 0;
-      const nomJs = String(nombre).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-      return `<div class="doc-item">
-        <div class="doc-icon">${icono}</div>
-        <div class="doc-info" onclick="abrirDocumentoMovil('${faenaId}','${nomJs}')" style="cursor:pointer">
-          <div class="doc-nombre">${escHtml(nombre)}</div>
-          <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""} · tocar para abrir</div>
-        </div>
-        <div style="display:flex;gap:6px;margin-left:auto;flex-shrink:0">
-          <button class="btn btn-p btn-inline" onclick="event.stopPropagation();abrirDocumentoMovil('${faenaId}','${nomJs}')">Abrir</button>
-          <button class="btn btn-s btn-inline" onclick="event.stopPropagation();analizarDocumentoPC('${faenaId}','${escHtml(doc.ruta || "")}','${escHtml(nombre)}')">🤖</button>
-        </div>
-      </div>`;
-    }).join("");
-    toast(`✓ ${d.data.length} documento${d.data.length!==1?"s":""} cargado${d.data.length!==1?"s":""}`);
-  } catch(e) {
-    toast("Error al cargar documentos del PC", true);
   }
+
+  if (btn) { btn.disabled = false; btn.textContent = "↻ Cargar"; }
+  if (!data) {
+    if (el) {
+      el.innerHTML = `<div style="font-size:0.82rem;color:var(--red);padding:8px 0">No se pudieron cargar (${escHtml(ultimoError)}).<br><button class="btn btn-s btn-inline" style="margin-top:8px" onclick="cargarDocumentosPC('${faenaId}')">Reintentar</button></div>`;
+    }
+    toast("Error al cargar documentos: " + ultimoError, true);
+    return;
+  }
+
+  if (!el) return;
+  const lista = data.data || [];
+  if (!lista.length) {
+    const faenaVacia = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+    if (faenaVacia) faenaVacia.documentos = [];
+    el.innerHTML = `<div style="font-size:0.82rem;color:#aaa;padding:8px 0">Sin documentos en esta faena.</div>`;
+    return;
+  }
+  const faena = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
+  if (faena) {
+    faena.documentos = lista;
+    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  }
+  el.innerHTML = lista.map(doc => {
+    const nombre = doc.nombre || "";
+    const ext = (nombre.split(".").pop() || "").toUpperCase();
+    const iconos = { PDF:"📕", TXT:"📝", DXF:"📐", OCP:"🔩", PRN:"🖨️", PNG:"🖼️", JPG:"🖼️", JPEG:"🖼️" };
+    const icono = iconos[ext] || "📎";
+    const kb = doc.tamaño ? Math.round(doc.tamaño / 1024) : 0;
+    const nomJs = String(nombre).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    return `<div class="doc-item">
+      <div class="doc-icon">${icono}</div>
+      <div class="doc-info" onclick="abrirDocumentoMovil('${faenaId}','${nomJs}')" style="cursor:pointer">
+        <div class="doc-nombre">${escHtml(nombre)}</div>
+        <div class="doc-meta">${ext}${kb ? " · " + kb + " KB" : ""} · tocar para abrir</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-left:auto;flex-shrink:0">
+        <button class="btn btn-p btn-inline" onclick="event.stopPropagation();abrirDocumentoMovil('${faenaId}','${nomJs}')">Abrir</button>
+        <button class="btn btn-s btn-inline" onclick="event.stopPropagation();analizarDocumentoPC('${faenaId}','${escHtml(doc.ruta || "")}','${escHtml(nombre)}')">🤖</button>
+      </div>
+    </div>`;
+  }).join("");
+  toast(`✓ ${lista.length} documento${lista.length!==1?"s":""} cargado${lista.length!==1?"s":""}`);
 }
 
 async function analizarDocumentoPC(faenaId, ruta, nombre) {
