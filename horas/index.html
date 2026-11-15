@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Horas</title>
+<style>
+  :root {
+    --fondo: #f3f0e8;
+    --papel: #fffdf8;
+    --tinta: #1c1917;
+    --suave: #57534e;
+    --linea: #e4dccf;
+    --verde: #166534;
+    --verde-suave: #dcfce7;
+    --oscuro: #292524;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--fondo);
+    color: var(--tinta);
+    min-height: 100dvh;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  header, main { max-width: 520px; margin: 0 auto; }
+  header { padding: calc(14px + env(safe-area-inset-top)) 16px 8px; }
+  h1 { font-size: 1.45rem; margin: 0; }
+  .nota { color: var(--suave); font-size: 0.88rem; margin: 4px 0 0; }
+  main { padding: 8px 16px 16px; }
+  label { display: block; font-size: 0.82rem; font-weight: 700; margin: 12px 0 6px; }
+  input, select, button { font: inherit; }
+  input, select {
+    width: 100%;
+    padding: 14px 12px;
+    border: 1px solid var(--linea);
+    border-radius: 12px;
+    background: var(--papel);
+    color: var(--tinta);
+  }
+  .reloj {
+    margin: 16px 0 8px;
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    text-align: center;
+  }
+  .botones { display: flex; gap: 8px; margin-top: 8px; }
+  button {
+    border: 0;
+    border-radius: 12px;
+    padding: 14px 12px;
+    font-weight: 700;
+    background: var(--oscuro);
+    color: white;
+  }
+  button.secundario { background: white; color: var(--tinta); border: 1px solid var(--linea); }
+  button.verde { background: var(--verde); }
+  .botones button { flex: 1; }
+  button.ancho { width: 100%; margin-top: 8px; }
+  .aviso { min-height: 1.3em; color: var(--verde); font-weight: 700; margin: 10px 0; }
+  .aviso.error { color: #b91c1c; }
+  .tarjeta {
+    background: var(--papel);
+    border: 1px solid var(--linea);
+    border-radius: 14px;
+    padding: 12px;
+    margin-top: 8px;
+  }
+  .tarjeta.abierta { background: var(--verde-suave); }
+  .fila-tarjeta { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .meta { color: var(--suave); font-size: 0.92rem; margin-top: 4px; }
+  .total { margin-top: 14px; font-size: 1.35rem; font-weight: 700; }
+  nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    background: #fffdf8;
+    border-top: 1px solid var(--linea);
+  }
+  nav button { flex: 1; background: transparent; color: var(--suave); }
+  nav button.activa { background: var(--oscuro); color: white; }
+  .proceso-fila { display: flex; gap: 8px; align-items: center; }
+  .proceso-fila strong { flex: 1; }
+  .mini { padding: 10px 12px; }
+  h2 { font-size: 1.05rem; margin: 16px 0 0; }
+  .cargar {
+    text-align: center;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--linea);
+    display: block;
+    margin-top: 8px;
+    font-weight: 700;
+    background: white;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Horas</h1>
+  <p class="nota" id="nota-dia"></p>
+</header>
+
+<main id="vista-anotar">
+  <label for="proyecto">Proyecto</label>
+  <input id="proyecto" autocomplete="off">
+  <label for="juego">Juego</label>
+  <input id="juego" autocomplete="off">
+  <label for="proceso">Proceso</label>
+  <select id="proceso"></select>
+  <p class="reloj" id="reloj">--:--</p>
+  <button class="ancho secundario" id="btn-actualizar" type="button">Actualizar</button>
+  <div class="botones">
+    <button class="verde" id="btn-inicio" type="button">Inicio</button>
+    <button id="btn-final" type="button">Final</button>
+  </div>
+  <p class="aviso" id="aviso"></p>
+  <h2>Hoy</h2>
+  <div id="lista-hoy"></div>
+</main>
+
+<main id="vista-procesos" hidden>
+  <label for="nuevo-proceso">Nuevo proceso</label>
+  <input id="nuevo-proceso" autocomplete="off">
+  <button class="ancho verde" id="btn-anadir-proceso" type="button">Añadir</button>
+  <div id="lista-procesos"></div>
+  <button class="ancho secundario" id="btn-copia" type="button">Descargar copia</button>
+  <label class="cargar" for="archivo-copia">Cargar copia
+    <input id="archivo-copia" type="file" accept="application/json,.json" hidden>
+  </label>
+</main>
+
+<main id="vista-resultados" hidden>
+  <label for="fecha-resultado">Día</label>
+  <input id="fecha-resultado" type="date">
+  <div id="resultado"></div>
+</main>
+
+<nav>
+  <button type="button" id="nav-anotar" class="activa">Anotar</button>
+  <button type="button" id="nav-procesos">Procesos</button>
+  <button type="button" id="nav-resultados">Resultados</button>
+</nav>
+
+<script>
+const CLAVE = "horas-jornada-v1";
+
+function fechaLocal(d) {
+  d = d || new Date();
+  return d.getFullYear() + "-" + dos(d.getMonth() + 1) + "-" + dos(d.getDate());
+}
+
+function horaLocal(d) {
+  d = d || new Date();
+  return dos(d.getHours()) + ":" + dos(d.getMinutes());
+}
+
+function dos(n) {
+  return String(n).padStart(2, "0");
+}
+
+function partesFecha(fecha) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(fecha || ""));
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+}
+
+function diasDeAntiguedad(fecha, hoy) {
+  const a = partesFecha(fecha);
+  const b = partesFecha(hoy);
+  if (!a || !b) return 0;
+  const ua = Date.UTC(a.y, a.m - 1, a.d);
+  const ub = Date.UTC(b.y, b.m - 1, b.d);
+  return Math.round((ub - ua) / 86400000);
+}
+
+function purgarTramos(tramos, hoy) {
+  return (tramos || []).filter(function (t) {
+    return diasDeAntiguedad(t.fecha, hoy) < 15;
+  });
+}
+
+function aMinutos(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function minutosEntre(inicio, fin) {
+  const a = aMinutos(inicio);
+  const b = aMinutos(fin);
+  if (a == null || b == null || b < a) return null;
+  return b - a;
+}
+
+function redondearMediaHora(minutos) {
+  const m = Math.max(0, Math.round(Number(minutos) || 0));
+  const bloques = Math.floor(m / 30);
+  const resto = m % 30;
+  const n = resto >= 15 ? bloques + 1 : bloques;
+  return n / 2;
+}
+
+function norm(s) {
+  return String(s || "").trim().replace(/\s+/g, " ");
+}
+
+function claveTrabajo(t) {
+  return norm(t.proyecto).toLocaleLowerCase("es") + "|" + norm(t.juego).toLocaleLowerCase("es") + "|" + String(t.procesoId);
+}
+
+function nombreProceso(procesos, tramo) {
+  const lista = procesos || [];
+  for (let i = 0; i < lista.length; i++) {
+    if (String(lista[i].id) === String(tramo.procesoId)) return lista[i].nombre;
+  }
+  return tramo.procesoNombre || "Proceso";
+}
+
+function resumenJornada(tramos, fecha, procesos) {
+  const delDia = (tramos || []).filter(function (t) { return t.fecha === fecha; });
+  const mapa = new Map();
+  delDia.forEach(function (t) {
+    if (!t.final) return;
+    const mins = minutosEntre(t.inicio, t.final);
+    if (mins == null) return;
+    const clave = claveTrabajo(t);
+    if (!mapa.has(clave)) {
+      mapa.set(clave, {
+        proyecto: t.proyecto,
+        juego: t.juego,
+        proceso: nombreProceso(procesos, t),
+        minutos: 0
+      });
+    }
+    const item = mapa.get(clave);
+    item.minutos += mins;
+    item.proyecto = t.proyecto;
+    item.juego = t.juego;
+    item.proceso = nombreProceso(procesos, t);
+  });
+  const trabajos = Array.from(mapa.values()).map(function (item) {
+    return {
+      proyecto: item.proyecto,
+      juego: item.juego,
+      proceso: item.proceso,
+      minutos: item.minutos,
+      horas: redondearMediaHora(item.minutos)
+    };
+  });
+  trabajos.sort(function (a, b) {
+    return a.proyecto.localeCompare(b.proyecto, "es") || a.juego.localeCompare(b.juego, "es") || a.proceso.localeCompare(b.proceso, "es");
+  });
+  const total = trabajos.reduce(function (s, t) { return s + t.horas; }, 0);
+  return { trabajos: trabajos, total: total, tramos: delDia };
+}
+
+function textoDuracion(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return h + " h " + m + " min";
+  if (h) return h + " h";
+  return m + " min";
+}
+
+function textoHoras(h) {
+  return String(h).replace(".", ",") + " h";
+}
+
+function textoFecha(fecha) {
+  const p = partesFecha(fecha);
+  if (!p) return fecha;
+  return dos(p.d) + "/" + dos(p.m) + "/" + p.y;
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function cargar() {
+  try {
+    const d = JSON.parse(localStorage.getItem(CLAVE) || "{}");
+    return {
+      procesos: Array.isArray(d.procesos) ? d.procesos : [],
+      tramos: Array.isArray(d.tramos) ? d.tramos : []
+    };
+  } catch (e) {
+    return { procesos: [], tramos: [] };
+  }
+}
+
+function guardar() {
+  localStorage.setItem(CLAVE, JSON.stringify(datos));
+}
+
+function purgarYGuardar() {
+  const hoy = fechaLocal();
+  const siguientes = purgarTramos(datos.tramos, hoy);
+  if (siguientes.length !== datos.tramos.length) {
+    datos.tramos = siguientes;
+    guardar();
+  }
+}
+
+let datos = { procesos: [], tramos: [] };
+let horaCargada = "";
+
+function aviso(texto, esError) {
+  const el = document.getElementById("aviso");
+  el.textContent = texto || "";
+  el.className = esError ? "aviso error" : "aviso";
+}
+
+function campos() {
+  const proyecto = norm(document.getElementById("proyecto").value);
+  const juego = norm(document.getElementById("juego").value);
+  const procesoId = document.getElementById("proceso").value;
+  const proceso = datos.procesos.find(function (p) { return String(p.id) === String(procesoId); });
+  return { proyecto: proyecto, juego: juego, proceso: proceso };
+}
+
+function exigirTrabajo() {
+  const c = campos();
+  if (!datos.procesos.length) {
+    aviso("Añade un proceso primero.", true);
+    return null;
+  }
+  if (!c.proyecto || !c.juego || !c.proceso) {
+    aviso("Rellena proyecto, juego y proceso.", true);
+    return null;
+  }
+  if (!horaCargada) {
+    aviso("Pulsa Actualizar para cargar la hora.", true);
+    return null;
+  }
+  return c;
+}
+
+function tramoAbierto(c) {
+  const clave = claveTrabajo({ proyecto: c.proyecto, juego: c.juego, procesoId: c.proceso.id });
+  const hoy = fechaLocal();
+  const abiertos = datos.tramos.filter(function (t) {
+    return t.fecha === hoy && !t.final && claveTrabajo(t) === clave;
+  });
+  return abiertos.length ? abiertos[abiertos.length - 1] : null;
+}
+
+function alActualizar() {
+  horaCargada = horaLocal();
+  document.getElementById("reloj").textContent = horaCargada;
+  aviso("");
+}
+
+function alInicio() {
+  const c = exigirTrabajo();
+  if (!c) return;
+  if (tramoAbierto(c)) {
+    aviso("Este trabajo ya está abierto. Pulsa Final para cerrarlo.", true);
+    return;
+  }
+  const hora = horaCargada;
+  datos.tramos.push({
+    id: Date.now(),
+    fecha: fechaLocal(),
+    proyecto: c.proyecto,
+    juego: c.juego,
+    procesoId: c.proceso.id,
+    procesoNombre: c.proceso.nombre,
+    inicio: hora,
+    final: ""
+  });
+  guardar();
+  horaCargada = "";
+  document.getElementById("reloj").textContent = "--:--";
+  aviso("Inicio guardado a las " + hora + ".");
+  pintarHoy();
+}
+
+function alFinal() {
+  const c = exigirTrabajo();
+  if (!c) return;
+  const abierto = tramoAbierto(c);
+  if (!abierto) {
+    aviso("No hay un inicio abierto de este trabajo hoy.", true);
+    return;
+  }
+  if (minutosEntre(abierto.inicio, horaCargada) == null) {
+    aviso("La hora final es anterior a la de inicio.", true);
+    return;
+  }
+  const hora = horaCargada;
+  abierto.final = hora;
+  guardar();
+  horaCargada = "";
+  document.getElementById("reloj").textContent = "--:--";
+  aviso("Final guardado a las " + hora + ".");
+  pintarHoy();
+}
+
+function borrarTramo(id) {
+  datos.tramos = datos.tramos.filter(function (t) { return String(t.id) !== String(id); });
+  guardar();
+  pintarHoy();
+  aviso("Tramo borrado.");
+}
+
+function pintarHoy() {
+  const hoy = fechaLocal();
+  const lista = datos.tramos.filter(function (t) { return t.fecha === hoy; });
+  const caja = document.getElementById("lista-hoy");
+  if (!lista.length) {
+    caja.innerHTML = "<p class=\"nota\">Todavía no hay nada hoy.</p>";
+    return;
+  }
+  caja.innerHTML = lista.slice().reverse().map(function (t) {
+    const fin = t.final ? t.final : "abierto";
+    return "<article class=\"tarjeta" + (t.final ? "" : " abierta") + "\">" +
+      "<div class=\"fila-tarjeta\"><strong>" + esc(t.proyecto) + "</strong>" +
+      "<button type=\"button\" class=\"mini secundario\" data-borrar=\"" + esc(t.id) + "\">Borrar</button></div>" +
+      "<div class=\"meta\">" + esc(t.juego) + " · " + esc(nombreProceso(datos.procesos, t)) + "</div>" +
+      "<div class=\"meta\">" + esc(t.inicio) + " – " + esc(fin) + "</div></article>";
+  }).join("");
+  caja.querySelectorAll("[data-borrar]").forEach(function (b) {
+    b.addEventListener("click", function () { borrarTramo(b.getAttribute("data-borrar")); });
+  });
+}
+
+function pintarProcesosSelect() {
+  const sel = document.getElementById("proceso");
+  const previo = sel.value;
+  sel.innerHTML = datos.procesos.map(function (p) {
+    return "<option value=\"" + esc(p.id) + "\">" + esc(p.nombre) + "</option>";
+  }).join("");
+  if (previo) sel.value = previo;
+}
+
+function pintarListaProcesos() {
+  const caja = document.getElementById("lista-procesos");
+  if (!datos.procesos.length) {
+    caja.innerHTML = "<p class=\"nota\">No hay procesos.</p>";
+    return;
+  }
+  caja.innerHTML = datos.procesos.map(function (p) {
+    return "<article class=\"tarjeta proceso-fila\"><strong>" + esc(p.nombre) + "</strong>" +
+      "<button type=\"button\" class=\"mini secundario\" data-renombrar=\"" + esc(p.id) + "\">Renombrar</button>" +
+      "<button type=\"button\" class=\"mini secundario\" data-borrar-proceso=\"" + esc(p.id) + "\">Borrar</button></article>";
+  }).join("");
+  caja.querySelectorAll("[data-renombrar]").forEach(function (b) {
+    b.addEventListener("click", function () { renombrarProceso(b.getAttribute("data-renombrar")); });
+  });
+  caja.querySelectorAll("[data-borrar-proceso]").forEach(function (b) {
+    b.addEventListener("click", function () { borrarProceso(b.getAttribute("data-borrar-proceso")); });
+  });
+}
+
+function anadirProceso() {
+  const nombre = norm(document.getElementById("nuevo-proceso").value);
+  if (!nombre) return;
+  const repetido = datos.procesos.some(function (p) {
+    return norm(p.nombre).toLocaleLowerCase("es") === nombre.toLocaleLowerCase("es");
+  });
+  if (repetido) {
+    aviso("Ese proceso ya está.", true);
+    mostrar("anotar");
+    return;
+  }
+  datos.procesos.push({ id: Date.now(), nombre: nombre, orden: datos.procesos.length + 1 });
+  guardar();
+  document.getElementById("nuevo-proceso").value = "";
+  pintarProcesosSelect();
+  pintarListaProcesos();
+}
+
+function renombrarProceso(id) {
+  const p = datos.procesos.find(function (x) { return String(x.id) === String(id); });
+  if (!p) return;
+  const nombre = norm(window.prompt("Nombre del proceso", p.nombre) || "");
+  if (!nombre) return;
+  p.nombre = nombre;
+  guardar();
+  pintarProcesosSelect();
+  pintarListaProcesos();
+}
+
+function borrarProceso(id) {
+  const usado = datos.tramos.some(function (t) { return String(t.procesoId) === String(id); });
+  if (usado) {
+    window.alert("Ese proceso tiene horas guardadas. No se puede borrar todavía.");
+    return;
+  }
+  datos.procesos = datos.procesos.filter(function (p) { return String(p.id) !== String(id); });
+  guardar();
+  pintarProcesosSelect();
+  pintarListaProcesos();
+}
+
+function sumarFecha(fecha, dias) {
+  const p = partesFecha(fecha);
+  const d = new Date(Date.UTC(p.y, p.m - 1, p.d));
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.getUTCFullYear() + "-" + dos(d.getUTCMonth() + 1) + "-" + dos(d.getUTCDate());
+}
+
+function prepararFechaResultado() {
+  const hoy = fechaLocal();
+  const input = document.getElementById("fecha-resultado");
+  input.min = sumarFecha(hoy, -14);
+  input.max = hoy;
+  if (!input.value || input.value < input.min || input.value > input.max) input.value = hoy;
+}
+
+function pintarResultado() {
+  purgarYGuardar();
+  prepararFechaResultado();
+  const fecha = document.getElementById("fecha-resultado").value;
+  const r = resumenJornada(datos.tramos, fecha, datos.procesos);
+  const caja = document.getElementById("resultado");
+  let html = "<h2>" + esc(textoFecha(fecha)) + "</h2>";
+  if (!r.tramos.length) {
+    html += "<p class=\"nota\">Nada anotado este día.</p>";
+  } else {
+    html += r.tramos.slice().reverse().map(function (t) {
+      const fin = t.final ? t.final : "abierto";
+      return "<article class=\"tarjeta" + (t.final ? "" : " abierta") + "\"><strong>" + esc(t.proyecto) + "</strong>" +
+        "<div class=\"meta\">" + esc(t.juego) + " · " + esc(nombreProceso(datos.procesos, t)) + "</div>" +
+        "<div class=\"meta\">" + esc(t.inicio) + " – " + esc(fin) + "</div></article>";
+    }).join("");
+  }
+  html += "<h2>Por trabajo</h2>";
+  if (!r.trabajos.length) {
+    html += "<p class=\"nota\">No hay trabajos cerrados.</p>";
+  } else {
+    html += r.trabajos.map(function (t) {
+      return "<article class=\"tarjeta\"><strong>" + esc(t.proyecto) + "</strong>" +
+        "<div class=\"meta\">" + esc(t.juego) + " · " + esc(t.proceso) + "</div>" +
+        "<div class=\"meta\">" + esc(textoDuracion(t.minutos)) + " → " + esc(textoHoras(t.horas)) + "</div></article>";
+    }).join("");
+    html += "<p class=\"total\">Total " + esc(textoHoras(r.total)) + "</p>";
+  }
+  caja.innerHTML = html;
+}
+
+function mostrar(vista) {
+  document.getElementById("vista-anotar").hidden = vista !== "anotar";
+  document.getElementById("vista-procesos").hidden = vista !== "procesos";
+  document.getElementById("vista-resultados").hidden = vista !== "resultados";
+  document.getElementById("nav-anotar").className = vista === "anotar" ? "activa" : "";
+  document.getElementById("nav-procesos").className = vista === "procesos" ? "activa" : "";
+  document.getElementById("nav-resultados").className = vista === "resultados" ? "activa" : "";
+  if (vista === "procesos") pintarListaProcesos();
+  if (vista === "resultados") pintarResultado();
+  if (vista === "anotar") pintarHoy();
+}
+
+function descargarCopia() {
+  const blob = new Blob([JSON.stringify(datos)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "horas-copia.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function cargarCopia(archivo) {
+  const lector = new FileReader();
+  lector.onload = function () {
+    try {
+      const d = JSON.parse(String(lector.result || ""));
+      if (!d || !Array.isArray(d.procesos) || !Array.isArray(d.tramos)) throw new Error("copia");
+      if (!window.confirm("¿Sustituir las horas de este teléfono por la copia?")) return;
+      datos = { procesos: d.procesos, tramos: d.tramos };
+      purgarYGuardar();
+      guardar();
+      pintarProcesosSelect();
+      pintarListaProcesos();
+      pintarHoy();
+      aviso("Copia cargada.");
+      mostrar("anotar");
+    } catch (e) {
+      window.alert("Esa copia no se puede leer.");
+    }
+  };
+  lector.readAsText(archivo);
+}
+
+function iniciar() {
+  datos = cargar();
+  purgarYGuardar();
+  document.getElementById("nota-dia").textContent = textoFecha(fechaLocal()) + " · se guardan 15 días. Ábrela siempre en Chrome, no solo en la vista de WhatsApp.";
+  document.getElementById("btn-actualizar").addEventListener("click", alActualizar);
+  document.getElementById("btn-inicio").addEventListener("click", alInicio);
+  document.getElementById("btn-final").addEventListener("click", alFinal);
+  document.getElementById("btn-anadir-proceso").addEventListener("click", anadirProceso);
+  document.getElementById("btn-copia").addEventListener("click", descargarCopia);
+  document.getElementById("archivo-copia").addEventListener("change", function (e) {
+    const f = e.target.files && e.target.files[0];
+    if (f) cargarCopia(f);
+    e.target.value = "";
+  });
+  document.getElementById("nav-anotar").addEventListener("click", function () { mostrar("anotar"); });
+  document.getElementById("nav-procesos").addEventListener("click", function () { mostrar("procesos"); });
+  document.getElementById("nav-resultados").addEventListener("click", function () { mostrar("resultados"); });
+  document.getElementById("fecha-resultado").addEventListener("change", pintarResultado);
+  pintarProcesosSelect();
+  pintarHoy();
+  mostrar("anotar");
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", iniciar);
+}
+</script>
+</body>
+</html>

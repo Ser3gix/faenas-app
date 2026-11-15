@@ -13,3 +13,13 @@ Imágenes/
 .cursor/
 .vault/
 .last_faenas_update
+desktop.ini
+debug-factura-resp.json
+ollama_*.txt
+ollama_*.json
+sys_check.txt
+terminal_probe.txt
+venv_check.txt
+tmp_root_script.js
+*.err.log
+*.out.log

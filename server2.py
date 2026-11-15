@@ -521,13 +521,17 @@ def _prompt_ticket_base():
 Devuelve SOLO un JSON con: proveedor, fecha (si aparece), total_ticket, tipo_documento, iva_incluido, iva_porcentaje, articulos.
 tipo_documento: "ticket" | "factura" | "albaran" | "otro".
 iva_incluido: true en tickets de caja/TPV (precios finales con IVA); false en facturas/albaranes (base).
-iva_porcentaje: % IVA del documento si aparece (si no, 21).
-Cada artículo: nombre, cantidad, precio_unitario, total, unidad, categoria (Tableros, Molduras-Maderas, Herrajes, Otros, Pintura), definicion (referencia/EAN si se lee).
+iva_porcentaje: % IVA principal del documento (21, 10, 4 o 0). Si no aparece, 21.
+tipo_iva: "general" (21), "reducido" (10), "superreducido" (4), "exento" (0) o "mixto" si hay varios.
+Cada artículo: nombre, cantidad, precio_unitario, descuento_porcentaje, descuento_importe, total, iva_porcentaje, tipo_iva, unidad, categoria (Tableros, Molduras-Maderas, Herrajes, Otros, Pintura), definicion (referencia/EAN si se lee).
 
 REGLAS DE LECTURA (importante):
 - Lee el nombre comercial COMPLETO de cada línea (p. ej. \"TABLERO MEL BCO...\", \"CANTO PREEN...\", \"CAJA 24 BISAGRAS...\").
 - Ignora códigos de barras/EAN numéricos largos y secciones (MADERA, FERRETERIA, PINTURA) como si fueran productos.
-- Si una línea pone \"2 x 6,60\" o \"2 X 8,50\": cantidad=2, precio_unitario=6.60, total=13.20.
+- cantidad = uds/packs/m2/ml comprados. precio_unitario = precio de tarifa por unidad o pack (ANTES de descuento).
+- Si hay descuento % (Dto 10%, -15%…): descuento_porcentaje=10 (o 15). Si hay descuento en €: descuento_importe.
+- total = importe FINAL de esa línea tal como se cobra (tras descuento; en ticket ya con IVA). NO pongas cantidad×precio sin descuento si el ticket muestra otro importe.
+- Si una línea pone \"2 x 6,60\" o \"2 X 8,50\": cantidad=2, precio_unitario=6.60; total=13.20 solo si no hay dto; si hay dto usa el importe final impreso.
 - Si solo hay un importe a la derecha: cantidad=1, total=ese importe, precio_unitario=ese importe.
 - Importes con coma → números JSON con punto.
 - No mezcles el EAN dentro del nombre. No inventes líneas. No omitas productos visibles.
@@ -538,14 +542,19 @@ REGLAS DE LECTURA (importante):
 def _prompt_documento_base(nombre="documento"):
     return f"""Analiza el documento '{nombre}' (factura, albarán, ticket o PDF impreso) y extrae las líneas de compra reales.
 
-Devuelve SOLO JSON con proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje y articulos (nombre, cantidad, precio_unitario, total, unidad, categoria, definicion).
+Devuelve SOLO JSON con proveedor, fecha, total_ticket, tipo_documento, iva_incluido, iva_porcentaje, tipo_iva y articulos
+(nombre, cantidad, precio_unitario, descuento_porcentaje, descuento_importe, total, iva_porcentaje, tipo_iva, unidad, categoria, definicion).
 tipo_documento: "ticket" | "factura" | "albaran" | "otro".
-Copia los importes de línea tal como aparecen. En facturas suele ser base sin IVA (iva_incluido=false); en tickets suele ir con IVA (iva_incluido=true).
+tipo_iva del documento/línea: "general" (21%), "reducido" (10%), "superreducido" (4%), "exento" (0%) o "mixto".
+iva_porcentaje: el % real que aparece (21/10/4/0). Obligatorio si el PDF lo muestra.
+En facturas/albaranes: iva_incluido=false (líneas en base imponible). En tickets TPV: iva_incluido=true.
+cantidad = uds, packs, m² o ml. precio_unitario = precio de tarifa por unidad/pack ANTES de descuento.
+descuento_porcentaje = % dto de la línea (0 si no hay). descuento_importe = € descontados en la línea (0 si no hay).
+total = importe FINAL de la línea tras descuento (tal como aparece; sin sumar IVA aparte si el documento ya lo incluye en el total de línea).
+NO inventes total = cantidad×precio si el PDF muestra otro importe tras dto.
 TABLEROS: si hay columna M2 o el precio es por m², unidad=\"m2\", cantidad=m² y precio_unitario=€/m² (no por pieza).
-CANTOS / CANTEADO: unidad=\"ml\" (metro lineal), cantidad=metros lineales y precio_unitario=€/ml.
-CORTE / SECCIONADORA: unidad=\"ml\" (metro lineal), cantidad=metros lineales y precio_unitario=€/ml.
-CANTOS / CANTEADO: unidad=\"ml\", cantidad=metros lineales y precio_unitario=€/ml.
-Ignora portes, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
+CANTOS / CANTEADO / CORTE / SECCIONADORA: unidad=\"ml\", cantidad=metros lineales y precio_unitario=€/ml.
+Ignora portes sueltos, teléfonos y textos legales. Si no hay líneas, articulos es []. No uses nombres de ejemplo."""
 
 
 def _gemini_nombre_modelo(nombre):
@@ -966,9 +975,48 @@ def _num_seguro_local(valor, defecto=0.0):
 
 def _iva_porcentaje_de_data(data, defecto=21.0):
     pct = _num_seguro_local((data or {}).get("iva_porcentaje"), 0.0)
-    if pct <= 0 or pct > 40:
+    if pct < 0 or pct > 40:
+        return float(defecto)
+    if pct == 0 and str((data or {}).get("tipo_iva") or "").strip().lower() in {"exento", "no sujeto", "nosujeto"}:
+        return 0.0
+    if pct <= 0:
         return float(defecto)
     return pct
+
+
+def _tipo_iva_desde_porcentaje(pct, tipo_hint=None):
+    hint = unicodedata.normalize("NFKD", str(tipo_hint or ""))
+    hint = "".join(c for c in hint if unicodedata.category(c) != "Mn").lower().strip()
+    if hint in {"mixto", "varios"}:
+        return "mixto"
+    if hint in {"exento", "no sujeto", "nosujeto"} or (pct is not None and float(pct) == 0):
+        return "exento"
+    if hint in {"superreducido", "super reducido", "super-reducido"} or (pct is not None and abs(float(pct) - 4) < 0.2):
+        return "superreducido"
+    if hint in {"reducido"} or (pct is not None and abs(float(pct) - 10) < 0.2):
+        return "reducido"
+    if hint in {"general", "ordinario"} or (pct is not None and abs(float(pct) - 21) < 0.2):
+        return "general"
+    if pct is None:
+        return "general"
+    return f"{float(pct):g}%"
+
+
+def _etiqueta_tipo_iva(pct, tipo=None):
+    t = _tipo_iva_desde_porcentaje(pct, tipo)
+    nombres = {
+        "general": "General 21%",
+        "reducido": "Reducido 10%",
+        "superreducido": "Superreducido 4%",
+        "exento": "Exento 0%",
+        "mixto": "Mixto",
+    }
+    if t in nombres:
+        return nombres[t]
+    try:
+        return f"IVA {float(pct):g}%"
+    except Exception:
+        return f"IVA {t}"
 
 
 def _inferir_documento_sin_iva(data, origen_tipo="ticket"):
@@ -989,8 +1037,121 @@ def _inferir_documento_sin_iva(data, origen_tipo="ticket"):
     return origen_tipo in {"documento", "texto"}
 
 
+def _descuento_linea(art):
+    """Devuelve (descuento_porcentaje, descuento_importe) normalizados."""
+    if not isinstance(art, dict):
+        return 0.0, 0.0
+    dto_pct = _num_seguro_local(
+        art.get("descuento_porcentaje", art.get("dto_porcentaje", art.get("dto_%"))),
+        0.0,
+    )
+    dto_imp = _num_seguro_local(
+        art.get("descuento_importe", art.get("dto_importe", art.get("dto_euros"))),
+        0.0,
+    )
+    # Campo genérico "descuento": si ≤100 suele ser %; si es mayor, importe en €
+    if dto_pct <= 0 and dto_imp <= 0 and art.get("descuento") is not None:
+        d = _num_seguro_local(art.get("descuento"), 0.0)
+        if d > 0:
+            if d <= 100:
+                dto_pct = d
+            else:
+                dto_imp = d
+    if dto_pct < 0:
+        dto_pct = 0.0
+    if dto_pct > 100:
+        # p.ej. 1000 como “10,00 %” mal leído → no aplicar como % absurdo
+        if dto_imp <= 0:
+            dto_imp = dto_pct
+        dto_pct = 0.0
+    if dto_imp < 0:
+        dto_imp = 0.0
+    return dto_pct, dto_imp
+
+
+def _base_linea_tras_descuento(cantidad, precio_lista, art):
+    """Importe de línea tras dto, aún sin tocar IVA."""
+    cantidad = cantidad if cantidad > 0 else 1.0
+    precio_lista = max(0.0, precio_lista)
+    bruto = cantidad * precio_lista
+    dto_pct, dto_imp = _descuento_linea(art)
+    base = bruto
+    if dto_pct > 0:
+        base = base * (1.0 - (dto_pct / 100.0))
+    if dto_imp > 0:
+        # dto en €: a veces es por unidad, a veces sobre la línea
+        if dto_imp <= precio_lista * 1.05 and cantidad > 1 and dto_imp * cantidad <= bruto + 0.05:
+            base = max(0.0, base - (dto_imp * cantidad))
+        else:
+            base = max(0.0, base - dto_imp)
+    return round(base, 4), dto_pct, dto_imp, bruto
+
+
+def _resolver_importes_articulo(art, factor_iva=1.0):
+    """
+    Unifica cantidad / tarifa / descuento / IVA.
+    - total: coste final de la línea CON IVA (para gastos).
+    - precio_unitario: coste unitario efectivo CON IVA (para materiales) = total/cantidad.
+    """
+    art = dict(art or {})
+    cantidad = _num_seguro_local(art.get("cantidad"), 0.0)
+    if cantidad <= 0:
+        cantidad = 1.0
+    precio_lista = _num_seguro_local(
+        art.get("precio_lista", art.get("precio_tarifa", art.get("precio_unitario"))),
+        0.0,
+    )
+    total_leido = _num_seguro_local(
+        art.get("total", art.get("importe", art.get("importe_linea"))),
+        0.0,
+    )
+    base_calc, dto_pct, dto_imp, bruto = _base_linea_tras_descuento(cantidad, precio_lista, art)
+
+    # Elegir base imponible / importe de línea antes de IVA
+    if total_leido > 0:
+        base = total_leido
+        # Si el modelo puso total = bruto sin dto pero hay descuento, preferir el cálculo
+        if bruto > 0 and (dto_pct > 0 or dto_imp > 0):
+            if abs(total_leido - bruto) <= 0.05 and abs(base_calc - bruto) > 0.05:
+                base = base_calc
+        # Si total ≈ base_calc*factor ya trae IVA → no volver a multiplicar
+        if factor_iva > 1.0 and base_calc > 0:
+            con_iva_calc = base_calc * factor_iva
+            if abs(total_leido - con_iva_calc) / max(con_iva_calc, 0.01) < 0.04:
+                total = round(total_leido, 2)
+                precio_unit = round(total / cantidad, 4)
+                art.update({
+                    "cantidad": cantidad,
+                    "precio_lista": round(precio_lista, 4) if precio_lista > 0 else round(precio_unit / factor_iva, 4),
+                    "descuento_porcentaje": dto_pct,
+                    "descuento_importe": dto_imp,
+                    "precio_unitario": precio_unit,
+                    "total": total,
+                })
+                return art
+    elif base_calc > 0:
+        base = base_calc
+    elif precio_lista > 0:
+        base = cantidad * precio_lista
+    else:
+        base = 0.0
+
+    total = round(base * factor_iva, 2) if factor_iva != 1.0 else round(base, 2)
+    if total <= 0 and total_leido > 0:
+        total = round(total_leido * (factor_iva if factor_iva != 1.0 else 1.0), 2)
+    precio_unit = round(total / cantidad, 4) if cantidad else round(total, 4)
+    art["cantidad"] = cantidad
+    if precio_lista > 0:
+        art["precio_lista"] = round(precio_lista, 4)
+    art["descuento_porcentaje"] = dto_pct
+    art["descuento_importe"] = dto_imp
+    art["precio_unitario"] = precio_unit
+    art["total"] = total
+    return art
+
+
 def _asegurar_precios_con_iva(data, origen_tipo="ticket"):
-    """Garantiza precio_unitario/total/total_ticket con IVA incluido."""
+    """Garantiza total (gasto) y precio_unitario efectivo (material) con IVA incluido."""
     if not isinstance(data, dict):
         return data
     out = dict(data)
@@ -1004,33 +1165,23 @@ def _asegurar_precios_con_iva(data, origen_tipo="ticket"):
     for a in out.get("articulos") or []:
         if not isinstance(a, dict):
             continue
-        art = dict(a)
-        cantidad = _num_seguro_local(art.get("cantidad"), 0.0)
-        if cantidad <= 0:
-            cantidad = 1.0
-        precio = _num_seguro_local(art.get("precio_unitario"), 0.0)
-        total = _num_seguro_local(art.get("total"), 0.0)
-        if total <= 0 and precio > 0:
-            total = cantidad * precio
-        elif precio <= 0 and total > 0:
-            precio = total / cantidad
-        suma_antes += total
-        if factor != 1.0:
-            precio = round(precio * factor, 2)
-            total = round(total * factor, 2)
-        else:
-            precio = round(precio, 2)
-            total = round(total, 2)
-        art["cantidad"] = cantidad
-        art["precio_unitario"] = precio
-        art["total"] = total
-        suma += total
+        cant0 = _num_seguro_local(a.get("cantidad"), 1.0) or 1.0
+        precio0 = _num_seguro_local(a.get("precio_unitario"), 0.0)
+        total0 = _num_seguro_local(a.get("total"), 0.0)
+        base0, _, _, _ = _base_linea_tras_descuento(cant0, precio0, a)
+        if total0 > 0:
+            suma_antes += total0
+        elif base0 > 0:
+            suma_antes += base0
+        elif precio0 > 0:
+            suma_antes += cant0 * precio0
+        art = _resolver_importes_articulo(a, factor_iva=factor)
+        suma += _num_seguro_local(art.get("total"), 0.0)
         arts.append(art)
     out["articulos"] = arts
     total_ticket = _num_seguro_local(out.get("total_ticket"), 0.0)
     if hay_que_sumar and suma > 0:
         if total_ticket > 0:
-            # El total del documento a veces ya viene con IVA aunque las líneas no.
             if abs(total_ticket - suma_antes) / max(suma_antes, 0.01) < 0.08:
                 total_ticket = round(total_ticket * factor, 2)
             elif abs(total_ticket - suma) / max(suma, 0.01) < 0.12:
@@ -1048,6 +1199,24 @@ def _asegurar_precios_con_iva(data, origen_tipo="ticket"):
     out["total_ticket"] = total_ticket if total_ticket > 0 else out.get("total_ticket")
     out["iva_incluido"] = True
     out["iva_aplicado"] = bool(hay_que_sumar)
+    # Tipo de IVA del documento (+ por línea si venía)
+    pct_doc = pct
+    tipos_linea = []
+    for art in arts:
+        pct_l = _num_seguro_local(art.get("iva_porcentaje"), -1)
+        if pct_l < 0:
+            art["iva_porcentaje"] = pct_doc
+            art["tipo_iva"] = _tipo_iva_desde_porcentaje(pct_doc, art.get("tipo_iva") or out.get("tipo_iva"))
+        else:
+            art["tipo_iva"] = _tipo_iva_desde_porcentaje(pct_l, art.get("tipo_iva"))
+        art["iva_etiqueta"] = _etiqueta_tipo_iva(art.get("iva_porcentaje"), art.get("tipo_iva"))
+        tipos_linea.append(art["tipo_iva"])
+    tipos_unicos = sorted({t for t in tipos_linea if t})
+    if len(tipos_unicos) > 1:
+        out["tipo_iva"] = "mixto"
+    else:
+        out["tipo_iva"] = _tipo_iva_desde_porcentaje(pct_doc, out.get("tipo_iva") or (tipos_unicos[0] if tipos_unicos else None))
+    out["iva_etiqueta"] = _etiqueta_tipo_iva(pct_doc if out["tipo_iva"] != "mixto" else None, out["tipo_iva"])
     if not out.get("tipo_documento"):
         out["tipo_documento"] = "factura" if origen_tipo in {"documento", "texto"} else "ticket"
     return out
@@ -3949,22 +4118,34 @@ def _normalizar_articulo(art):
             faena_item = None
         else:
             faena_item = _parse_faena_id_seguro(raw_faena)
-    cantidad = _to_float_seguro(art.get("cantidad") if isinstance(art, dict) else 0)
-    precio = _to_float_seguro(art.get("precio_unitario") if isinstance(art, dict) else 0)
-    total = _to_float_seguro(art.get("total") if isinstance(art, dict) else 0)
-    if total <= 0:
-        total = cantidad * precio
+    # Recalcular dto + total; si ya viene con IVA (flujo ticket limpio), factor=1
+    resuelto = _resolver_importes_articulo(art if isinstance(art, dict) else {}, factor_iva=1.0)
+    cantidad = _to_float_seguro(resuelto.get("cantidad"))
+    if cantidad <= 0:
+        cantidad = 1.0
+    total = _to_float_seguro(resuelto.get("total"))
+    precio = _to_float_seguro(resuelto.get("precio_unitario"))
+    if total <= 0 and precio > 0:
+        total = round(cantidad * precio, 2)
+    if precio <= 0 and total > 0:
+        precio = round(total / cantidad, 4)
+    # Precio unitario efectivo = total/cantidad (materiales); total = coste línea (gastos)
+    if total > 0 and cantidad > 0:
+        precio = round(total / cantidad, 4)
     return {
-        "nombre": str(art.get("nombre") or "").strip(),
-        "cantidad": cantidad if cantidad > 0 else 1.0,
+        "nombre": str((art or {}).get("nombre") or "").strip(),
+        "cantidad": cantidad,
         "precio_unitario": precio,
-        "total": total,
-        "unidad": str(art.get("unidad") or "ud").strip() or "ud",
-        "categoria": str(art.get("categoria") or "").strip(),
-        "definicion": str(art.get("definicion") or "").strip(),
-        "proveedor": str(art.get("proveedor") or "").strip(),
-        "fuente": str(art.get("fuente") or "").strip(),
-        "url": str(art.get("url") or "").strip(),
+        "total": round(total, 2),
+        "descuento_porcentaje": _to_float_seguro(resuelto.get("descuento_porcentaje")),
+        "descuento_importe": _to_float_seguro(resuelto.get("descuento_importe")),
+        "precio_lista": _to_float_seguro(resuelto.get("precio_lista")),
+        "unidad": str((art or {}).get("unidad") or "ud").strip() or "ud",
+        "categoria": str((art or {}).get("categoria") or "").strip(),
+        "definicion": str((art or {}).get("definicion") or "").strip(),
+        "proveedor": str((art or {}).get("proveedor") or "").strip(),
+        "fuente": str((art or {}).get("fuente") or "").strip(),
+        "url": str((art or {}).get("url") or "").strip(),
         "faena_id": faena_item,
         "_solo_materiales": solo_materiales,
     }
@@ -4086,15 +4267,21 @@ def _persistir_resultado_ia_en_nube(faena_id, origen, data):
 
                 faena_linea = _faena_gasto_de_articulo(a, faena_id_ok)
                 if faena_linea:
+                    cant_g = _to_float_seguro(a.get("cantidad") or 1) or 1.0
+                    total_g = _to_float_seguro(a.get("total") or 0)
+                    if total_g <= 0:
+                        total_g = round(cant_g * _to_float_seguro(a.get("precio_unitario") or 0), 2)
+                    # Gasto = coste total de línea; precio_unitario coherente = total/cantidad
+                    precio_g = round(total_g / cant_g, 4) if cant_g else total_g
                     conn.execute(
                         "INSERT INTO gastos_faena (faena_id, tipo, descripcion, cantidad, precio_unitario, total, ticket_foto) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (
                             faena_linea,
                             resumen["origen"],
                             nombre,
-                            _to_float_seguro(a.get("cantidad") or 1),
-                            _to_float_seguro(a.get("precio_unitario") or 0),
-                            _to_float_seguro(a.get("total") or 0),
+                            cant_g,
+                            precio_g,
+                            round(total_g, 2),
                             "",
                         ),
                     )
@@ -5637,7 +5824,7 @@ def _lineas_de_respuesta_ia(data):
 
 def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
     articulos = []
-    meta = {"proveedor": None, "fecha": None, "total_ticket": None, "tipo_documento": None, "iva_incluido": None, "iva_porcentaje": None}
+    meta = {"proveedor": None, "fecha": None, "total_ticket": None, "tipo_documento": None, "iva_incluido": None, "iva_porcentaje": None, "tipo_iva": None}
 
     def _acumular(data):
         arts, m = _lineas_de_respuesta_ia(data)
@@ -5651,8 +5838,10 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
             meta["total_ticket"] = m.get("total_ticket")
         if data.get("tipo_documento") and not meta.get("tipo_documento"):
             meta["tipo_documento"] = data.get("tipo_documento")
-        if data.get("iva_porcentaje") and not meta.get("iva_porcentaje"):
+        if data.get("iva_porcentaje") is not None and meta.get("iva_porcentaje") is None:
             meta["iva_porcentaje"] = data.get("iva_porcentaje")
+        if data.get("tipo_iva") and not meta.get("tipo_iva"):
+            meta["tipo_iva"] = data.get("tipo_iva")
         if "iva_incluido" in data and meta.get("iva_incluido") is None:
             meta["iva_incluido"] = data.get("iva_incluido")
         for a in arts:
@@ -5703,13 +5892,19 @@ def _extraer_lineas_desde_pdf(texto, imagenes, nombre, pdf_bytes=None):
             # Reintento heurístico mejorado para facturas tipo tabla multipágina/lineas rotas
             if not articulos:
                 _acumular(_json_factura_lineas_sueltas("\n".join(textos_ocr)))
+    iva_pct = meta.get("iva_porcentaje")
+    if iva_pct is None:
+        iva_pct = 21
+    tipo_iva = meta.get("tipo_iva") or _tipo_iva_desde_porcentaje(iva_pct)
     return {
         "proveedor": meta.get("proveedor"),
         "fecha": meta.get("fecha"),
         "total_ticket": meta.get("total_ticket"),
         "tipo_documento": meta.get("tipo_documento") or "factura",
         "iva_incluido": False if meta.get("iva_incluido") is None else meta.get("iva_incluido"),
-        "iva_porcentaje": meta.get("iva_porcentaje") or 21,
+        "iva_porcentaje": iva_pct,
+        "tipo_iva": tipo_iva,
+        "iva_etiqueta": _etiqueta_tipo_iva(iva_pct, tipo_iva),
         "articulos": articulos,
     }
 
@@ -6985,6 +7180,7 @@ def polyboard_procesar():
                 "ok": True,
                 "data": {
                     "piezas": piezas,
+                    "piezas_origen": data.get("piezas_origen") or {},
                     "herrajes": data.get("herrajes") or [],
                     "agrupado_por": data.get("agrupado_por") or "espesor",
                     "ruta": nombre,
@@ -7006,6 +7202,7 @@ def polyboard_procesar():
                 "ok": True,
                 "data": {
                     "piezas": piezas,
+                    "piezas_origen": piezas_orig,
                     "herrajes": [],
                     "agrupado_por": "espesor",
                     "ruta": nombre,

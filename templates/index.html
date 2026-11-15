@@ -555,16 +555,7 @@ textarea { resize: vertical; min-height: 70px; }
 .gastos-total { text-align: right; color: var(--accent); font-size: 1rem; font-weight: 600; margin-top: 8px; }
 
 hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
-/* POLYBOARD */
-.pb-mat-header {
-  background: var(--accent);
-  color: #fff;
-  padding: 8px 14px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: 4px 4px 0 0;
-  margin-top: 16px;
-}
+/* POLYBOARD / DESGLOSE (UX Desglose material.html) */
 .pb-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
 .pb-table th {
   background: var(--wood-dark);
@@ -572,29 +563,92 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   padding: 6px 10px;
   font-size: 0.72rem;
   text-align: center;
-  letter-spacing: 0.05em;
 }
-.pb-table th.col-pieza { text-align: left; }
-.pb-table td {
-  padding: 5px 10px;
-  font-size: 0.8rem;
+.pb-table td { padding: 5px 10px; font-size: 0.8rem; text-align: center; border-bottom: 1px solid var(--sawdust); }
+.canto-on { background: #e8f5e9 !important; color: #d93025; font-weight: bold; font-size: 13px; }
+
+#desglose-wrap { font-size: 11px; }
+#desglose-toolbar {
+  background: #fff;
+  padding: 8px 12px;
+  border-bottom: 2px solid #1a73e8;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+#desglose-resultado table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-bottom: 15px;
+  table-layout: fixed;
+}
+#desglose-resultado th,
+#desglose-resultado td {
+  border: 1px solid #ccc;
+  padding: 2px 4px;
   text-align: center;
-  border-bottom: 1px solid var(--sawdust);
 }
-.pb-table td.col-pieza { text-align: left; }
-.pb-table tr:nth-child(even) td { background: var(--paper-dark); }
-.canto-cell {
+#desglose-resultado .mat-header {
+  background: #333;
+  color: white;
+  text-align: left;
+  font-weight: bold;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+#desglose-resultado .mat-nombre {
+  display: inline-block;
+  min-width: 8em;
+  text-transform: uppercase;
+  border-bottom: 1px dashed rgba(255,255,255,0.45);
+  outline: none;
+  cursor: text;
+}
+#desglose-resultado .mat-nombre:focus {
+  background: rgba(255,255,255,0.15);
+  border-bottom-color: #fff;
+}
+#desglose-resultado .col-header {
+  background: #f2f2f2;
+  font-weight: bold;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+#desglose-resultado .col-cant { width: 30px; font-weight: bold; }
+#desglose-resultado .col-dim { width: 50px; }
+#desglose-resultado .col-canto {
+  width: 28px;
   cursor: pointer;
+  transition: 0.1s;
+  background: #fff;
   user-select: none;
-  font-size: 1rem;
-  transition: background 0.1s;
 }
-.canto-on { background: #C8E6C9 !important; color: #2E7D32; font-weight: bold; }
-.pb-resumen {
-  font-size: 0.75rem;
-  color: #888;
-  padding: 4px 8px;
-  margin-bottom: 12px;
+#desglose-resultado .col-pieza { text-align: left; padding-left: 5px; }
+#desglose-resultado .col-del { width: 45px; border: none; background: #f4f4f4; }
+#desglose-resultado .btn-del-row { color: #ccc; cursor: pointer; font-weight: bold; font-size: 14px; margin-left: 10px; }
+#desglose-resultado .btn-del-row:hover { color: red; }
+#desglose-resultado .btn-add-row {
+  background: #28a745; color: white; border: none; padding: 1px 6px; cursor: pointer; font-size: 10px; border-radius: 3px; margin-right: 10px;
+}
+#desglose-resultado .btn-del-group {
+  background: #cc0000; color: white; border: none; padding: 1px 6px; cursor: pointer; font-size: 10px; border-radius: 3px;
+}
+#desglose-resultado td[contenteditable="true"]:focus {
+  background: #fffde7; outline: none; box-shadow: inset 0 0 3px #1a73e8;
+}
+@media print {
+  .no-print-desglose, #desglose-resultado .col-del,
+  #desglose-resultado .btn-add-row, #desglose-resultado .btn-del-group { display: none !important; }
+  body { background: white; }
+  #s-optimizador .form-box:not(#desglose-wrap),
+  #opt-herrajes-box, #opt-tableros-box, #opt-resultado,
+  .nav, .topbar, .btn-row { display: none !important; }
 }
 /* BOOK DE FOTOS */
 .book-grid {
@@ -1018,17 +1072,17 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
 <!-- ===== OPTIMIZADOR TABLEROS / CANTO ===== -->
 <div id="s-optimizador" class="section">
-  <div class="sec-header"><h2>Optimizador — Corte, canto y costes</h2></div>
+  <div class="sec-header"><h2>Optimizador — Desglose, corte y costes</h2></div>
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
-    Carga el TXT de despiece o un PDF resumen corto de PolyBoard (Lista de Corte + herrajes, sin fichas de pieza).
-    Las piezas se agrupan por espesor; los precios salen del almacén.
+    Desglose de material (como en el Escritorio): carga TXT PolyBoard, edita cantos y piezas, imprime o genera PDF de pedido,
+    y calcula la optimización de tableros con precios del almacén.
   </p>
 
   <div class="form-box">
-    <div class="form-title">Despiece</div>
+    <div class="form-title">Faena y archivo</div>
     <div class="form-grid">
       <div>
-        <label>Faena asociada (opcional, para el PDF)</label>
+        <label>Faena asociada (opcional, para el PDF pedido)</label>
         <select id="opt-faena-sel"></select>
       </div>
     </div>
@@ -1038,20 +1092,20 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
         <input type="file" id="opt-file-input" accept=".txt,.pdf,text/plain,application/pdf" style="display:none" onchange="cargarOptimizadorDesdeInput(this)">
       </label>
       <button type="button" class="btn btn-s btn-sm" onclick="aplicarTarifasAlmacenOptimizador()">Usar precios almacén</button>
+      <button type="button" class="btn btn-s btn-sm" onclick="generarPdfOptimizadorPc()">PDF pedido almacén</button>
     </div>
     <div id="opt-ruta" style="font-size:0.72rem;color:#aaa;margin-top:8px"></div>
     <div id="opt-resumen-piezas" style="font-size:0.8rem;color:var(--muted);margin-top:6px"></div>
   </div>
 
-  <div id="opt-piezas-box" style="display:none">
-    <div class="form-box">
-      <div class="sec-header" style="margin:0 0 10px 0">
-        <h2 style="font-size:1rem;margin:0">Tabla de piezas (por espesor)</h2>
-        <div class="btn-row">
-          <button type="button" class="btn btn-s btn-sm" onclick="generarPdfOptimizadorPc()">PDF pedido</button>
-        </div>
+  <div id="opt-piezas-box" class="form-box" style="display:none;padding:0;overflow:hidden">
+    <div id="desglose-wrap">
+      <div id="desglose-toolbar" class="no-print-desglose">
+        <button type="button" class="btn btn-s btn-sm" onclick="desgloseDeshacer()">↩ Deshacer</button>
+        <button type="button" class="btn btn-p btn-sm" onclick="window.print()">Imprimir PDF</button>
+        <span style="font-size:10px;color:#666"><b>Canteado:</b> clic en CD/CI/CA/CB para activar/desactivar.</span>
       </div>
-      <div id="opt-tabla"></div>
+      <div id="desglose-resultado" style="padding:0 12px 12px"></div>
     </div>
   </div>
 
@@ -1100,7 +1154,7 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
   </div>
 
   <div class="form-box" id="opt-tableros-box" style="display:none">
-    <div class="form-title">Tableros por espesor — material de almacén</div>
+    <div class="form-title">Tableros por material del despiece</div>
     <div id="opt-tableros-config"></div>
   </div>
 
@@ -1472,24 +1526,10 @@ hr { border: none; border-top: 1px solid var(--sawdust); margin: 16px 0; }
 
     <!-- Importar desde PDF -->
     <div style="background:var(--paper-dark);border:1px solid var(--sawdust);border-radius:6px;padding:12px;margin-bottom:14px">
-      <div style="font-size:0.78rem;color:#666;margin-bottom:8px">¿Tienes una factura en PDF? Extrae los gastos automáticamente.</div>
-      <button class="btn btn-s btn-sm" onclick="document.getElementById('gastos-pdf-input').click()" style="width:auto">📄 Importar desde factura PDF</button>
+      <div style="font-size:0.78rem;color:#666;margin-bottom:8px">Factura o albarán en PDF: Jimmi lee las líneas y las añade como gastos.</div>
+      <button class="btn btn-s btn-sm" type="button" onclick="document.getElementById('gastos-pdf-input').click()" style="width:auto">📄 Importar desde PDF</button>
       <input type="file" id="gastos-pdf-input" accept="application/pdf,.pdf" onchange="enviarPdfGastos(event)" style="display:none">
-      <div id="pdf-gastos-prompt-box" style="display:none;margin-top:10px">
-        <div class="prompt-box" id="pdf-gastos-prompt-txt" style="max-height:180px;font-size:0.72rem"></div>
-        <div class="btn-row" style="margin-top:6px">
-          <button class="btn btn-g btn-sm" onclick="copiar('pdf-gastos-prompt-txt')">📋 Copiar prompt</button>
-        </div>
-        <div style="font-size:0.75rem;color:#8b6914;background:#fff8e1;border:1px solid #ffe082;border-radius:4px;padding:8px;margin-top:6px">
-          💡 Ve a Claude.ai, pega el prompt y copia el JSON de respuesta abajo
-        </div>
-        <div style="margin-top:8px">
-          <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:#666;margin-bottom:4px;display:block">JSON de Claude</label>
-          <textarea id="pdf-gastos-json" rows="4" placeholder='{"articulos": [...]}'
-                    style="font-size:0.75rem;width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace"></textarea>
-        </div>
-        <button class="btn btn-p btn-sm" onclick="cargarJsonGastosPDF()" style="margin-top:6px">✓ Cargar gastos</button>
-      </div>
+      <div id="pdf-gastos-estado" style="display:none;margin-top:8px;font-size:0.78rem;color:var(--muted)"></div>
     </div>
 
     <div style="font-size:0.78rem;color:#aaa;text-align:center;margin-bottom:10px">— o añade manualmente —</div>
@@ -2998,10 +3038,11 @@ function nav(id) {
   }
   if (id === "optimizador") {
     poblarSelectOptimizador();
-    if (optDatos && Object.keys(optDatos).length) {
-      renderTablaOptimizador();
-      renderConfigTablerosOptimizador();
-      actualizarResumenOptimizador();
+    if (desgloseEl() && desgloseEl().querySelector("table")) {
+      sincronizarOptDesdeDesglose();
+    } else if (optDatos && Object.keys(optDatos).length) {
+      desglosePintarDesdeOptDatos(optDatos);
+      sincronizarOptDesdeDesglose();
     }
   }
   if (id === "presupuesto") {
@@ -3405,10 +3446,18 @@ async function verDetalle(id, opts) {
       gastos = merged.gastos;
       presupuesto = merged.presupuesto;
     }
+    const mismaFaenaShell = String(state._detalleShellFaenaId) === String(id);
     state.detalleId = id;
-    state.vistaDetallePc = "menu";
-    state.seccionDetallePc = 0;
-    state._detalleShellFaenaId = null;
+    const seccionOpts = opts && opts.seccion != null ? Number(opts.seccion) : null;
+    if (Number.isFinite(seccionOpts) && seccionOpts >= 0) {
+      state.vistaDetallePc = "panel";
+      state.seccionDetallePc = seccionOpts;
+      if (!mismaFaenaShell) state._detalleShellFaenaId = null;
+    } else {
+      state.vistaDetallePc = "menu";
+      state.seccionDetallePc = 0;
+      state._detalleShellFaenaId = null;
+    }
     state.detalleActual = { gastos, presupuesto, cobros };
     state.detalleCache = {
       anotaciones,
@@ -3670,10 +3719,14 @@ function htmlGastosDetallePc(f, gastos) {
   const lista = Array.isArray(gastos) ? gastos : [];
   const totalGastos = lista.reduce((s, g) => s + (g.total || 0), 0);
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <strong style="font-size:0.85rem">Gastos de fabricación (${lista.length})</strong>
-      <button class="btn btn-s btn-sm" onclick="cerrarModal('m-detalle');abrirGasto(${f.id})">+ Gasto</button>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn btn-s btn-sm" type="button" onclick="importarGastosDesdePdfFaena(${f.id})">📄 Desde PDF</button>
+        <button class="btn btn-s btn-sm" type="button" onclick="cerrarModal('m-detalle');abrirGasto(${f.id})">+ Gasto</button>
+      </div>
     </div>
+    <div id="gastos-pdf-estado" style="display:none;font-size:0.78rem;color:var(--muted);margin-bottom:8px"></div>
     ${lista.length ? `
       <table class="gastos-table">
         <thead><tr><th>Descripción</th><th>Tipo</th><th>Cant.</th><th>P.Unit.</th><th>Total</th><th></th></tr></thead>
@@ -3796,8 +3849,9 @@ function pintarDetalleFaenaPc(f, data) {
   const shellOk = document.getElementById("pc-detalle-hub");
   const cambioFaena = String(state._detalleShellFaenaId) !== String(f.id);
   if (!shellOk || cambioFaena) {
+    const mantenerPanel = state.vistaDetallePc === "panel" && Number.isFinite(Number(state.seccionDetallePc));
     state._detalleShellFaenaId = f.id;
-    if (cambioFaena || state.vistaDetallePc == null) {
+    if (!mantenerPanel && (cambioFaena || state.vistaDetallePc == null)) {
       state.vistaDetallePc = "menu";
       state.seccionDetallePc = 0;
     }
@@ -4404,42 +4458,130 @@ async function eliminarAnotacion(id, faenaId) {
 }
 
 // ===== GASTOS =====
+function tipoGastoDesdeArticulo(art) {
+  const cat = String(art?.categoria || art?.tipo || "").toLowerCase();
+  const nom = String(art?.nombre || "").toLowerCase();
+  if (cat.includes("tablero") || nom.includes("tablero") || nom.includes("melamina") || nom.includes("agglomer") || nom.includes("aglomer")) return "tablero";
+  if (cat.includes("herraje") || nom.includes("bisagra") || nom.includes("guia") || nom.includes("guía") || nom.includes("tirador")) return "herraje";
+  if (cat.includes("transport") || nom.includes("porte") || nom.includes("envio") || nom.includes("envío")) return "transporte";
+  return "otro";
+}
+
+function setEstadoGastosPdf(texto, esError) {
+  for (const id of ["gastos-pdf-estado", "pdf-gastos-estado"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (!texto) { el.style.display = "none"; el.textContent = ""; continue; }
+    el.style.display = "block";
+    el.style.color = esError ? "var(--red)" : "var(--muted)";
+    el.textContent = texto;
+  }
+}
+
+function importarGastosDesdePdfFaena(faenaId) {
+  window._gastoPdfFaenaId = faenaId;
+  let inp = document.getElementById("gastos-pdf-faena-input");
+  if (!inp) {
+    inp = document.createElement("input");
+    inp.type = "file";
+    inp.id = "gastos-pdf-faena-input";
+    inp.accept = "application/pdf,.pdf";
+    inp.style.display = "none";
+    inp.onchange = enviarPdfGastos;
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+
 async function importarPDFGastos() {
+  const faenaId = document.getElementById("gasto-faena-id")?.value;
+  if (faenaId) window._gastoPdfFaenaId = faenaId;
   document.getElementById("gastos-pdf-input")?.click();
 }
+
 async function enviarPdfGastos(event) {
   const file = event.target.files && event.target.files[0];
   event.target.value = "";
-  const faenaId = document.getElementById("gasto-faena-id").value;
+  const faenaId = window._gastoPdfFaenaId
+    || document.getElementById("gasto-faena-id")?.value
+    || state.detalleActual?.faena_id
+    || state.faenaActual?.id;
   if (!file) return;
   if (!faenaId) { toast("Selecciona una faena primero", true); return; }
-  const fd = new FormData();
-  fd.append("archivo", file);
-  const r = await apiForm("POST", `/faenas/${faenaId}/gastos/importar-pdf`, fd, 120000);
-  if (!r.ok) { toast(r.error || "Error al leer el PDF", true); return; }
-  document.getElementById("pdf-gastos-prompt-txt").textContent = r.data.prompt;
-  document.getElementById("pdf-gastos-prompt-box").style.display = "block";
-  toast(`✓ PDF "${r.data.nombre_pdf}" procesado`);
+  setEstadoGastosPdf("Jimmi leyendo el PDF…");
+  toast("Leyendo factura PDF…");
+  try {
+    let data;
+    if (typeof usaColaOcrNube === "function" && usaColaOcrNube()) {
+      setEstadoGastosPdf("Enviando el PDF al PC…");
+      data = await procesarPdfViaCola(file, {
+        nombre: file.name || "factura.pdf",
+        onEstado: function (est) {
+          if (est === "pendiente") setEstadoGastosPdf("El PC está cogiendo el PDF…");
+          else if (est === "procesando") setEstadoGastosPdf("El PC está leyendo el PDF…");
+        }
+      });
+    } else {
+      const fd = new FormData();
+      fd.append("archivo", file, file.name || "factura.pdf");
+      fd.append("guardar", "false");
+      fd.append("nombre", file.name || "factura.pdf");
+      data = await apiForm("POST", "/ia/procesar-documento", fd, 180000, API_OCR);
+    }
+    if (!data || !data.ok) {
+      setEstadoGastosPdf(data?.error || "No se pudo leer el PDF", true);
+      toast(data?.error || "Error al leer el PDF", true);
+      return;
+    }
+    const articulos = (data.data?.articulos || []).filter(a => {
+      const n = String(a.nombre || "").trim().toLowerCase();
+      return n && !n.startsWith("nombre del art") && n !== "artículo" && n !== "articulo";
+    });
+    if (!articulos.length) {
+      setEstadoGastosPdf(data.data?.aviso || "Jimmi no encontró líneas en el PDF", true);
+      toast(data.data?.aviso || "No se encontraron artículos en el PDF", true);
+      return;
+    }
+    setEstadoGastosPdf(`Añadiendo ${articulos.length} gasto${articulos.length !== 1 ? "s" : ""}…`);
+    const insertados = await guardarArticulosComoGastos(faenaId, articulos);
+    setEstadoGastosPdf("");
+    toast(`✓ ${insertados} gasto${insertados !== 1 ? "s" : ""} añadido${insertados !== 1 ? "s" : ""} desde PDF`);
+    cerrarModal("m-gasto");
+    await verDetalle(parseInt(faenaId, 10), { seccion: 5 });
+  } catch (e) {
+    setEstadoGastosPdf("Error: " + (e.message || "desconocido"), true);
+    toast("Error al leer el PDF", true);
+  } finally {
+    window._gastoPdfFaenaId = null;
+  }
 }
-async function cargarJsonGastosPDF() {
-  const faenaId = document.getElementById("gasto-faena-id").value;
-  const raw = document.getElementById("pdf-gastos-json").value.trim();
-  if (!raw) { toast("Pega el JSON primero", true); return; }
-  let datos;
-  try { const limpio = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim(); datos = JSON.parse(limpio); } catch(e) { toast("JSON no válido", true); return; }
-  const articulos = datos.articulos || [];
-  if (!articulos.length) { toast("No se encontraron artículos", true); return; }
+
+async function guardarArticulosComoGastos(faenaId, articulos) {
   let insertados = 0;
-  for (const art of articulos) {
-    if (!art.nombre || !art.precio_unitario) continue;
-    const r = await api("POST", `/faenas/${faenaId}/gastos`, { tipo: "herraje", descripcion: art.nombre, cantidad: art.cantidad || 1, precio_unitario: art.precio_unitario });
+  for (const art of articulos || []) {
+    const nombre = String(art.nombre || "").trim();
+    if (!nombre) continue;
+    const cantidad = parseFloat(art.cantidad);
+    const precio = parseFloat(art.precio_unitario);
+    const total = parseFloat(art.total);
+    const cant = !isNaN(cantidad) && cantidad > 0 ? cantidad : 1;
+    // Coste de gasto = total de línea (tras dto e IVA). Precio unitario efectivo = total/cant.
+    let totalLinea = !isNaN(total) && total > 0
+      ? total
+      : ((!isNaN(precio) ? precio : 0) * cant);
+    if (!(totalLinea > 0) && !isNaN(precio) && precio > 0) totalLinea = precio * cant;
+    const precioEfectivo = cant > 0 ? (totalLinea / cant) : totalLinea;
+    const r = await api("POST", `/faenas/${faenaId}/gastos`, {
+      tipo: tipoGastoDesdeArticulo(art),
+      descripcion: nombre,
+      cantidad: cant,
+      precio_unitario: Math.round(precioEfectivo * 10000) / 10000,
+    });
     if (r.ok) insertados++;
   }
-  toast(`✓ ${insertados} gasto${insertados !== 1 ? "s" : ""} añadido${insertados !== 1 ? "s" : ""}`);
-  document.getElementById("pdf-gastos-json").value = "";
-  document.getElementById("pdf-gastos-prompt-box").style.display = "none";
-  cerrarModal("m-gasto"); verDetalle(parseInt(faenaId));
+  return insertados;
 }
+
 function abrirGasto(faenaId) {
   document.getElementById("gasto-faena-id").value = faenaId;
   document.getElementById("gasto-id").value = "";
@@ -4447,6 +4589,7 @@ function abrirGasto(faenaId) {
   document.getElementById("g-desc").value = "";
   document.getElementById("g-cant").value = "1";
   document.getElementById("g-precio").value = "";
+  setEstadoGastosPdf("");
   const btnElim = document.getElementById("gasto-eliminar-btn");
   if (btnElim) btnElim.style.display = "none";
   abrirModal("m-gasto");
@@ -4661,19 +4804,46 @@ function _ticketOpcionesFaena(valueSeleccionado) {
   return base + opciones;
 }
 
+function _etiquetaIvaPc(pct, tipo, etiqueta) {
+  if (etiqueta) return String(etiqueta);
+  const t = String(tipo || "").toLowerCase();
+  if (t === "mixto") return "Mixto";
+  if (t === "exento" || Number(pct) === 0) return "Exento 0%";
+  if (t === "superreducido" || Math.abs(Number(pct) - 4) < 0.2) return "Superreducido 4%";
+  if (t === "reducido" || Math.abs(Number(pct) - 10) < 0.2) return "Reducido 10%";
+  if (t === "general" || Math.abs(Number(pct) - 21) < 0.2) return "General 21%";
+  if (pct != null && pct !== "" && !isNaN(Number(pct))) return `IVA ${Number(pct)}%`;
+  return "General 21%";
+}
+
 function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
   const proveedorBase = (data && data.proveedor) ? String(data.proveedor).trim() : "";
   const fechaBase = (data && data.fecha) ? String(data.fecha).trim() : "";
   const articulos = (data && Array.isArray(data.articulos)) ? data.articulos : [];
+  const ivaPctDoc = data && data.iva_porcentaje != null && data.iva_porcentaje !== ""
+    ? Number(data.iva_porcentaje)
+    : 21;
+  const tipoIvaDoc = (data && data.tipo_iva) ? String(data.tipo_iva).trim() : "";
+  const ivaEtiquetaDoc = _etiquetaIvaPc(ivaPctDoc, tipoIvaDoc, data && data.iva_etiqueta);
   return {
     proveedor: proveedorBase,
     fecha: fechaBase,
+    iva_porcentaje: Number.isFinite(ivaPctDoc) ? ivaPctDoc : 21,
+    tipo_iva: tipoIvaDoc || "general",
+    iva_etiqueta: ivaEtiquetaDoc,
+    iva_incluido: data && data.iva_incluido != null ? !!data.iva_incluido : true,
+    iva_aplicado: !!(data && data.iva_aplicado),
+    tipo_documento: (data && data.tipo_documento) ? String(data.tipo_documento) : "",
     articulos: articulos.filter(a => a && typeof a === "object").map(a => {
       const cantidad = Number(a.cantidad || 0) || 0;
       const precio = Number(a.precio_unitario || 0) || 0;
       const faena_id = (a.faena_id === null || a.faena_id === undefined || a.faena_id === "")
         ? (faenaPorDefecto != null ? String(faenaPorDefecto) : null)
         : String(a.faena_id).trim();
+      const ivaPct = a.iva_porcentaje != null && a.iva_porcentaje !== ""
+        ? Number(a.iva_porcentaje)
+        : ivaPctDoc;
+      const tipoIva = String(a.tipo_iva || tipoIvaDoc || "").trim();
       return {
         nombre: String(a.nombre || "").trim(),
         unidad: String(a.unidad || "ud").trim() || "ud",
@@ -4682,6 +4852,9 @@ function _normalizarAnalisisParaTablaMateriales(data, faenaPorDefecto) {
         cantidad,
         precio_unitario: precio,
         total: Number(a.total || (cantidad * precio)) || 0,
+        iva_porcentaje: Number.isFinite(ivaPct) ? ivaPct : ivaPctDoc,
+        tipo_iva: tipoIva || "general",
+        iva_etiqueta: _etiquetaIvaPc(ivaPct, tipoIva, a.iva_etiqueta),
         faena_id,
         fuente: String(a.fuente || "").trim(),
         url: String(a.url || "").trim(),
@@ -4796,6 +4969,12 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     ...(ticketAnalisisActual && ticketAnalisisActual === data ? ticketAnalisisActual : (data || {})),
     proveedor: normalizado.proveedor,
     fecha: normalizado.fecha,
+    iva_porcentaje: normalizado.iva_porcentaje,
+    tipo_iva: normalizado.tipo_iva,
+    iva_etiqueta: normalizado.iva_etiqueta,
+    iva_incluido: normalizado.iva_incluido,
+    iva_aplicado: normalizado.iva_aplicado,
+    tipo_documento: normalizado.tipo_documento,
     articulos: normalizado.articulos.length ? normalizado.articulos.map(a => ({ ...a })) : []
   };
   _persistirAnalisisTicketJson();
@@ -4804,12 +4983,14 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     wrap.innerHTML = `<div style="font-size:0.84rem;color:var(--muted);margin:8px 0">No quedan líneas. Cancela o busca de nuevo.</div>`;
     return;
   }
+  const ivaDoc = normalizado.iva_etiqueta || _etiquetaIvaPc(normalizado.iva_porcentaje, normalizado.tipo_iva);
   const rows = articulos.map((a, i) => {
     const cantidad = Number(a.cantidad || 0);
     const precio = Number(a.precio_unitario || 0);
     const total = Number(a.total != null ? a.total : (cantidad * precio));
     const url = String(a.url || "").trim();
     const def = a.definicion ? `<div style="font-size:0.72rem;color:var(--muted)">${esc(a.definicion)}</div>` : "";
+    const ivaLin = a.iva_etiqueta || _etiquetaIvaPc(a.iva_porcentaje, a.tipo_iva);
     const linkCel = htmlEnlaceProducto({
       ...a,
       proveedor: a.proveedor || normalizado.proveedor || "",
@@ -4823,6 +5004,7 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
       <td>${Number.isFinite(cantidad) ? cantidad : "—"}</td>
       <td>${Number.isFinite(precio) ? precio.toFixed(2) + " €" : "—"}</td>
       <td>${Number.isFinite(total) ? total.toFixed(2) + " €" : "—"}</td>
+      <td>${esc(ivaLin)}</td>
       <td>${esc(a.unidad || "ud")}</td>
       <td onclick="event.stopPropagation()">${linkCel}</td>
     </tr>`;
@@ -4831,12 +5013,14 @@ function _renderTablaAnalisisTicket(data, containerId, faenaPorDefecto) {
     <div style="font-size:0.84rem;color:var(--muted);margin:8px 0">
       ${normalizado.proveedor ? `Proveedor: <strong>${esc(normalizado.proveedor)}</strong> · ` : ""}
       ${normalizado.fecha ? `Fecha: <strong>${esc(normalizado.fecha)}</strong> · ` : ""}
-      Precios con IVA · Clic en una línea para editar o eliminar
+      IVA: <strong>${esc(ivaDoc)}</strong>
+      ${normalizado.iva_aplicado ? " (añadido a base)" : " (ya incluido)"}
+      · Precios finales con IVA · Clic en una línea para editar o eliminar
     </div>
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Unidad</th><th>Web</th>
+          <th>Categoría</th><th>Material</th><th>Proveedor</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>IVA</th><th>Unidad</th><th>Web</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -4854,6 +5038,9 @@ function _leerTablaAnalisisTicket(containerId) {
       cantidad: Number(a.cantidad || 0) || 0,
       precio_unitario: Number(a.precio_unitario || 0) || 0,
       total: Number(a.total != null ? a.total : (Number(a.cantidad || 0) * Number(a.precio_unitario || 0))),
+      iva_porcentaje: a.iva_porcentaje != null ? Number(a.iva_porcentaje) : (ticketAnalisisActual.iva_porcentaje != null ? Number(ticketAnalisisActual.iva_porcentaje) : 21),
+      tipo_iva: String(a.tipo_iva || ticketAnalisisActual.tipo_iva || "general").trim() || "general",
+      iva_etiqueta: String(a.iva_etiqueta || "").trim(),
       unidad: String(a.unidad || "ud").trim() || "ud",
       faena_id: a.faena_id || null,
       fuente: a.fuente || (a.url ? "web" : ""),
@@ -4861,7 +5048,16 @@ function _leerTablaAnalisisTicket(containerId) {
       definicion: String(a.definicion || "").trim()
     }));
   const proveedorComun = articulos.find(a => a.proveedor)?.proveedor || ticketAnalisisActual.proveedor || "";
-  return { proveedor: proveedorComun, fecha: ticketAnalisisActual.fecha || "", articulos };
+  return {
+    proveedor: proveedorComun,
+    fecha: ticketAnalisisActual.fecha || "",
+    iva_porcentaje: ticketAnalisisActual.iva_porcentaje != null ? Number(ticketAnalisisActual.iva_porcentaje) : 21,
+    tipo_iva: ticketAnalisisActual.tipo_iva || "general",
+    iva_etiqueta: ticketAnalisisActual.iva_etiqueta || "",
+    iva_incluido: ticketAnalisisActual.iva_incluido != null ? !!ticketAnalisisActual.iva_incluido : true,
+    tipo_documento: ticketAnalisisActual.tipo_documento || "",
+    articulos
+  };
 }
 
 async function buscarMaterialesWebPc() {
@@ -5231,12 +5427,12 @@ async function procesarTextoManual() {
   } else toast(d.error || "Error al procesar", true);
 }
 
-// ===== OPTIMIZADOR TABLEROS / CANTO =====
+// ===== OPTIMIZADOR TABLEROS / CANTO (Desglose material) =====
 let optDatos = {};
 let optHerrajes = [];
 let optResultado = null;
-// Compat: algunas rutas antiguas usaban pbDatos
 let pbDatos = optDatos;
+let desgloseHistorial = [];
 
 function poblarSelectOptimizador() {
   const sel = document.getElementById("opt-faena-sel");
@@ -5248,9 +5444,261 @@ function poblarSelectOptimizador() {
 }
 function poblarSelectPolyboard() { poblarSelectOptimizador(); }
 
-function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
-  optDatos = piezas || {};
+function desgloseEl() {
+  return document.getElementById("desglose-resultado");
+}
+
+function desgloseGuardarEstado() {
+  const el = desgloseEl();
+  if (!el) return;
+  if (desgloseHistorial.length > 20) desgloseHistorial.shift();
+  desgloseHistorial.push(el.innerHTML);
+}
+
+function desgloseDeshacer() {
+  const el = desgloseEl();
+  if (!el || !desgloseHistorial.length) return;
+  el.innerHTML = desgloseHistorial.pop();
+  sincronizarOptDesdeDesglose();
+}
+
+function desgloseToggleCanto(celda) {
+  desgloseGuardarEstado();
+  if (celda.innerText === "✔") {
+    celda.innerText = "";
+    celda.classList.remove("canto-on");
+  } else {
+    celda.innerText = "✔";
+    celda.classList.add("canto-on");
+  }
+}
+
+function desgloseAnadirFila(btn) {
+  desgloseGuardarEstado();
+  const tabla = btn.closest("table").getElementsByTagName("tbody")[0];
+  const nuevaFila = document.createElement("tr");
+  nuevaFila.innerHTML = `
+    <td class="col-cant" contenteditable="true">1</td>
+    <td class="col-dim" contenteditable="true">0</td>
+    <td class="col-canto" onclick="desgloseToggleCanto(this)"></td>
+    <td class="col-canto" onclick="desgloseToggleCanto(this)"></td>
+    <td class="col-dim" contenteditable="true">0</td>
+    <td class="col-canto" onclick="desgloseToggleCanto(this)"></td>
+    <td class="col-canto" onclick="desgloseToggleCanto(this)"></td>
+    <td class="col-pieza" contenteditable="true">Nueva pieza</td>
+    <td class="col-del"><span class="btn-del-row" onclick="desgloseGuardarEstado(); this.closest('tr').remove(); sincronizarOptDesdeDesglose()">×</span></td>
+  `;
+  tabla.insertBefore(nuevaFila, tabla.firstChild);
+  sincronizarOptDesdeDesglose();
+}
+
+function desgloseNombreMaterialDeTabla(tabla) {
+  if (!tabla) return "";
+  const span = tabla.querySelector(".mat-nombre");
+  if (span) return String(span.innerText || "").trim();
+  const matHeader = tabla.querySelector(".mat-header");
+  if (matHeader) {
+    return matHeader.textContent.replace(/^.*?MATERIAL:\s*/i, "").trim();
+  }
+  return (tabla.getAttribute("data-material") || "").trim();
+}
+
+function desgloseRenombrarMaterial(span) {
+  const tabla = span && span.closest("table");
+  if (!tabla) return;
+  const nombre = String(span.innerText || "").trim();
+  if (!nombre) {
+    span.innerText = tabla.getAttribute("data-material") || "Material";
+    return;
+  }
+  tabla.setAttribute("data-material", nombre);
+  sincronizarOptDesdeDesglose();
+}
+
+function desgloseCabeceraGrupo(material) {
+  const nom = String(material || "").trim() || "Material";
+  return `<table data-material="${esc(nom)}">
+    <thead>
+      <tr>
+        <td colspan="8" class="mat-header">📦 MATERIAL: <span class="mat-nombre" contenteditable="true" onfocus="desgloseGuardarEstado()" onblur="desgloseRenombrarMaterial(this)">${esc(nom)}</span></td>
+        <td class="col-del">
+          <button type="button" class="btn-add-row" onclick="desgloseAnadirFila(this)">➕</button>
+          <button type="button" class="btn-del-group" onclick="desgloseGuardarEstado(); this.closest('table').remove(); sincronizarOptDesdeDesglose()">🗑️</button>
+        </td>
+      </tr>
+      <tr class="col-header">
+        <td class="col-cant">Cant</td><td class="col-dim">Largo</td><td class="col-canto">CD</td><td class="col-canto">CI</td>
+        <td class="col-dim">Ancho</td><td class="col-canto">CA</td><td class="col-canto">CB</td><td class="col-pieza">Pieza</td><td class="col-del"></td>
+      </tr>
+    </thead><tbody>`;
+}
+
+function desgloseFilaHtml(filaCampos) {
+  // filaCampos: [cant, largo, cd, ci, ancho, ca, cb, pieza] (cd.. strings "1"/"" or bool)
+  let html = "<tr>";
+  filaCampos.forEach((celda, idx) => {
+    if (idx > 7) return;
+    const contenido = String(celda == null ? "" : celda).trim();
+    if ([2, 3, 5, 6].includes(idx)) {
+      const esCanto = contenido === "1" || contenido === "✔" || contenido === "true";
+      html += `<td class="col-canto ${esCanto ? "canto-on" : ""}" onclick="desgloseToggleCanto(this)">${esCanto ? "✔" : ""}</td>`;
+    } else {
+      const clase = idx === 0 ? "col-cant" : (idx === 1 || idx === 4 ? "col-dim" : "col-pieza");
+      html += `<td class="${clase}" contenteditable="true" onfocus="desgloseGuardarEstado()" onblur="sincronizarOptDesdeDesglose()">${esc(contenido)}</td>`;
+    }
+  });
+  html += `<td class="col-del"><span class="btn-del-row" onclick="desgloseGuardarEstado(); this.closest('tr').remove(); sincronizarOptDesdeDesglose()">×</span></td></tr>`;
+  return html;
+}
+
+function desgloseGenerarTablaDesdeLineas(lineas) {
+  const el = desgloseEl();
+  if (!el) return;
+  const datos = lineas.map(l => String(l).split(";")).filter(l => l.length >= 9);
+  datos.sort((a, b) => String(a[8] || "").localeCompare(String(b[8] || ""), "es"));
+  let html = "";
+  let materialActual = "";
+  datos.forEach(fila => {
+    const mat = String(fila[8] || "").trim();
+    if (mat !== materialActual) {
+      if (html !== "") html += "</tbody></table>";
+      materialActual = mat;
+      html += desgloseCabeceraGrupo(materialActual);
+    }
+    html += desgloseFilaHtml(fila.slice(0, 8));
+  });
+  if (html) html += "</tbody></table>";
+  el.innerHTML = html;
+  const box = document.getElementById("opt-piezas-box");
+  if (box) box.style.display = html ? "" : "none";
+}
+
+function desglosePintarDesdePiezasPlanas(lista) {
+  const el = desgloseEl();
+  if (!el) return;
+  const datos = (lista || []).map(p => ({
+    material: String(p.material_origen || p.material || "").trim(),
+    campos: [
+      p.cantidad, p.largo, p.canto_der ? "1" : "0", p.canto_izq ? "1" : "0",
+      p.ancho, p.canto_arr ? "1" : "0", p.canto_ab ? "1" : "0", p.pieza || "",
+    ],
+  })).filter(x => x.material);
+  datos.sort((a, b) => a.material.localeCompare(b.material, "es"));
+  let html = "";
+  let materialActual = "";
+  datos.forEach(item => {
+    if (item.material !== materialActual) {
+      if (html !== "") html += "</tbody></table>";
+      materialActual = item.material;
+      html += desgloseCabeceraGrupo(materialActual);
+    }
+    html += desgloseFilaHtml(item.campos);
+  });
+  if (html) html += "</tbody></table>";
+  el.innerHTML = html;
+  const box = document.getElementById("opt-piezas-box");
+  if (box) box.style.display = html ? "" : "none";
+}
+
+function desglosePintarDesdeOptDatos(piezasDict) {
+  const flat = [];
+  for (const [clave, piezas] of Object.entries(piezasDict || {})) {
+    for (const p of (piezas || [])) {
+      flat.push({
+        ...p,
+        material: p.material_origen || p.material || clave,
+        material_origen: p.material_origen || p.material || clave,
+      });
+    }
+  }
+  desglosePintarDesdePiezasPlanas(flat);
+}
+
+function leerPiezasDesdeDesglose() {
+  const el = desgloseEl();
+  if (!el) return [];
+  const out = [];
+  el.querySelectorAll("table").forEach(tabla => {
+    const material = desgloseNombreMaterialDeTabla(tabla);
+    if (material) tabla.setAttribute("data-material", material);
+    tabla.querySelectorAll("tbody tr").forEach(tr => {
+      const celdas = tr.querySelectorAll("td");
+      if (celdas.length < 8) return;
+      const canto = (td) => (td.innerText || "").trim() === "✔" ? 1 : 0;
+      const num = (td) => {
+        const raw = String(td.innerText || "").trim().replace(",", ".");
+        const n = parseFloat(raw);
+        return isNaN(n) ? 0 : Math.round(n);
+      };
+      out.push({
+        cantidad: num(celdas[0]),
+        largo: num(celdas[1]),
+        canto_der: canto(celdas[2]),
+        canto_izq: canto(celdas[3]),
+        ancho: num(celdas[4]),
+        canto_arr: canto(celdas[5]),
+        canto_ab: canto(celdas[6]),
+        pieza: String(celdas[7].innerText || "").trim(),
+        material,
+      });
+    });
+  });
+  return out;
+}
+
+function espesorDeMaterialJs(nombre) {
+  const t = String(nombre || "").trim();
+  if (!t) return null;
+  let m = t.match(/,\s*(\d{1,2})\s*$/);
+  if (m) return parseInt(m[1], 10);
+  m = t.match(/[x×]\s*(\d{1,2})\b/i);
+  if (m) return parseInt(m[1], 10);
+  m = t.match(/\b(\d{1,2})\b/);
+  if (m) {
+    const v = parseInt(m[1], 10);
+    if (v >= 3 && v <= 40) return v;
+  }
+  return null;
+}
+
+function desgloseAOptDatos() {
+  const excluirSep = document.getElementById("opt-excluir-sep")?.checked;
+  const flat = leerPiezasDesdeDesglose();
+  const out = {};
+  for (const p of flat) {
+    const mat = String(p.material || "").trim();
+    if (!mat) continue;
+    if (excluirSep && mat.toLowerCase().includes("separac")) continue;
+    const esp = espesorDeMaterialJs(mat);
+    const bucket = out[mat] || (out[mat] = []);
+    bucket.push({
+      cantidad: p.cantidad,
+      largo: p.largo,
+      canto_der: p.canto_der,
+      canto_izq: p.canto_izq,
+      ancho: p.ancho,
+      canto_arr: p.canto_arr,
+      canto_ab: p.canto_ab,
+      pieza: p.pieza,
+      material: mat,
+      material_origen: mat,
+      espesor: esp,
+    });
+  }
+  optDatos = out;
   pbDatos = optDatos;
+  return optDatos;
+}
+
+function sincronizarOptDesdeDesglose() {
+  desgloseAOptDatos();
+  renderHerrajesOptimizador();
+  renderConfigTablerosOptimizador();
+  actualizarResumenOptimizador();
+}
+
+function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
+  desgloseHistorial = [];
   optHerrajes = Array.isArray(herrajes) ? herrajes.map(h => ({
     nombre: h.nombre || h.nombre_origen || "",
     cantidad: parseInt(h.cantidad, 10) || 0,
@@ -5264,13 +5712,24 @@ function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
   document.getElementById("opt-ruta").textContent = ruta ? ("📄 " + ruta) : "";
   document.getElementById("opt-resultado").style.display = "none";
   document.getElementById("opt-resultado").innerHTML = "";
-  const box = document.getElementById("opt-piezas-box");
-  if (box) box.style.display = Object.keys(optDatos).length ? "" : "none";
-  renderTablaOptimizador();
-  renderHerrajesOptimizador();
-  renderConfigTablerosOptimizador();
+  desglosePintarDesdeOptDatos(piezas || {});
+  sincronizarOptDesdeDesglose();
   rellenarSelectsServicioOpt();
-  actualizarResumenOptimizador();
+  asegurarMaterialesPc()
+    .then(() => aplicarTarifasAlmacenOptimizador())
+    .catch(() => {});
+}
+
+function aplicarDespieceDesdeTxtCliente(texto, nombre) {
+  desgloseHistorial = [];
+  optHerrajes = [];
+  optResultado = null;
+  document.getElementById("opt-ruta").textContent = nombre ? ("📄 " + nombre) : "";
+  document.getElementById("opt-resultado").style.display = "none";
+  document.getElementById("opt-resultado").innerHTML = "";
+  desgloseGenerarTablaDesdeLineas(String(texto || "").split(/\r?\n/));
+  sincronizarOptDesdeDesglose();
+  rellenarSelectsServicioOpt();
   asegurarMaterialesPc()
     .then(() => aplicarTarifasAlmacenOptimizador())
     .catch(() => {});
@@ -5279,18 +5738,28 @@ function aplicarDespieceOptimizador(piezas, ruta, herrajes) {
 async function cargarOptimizadorDesdeInput(input) {
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const fd = new FormData();
-  fd.append("archivo", file, file.name);
+  const nom = String(file.name || "").toLowerCase();
   toast("Cargando despiece…");
   try {
+    if (nom.endsWith(".txt") || (file.type || "").includes("text")) {
+      const texto = await file.text();
+      aplicarDespieceDesdeTxtCliente(texto, file.name);
+      toast("✓ Despiece TXT cargado");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("archivo", file, file.name);
     const r = await fetch(API + "/polyboard/procesar", { method: "POST", body: fd });
     const d = await r.json();
     if (!d.ok) { toast(d.error || "No se pudo cargar", true); return; }
-    aplicarDespieceOptimizador(d.data.piezas || {}, d.data.ruta || file.name, d.data.herrajes || []);
+    const origen = d.data.piezas_origen && Object.keys(d.data.piezas_origen).length
+      ? d.data.piezas_origen
+      : (d.data.piezas || {});
+    aplicarDespieceOptimizador(origen, d.data.ruta || file.name, d.data.herrajes || []);
     const nH = (d.data.herrajes || []).length;
     toast(nH ? `✓ Despiece cargado (${nH} herrajes)` : "✓ Despiece cargado");
   } catch (e) {
-    toast("Error al subir el archivo", true);
+    toast("Error al cargar el archivo", true);
   } finally {
     input.value = "";
   }
@@ -5502,11 +5971,12 @@ function rellenarSelectsServicioOpt(preferidos) {
 
 async function aplicarTarifasAlmacenOptimizador() {
   await asegurarMaterialesPc().catch(() => {});
+  desgloseAOptDatos();
   const mats = materialesVisiblesOptimizador();
   renderConfigTablerosOptimizador();
   rellenarSelectsServicioOpt();
   if (!mats.length && !optHerrajes.length) return;
-  const espesores = mats.map(m => parseInt(String(m).replace(/\D/g, ""), 10)).filter(n => n > 0);
+  const espesores = mats.map(m => espesorDeMaterialJs(m)).filter(n => n > 0);
   try {
     const r = await api("POST", "/polyboard/tarifas-almacen", {
       espesores,
@@ -5532,7 +6002,8 @@ async function aplicarTarifasAlmacenOptimizador() {
       if (el) el.value = d.canto.precio_ml;
     }
     mats.forEach((m, idx) => {
-      const tar = (d.tableros || {})[m];
+      const esp = espesorDeMaterialJs(m);
+      const tar = esp ? (d.tableros || {})[esp + " mm"] : null;
       const sel = document.getElementById("opt-mat-" + idx + "-sel");
       const inp = document.getElementById("opt-mat-" + idx + "-p");
       if (tar && tar.material_id != null) {
@@ -5591,63 +6062,8 @@ async function aplicarTarifasAlmacenOptimizador() {
   }
 }
 
-function renderTablaOptimizador() {
-  const excluirSep = document.getElementById("opt-excluir-sep")?.checked;
-  const el = document.getElementById("opt-tabla");
-  const box = document.getElementById("opt-piezas-box");
-  if (!el) return;
-  if (!optDatos || !Object.keys(optDatos).length) {
-    if (box) box.style.display = "none";
-    el.innerHTML = "";
-    return;
-  }
-  if (box) box.style.display = "";
-  let html = "";
-  for (const [material, piezas] of Object.entries(optDatos)) {
-    if (excluirSep && String(material).toLowerCase().includes("separac")) continue;
-    const matJs = JSON.stringify(material);
-    const totalPiezas = piezas.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0);
-    html += `<div class="pb-mat-header">📦 ${esc(String(material).toUpperCase())}</div>
-      <div class="pb-resumen">${piezas.length} referencia${piezas.length !== 1 ? "s" : ""} · ${totalPiezas} pieza${totalPiezas !== 1 ? "s" : ""}</div>
-      <table class="pb-table"><thead><tr>
-        <th>Cant.</th><th>Largo</th><th>CD</th><th>CI</th><th>Ancho</th><th>CA</th><th>CB</th><th class="col-pieza">Pieza</th>
-      </tr></thead><tbody>`;
-    piezas.forEach((p, idx) => {
-      html += `<tr>
-        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"cantidad",this.textContent)'>${p.cantidad}</td>
-        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"largo",this.textContent)'>${p.largo}</td>
-        <td class="canto-cell ${p.canto_der ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_der",this)'>${p.canto_der ? "✔" : "–"}</td>
-        <td class="canto-cell ${p.canto_izq ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_izq",this)'>${p.canto_izq ? "✔" : "–"}</td>
-        <td contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"ancho",this.textContent)'>${p.ancho}</td>
-        <td class="canto-cell ${p.canto_arr ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_arr",this)'>${p.canto_arr ? "✔" : "–"}</td>
-        <td class="canto-cell ${p.canto_ab ? "canto-on" : ""}" onclick='toggleCantoOpt(${matJs},${idx},"canto_ab",this)'>${p.canto_ab ? "✔" : "–"}</td>
-        <td class="col-pieza" contenteditable="true" onblur='editarCampoOpt(${matJs},${idx},"pieza",this.textContent)'>${esc(p.pieza || "")}</td>
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-  }
-  el.innerHTML = html || '<div class="empty"><div class="empty-icon">🪵</div>No hay materiales para mostrar</div>';
-}
-
-function toggleCantoOpt(material, idx, campo, celda) {
-  if (!optDatos[material] || !optDatos[material][idx]) return;
-  optDatos[material][idx][campo] = optDatos[material][idx][campo] ? 0 : 1;
-  const activo = optDatos[material][idx][campo];
-  celda.textContent = activo ? "✔" : "–";
-  celda.classList.toggle("canto-on", !!activo);
-}
-function editarCampoOpt(material, idx, campo, valor) {
-  if (!optDatos[material] || !optDatos[material][idx]) return;
-  const v = String(valor || "").trim();
-  if (campo === "pieza") optDatos[material][idx][campo] = v;
-  else {
-    const num = parseInt(v, 10);
-    if (!isNaN(num)) optDatos[material][idx][campo] = num;
-  }
-  actualizarResumenOptimizador();
-}
-
 async function generarPdfOptimizadorPc() {
+  desgloseAOptDatos();
   if (!optDatos || !Object.keys(optDatos).length) {
     toast("Carga un TXT primero", true);
     return;
@@ -5703,7 +6119,7 @@ function actualizarResumenOptimizador() {
     refs += piezas.length;
     uds += piezas.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0);
   }
-  el.textContent = `${mats.length} espesor${mats.length !== 1 ? "es" : ""} · ${refs} referencias · ${uds} piezas`
+  el.textContent = `${mats.length} material${mats.length !== 1 ? "es" : ""} · ${refs} referencias · ${uds} piezas`
     + (optHerrajes.length ? ` · ${optHerrajes.length} herrajes` : "");
 }
 
@@ -5718,11 +6134,14 @@ function renderConfigTablerosOptimizador() {
     return;
   }
   box.style.display = "";
+  const tituloBox = box.querySelector(".form-title");
+  if (tituloBox) tituloBox.textContent = "Tableros por material del despiece";
   wrap.innerHTML = mats.map((m, idx) => {
     const id = "opt-mat-" + idx;
-    const esp = parseInt(String(m).replace(/\D/g, ""), 10) || null;
+    const esp = espesorDeMaterialJs(m);
+    const espTxt = esp ? ` · ${esp} mm` : "";
     return `<div class="form-box" style="margin:0 0 10px 0;padding:12px;background:#faf8f4">
-      <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">Espesor ${esc(m)}</div>
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">${esc(m)}${esc(espTxt)}</div>
       <div class="form-grid g1" style="margin-bottom:8px">
         <div>
           <label>Material de almacén</label>
@@ -5742,6 +6161,7 @@ function renderConfigTablerosOptimizador() {
 }
 
 function leerTarifasOptimizadorPc() {
+  desgloseAOptDatos();
   const mats = materialesVisiblesOptimizador();
   const tableros = {};
   mats.forEach((m, idx) => {
@@ -5856,6 +6276,7 @@ function renderResultadoOptimizadorPc(data) {
 }
 
 async function calcularOptimizadorPc() {
+  desgloseAOptDatos();
   if (!optDatos || !Object.keys(optDatos).length) {
     toast("Selecciona un TXT o PDF de despiece primero", true);
     return;
@@ -5878,9 +6299,7 @@ async function calcularOptimizadorPc() {
 }
 
 document.getElementById("opt-excluir-sep")?.addEventListener("change", () => {
-  renderTablaOptimizador();
-  renderConfigTablerosOptimizador();
-  actualizarResumenOptimizador();
+  sincronizarOptDesdeDesglose();
 });
 
 const PRES_BORRADOR_ID = "borrador";
