@@ -3565,16 +3565,6 @@ function iniciarTiempoFaena(faenaId, categoria) {
 }
 
 async function guardarSesionTiempo(sesion) {
-  try {
-    const r = await fetch(`${getServerUrl()}/sync/tiempos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sesiones: [sesion] }),
-      signal: faenasAbortTimeout(8000)
-    });
-    const d = await r.json();
-    if (d.ok) return true;
-  } catch (e) {}
   const cola = cargarCola();
   cola.tiempos = cola.tiempos || [];
   cola.tiempos.push(sesion);
@@ -3838,9 +3828,7 @@ async function _syncCobroCreateFondo(f, tempId, body) {
       renderPanelCobros(f);
       renderPanelDatos(f);
     }
-  } catch (e) {
-    // Queda en cola para el sync general
-  }
+  } catch (e) {}
 }
 
 async function _syncCobroDeleteFondo(faenaId, cid) {
@@ -3878,9 +3866,8 @@ function guardarCobroFaena(f) {
   if (importeEl) importeEl.value = "";
   if (notaEl) notaEl.value = "";
   if (fechaEl) fechaEl.value = fechaHoyIsoLocal();
-  toast("Cobro guardado");
+  toast("Cobro guardado en el móvil");
   _pintarCobrosFaenaAhora(f);
-  _syncCobroCreateFondo(f, tempId, body);
 }
 
 function eliminarCobroFaena(f, cid) {
@@ -3893,9 +3880,8 @@ function eliminarCobroFaena(f, cid) {
   }
   _encolarCobroDelete(id, cid);
   f.cobros = (f.cobros || []).filter(c => String(c.id) !== String(cid));
-  toast("Cobro eliminado");
+  toast("Cobro eliminado en el móvil");
   _pintarCobrosFaenaAhora(f);
-  _syncCobroDeleteFondo(id, cid);
 }
 
 function eliminarCobroTempFaena(f, tempId, yaConfirmado) {
@@ -5059,26 +5045,18 @@ async function confirmarDestinoFoto(tipo) {
       cola.fotos.push({ faena_id: faenaId, blobId, nombre: foto.nombre, fecha: new Date().toISOString() });
     }
     guardarCola(cola);
-    toast("Foto guardada en la faena");
-    programarSyncFondo(400);
+    toast("Foto guardada en el móvil");
   } else {
     const faenaId = document.getElementById("foto-destino-faena")?.value || 0;
+    const cola = cargarCola();
+    cola.bookPendiente = cola.bookPendiente || [];
     for (const foto of fotos) {
-      try {
-        const r = await fetch(`${getServerUrl()}/book`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ faena_id: faenaId || 0, titulo: "Foto", data: foto.data }),
-          signal: faenasAbortTimeout(30000)
-        });
-        const d = await r.json();
-        if (!d.ok) toast(d.error || "No se pudo guardar en el book", true);
-      } catch (e) {
-        toast("No se pudo guardar en el book", true);
-      }
+      cola.bookPendiente.push({ faena_id: faenaId || 0, titulo: "Foto", data: foto.data });
+      bookCache.unshift({ titulo: "Foto", data: foto.data, faena_id: faenaId || 0 });
     }
-    toast("Foto guardada en el book");
-    await sincronizarBook(getServerUrl());
+    guardarCola(cola);
+    try { localStorage.setItem("book_cache", JSON.stringify(bookCache)); } catch (e) {}
+    toast("Foto guardada en el móvil");
     renderBookMovil();
   }
   window._fotosDestinoPendientes = [];
@@ -5473,30 +5451,11 @@ async function guardarGastoFabricacion() {
     return;
   }
 
-  try {
-    const base = getServerUrl();
-    const url = gastoId ? `${base}/gastos/${gastoId}` : `${base}/faenas/${faenaId}/gastos`;
-    const method = gastoId ? "PUT" : "POST";
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: faenasAbortTimeout(8000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    await recargarPresupuestoFaena(faenaId);
-    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-    if (f) renderPanelGastos(f);
-    renderFaenas();
-    cerrarModal("m-gasto-fabricacion");
-    toast(gastoId ? "✓ Gasto actualizado" : "✓ Gasto añadido");
-    return;
-  } catch (e) {
-    console.error(e);
-  }
-
-  // Sin conexión: guarda en el móvil y se sincroniza automáticamente al recuperar señal.
+  const tempGasto = gastoId || `temp_${Date.now()}`;
   const cola = cargarCola();
   cola.gastos.push({
     op: gastoId ? "update" : "create",
-    id: gastoId || `temp_${Date.now()}`,
+    id: tempGasto,
     faena_id: faenaId,
     descripcion,
     tipo,
@@ -5511,13 +5470,13 @@ async function guardarGastoFabricacion() {
       const idx = f.gastos.findIndex(g => String(g.id) === String(gastoId));
       if (idx >= 0) f.gastos[idx] = { ...f.gastos[idx], descripcion, tipo, cantidad, precio_unitario, total: cantidad * precio_unitario };
     } else {
-      f.gastos.push({ id: `temp_${Date.now()}`, faena_id: faenaId, tipo, descripcion, cantidad, precio_unitario, total: cantidad * precio_unitario });
+      f.gastos.push({ id: tempGasto, faena_id: faenaId, tipo, descripcion, cantidad, precio_unitario, total: cantidad * precio_unitario });
     }
     renderPanelGastos(f);
   }
   renderFaenas();
   cerrarModal("m-gasto-fabricacion");
-  toast("⏳ Sin conexión: guardado en el móvil, se sincronizará automáticamente", true);
+  toast("✓ Gasto guardado en el móvil");
 }
 
 async function eliminarGastoFabricacion(faenaId, gastoId) {
@@ -5539,22 +5498,6 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
     return;
   }
 
-  try {
-    const r = await fetch(`${getServerUrl()}/gastos/${gastoId}`, { method: "DELETE", signal: faenasAbortTimeout(6000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error");
-    await recargarPresupuestoFaena(faenaId);
-    const f = state.faenas.find(x => String(x.id || x._tempId) === String(faenaId));
-    if (f) renderPanelGastos(f);
-    renderFaenas();
-    toast("✓ Gasto eliminado");
-    return;
-  } catch (e) {
-    console.error(e);
-  }
-
-  // Sin conexión: encola el borrado para sincronizar automáticamente más tarde.
   const cola = cargarCola();
   cola.gastos.push({ op: "delete", id: gastoId, faena_id: faenaId });
   guardarCola(cola);
@@ -5565,7 +5508,7 @@ async function eliminarGastoFabricacion(faenaId, gastoId) {
     renderPanelGastos(f);
   }
   renderFaenas();
-  toast("⏳ Sin conexión: se eliminará al sincronizar", true);
+  toast("✓ Gasto eliminado en el móvil");
 }
 
 async function eliminarGastoFabricacionDesdeModal() {
@@ -5742,31 +5685,24 @@ async function cambiarFaseMovil(event, id, fase) {
     return;
   }
   const f = state.faenas.find(x => String(x.id || x._tempId) === String(id));
+  if (f) f.fase = fase;
+  const cola = cargarCola();
   if (f && f._offline) {
-    f.fase = fase;
-    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-    toast("✓ Fase actualizada");
-    renderFaenas();
-    return;
+    const en = (cola.faenas || []).find(x => String(x._tempId) === String(f._tempId));
+    if (en) en.fase = fase;
+  } else if (!esIdFaenaTemporal(id)) {
+    cola.faenasEditar = cola.faenasEditar || [];
+    const idx = cola.faenasEditar.findIndex(x => String(x.id) === String(id));
+    const prev = idx >= 0 ? cola.faenasEditar[idx] : { id: Number(id) || id };
+    const entry = { ...prev, id: Number(id) || id, fase };
+    if (idx >= 0) cola.faenasEditar[idx] = entry;
+    else cola.faenasEditar.push(entry);
   }
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${id}/fase`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fase }),
-      signal: faenasAbortTimeout(8000)
-    });
-    const d = await r.json();
-    if (!d.ok) { toast(d.error || "No se pudo cambiar la fase", true); renderFaenas(); return; }
-    if (f) f.fase = fase;
-    localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-    toast("✓ Fase actualizada");
-    state.faseVista = fase;
-    seleccionarFaseMovil(fase);
-  } catch (e) {
-    toast("Sin conexión: no se pudo cambiar la fase", true);
-    renderFaenas();
-  }
+  guardarCola(cola);
+  localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
+  toast("✓ Fase guardada en el móvil");
+  state.faseVista = fase;
+  seleccionarFaseMovil(fase);
 }
 
 function totalPresupuestoVisibleFaena(f) {
@@ -5913,8 +5849,7 @@ async function eliminarFaenaLocal(id) {
   quitarFaenaDeListasLocales(id);
   if (String(state.faenaActualId) === String(id)) cerrarFaena();
   renderFaenas();
-  const enviadas = await enviarFaenasEliminadas();
-  toast(enviadas ? "✓ Faena anulada y borrada" : "✓ Faena anulada en el móvil — se borrará del registro al conectar");
+  toast("✓ Faena anulada en el móvil");
 }
 
 function buscarClientePorId(id) {
@@ -6040,10 +5975,9 @@ async function crearFaena() {
   guardarCola(cola);
   state.faenas.unshift(faena);
   localStorage.setItem("faenas_cache", JSON.stringify(state.faenas));
-  const subidas = await enviarFaenasPendientes();
   renderFaenas();
   cerrarModal("m-nueva-faena");
-  toast(subidas ? "✓ Faena guardada" : "✓ Faena en el móvil — se subirá al conectar");
+  toast("✓ Faena guardada en el móvil");
   // Limpiar
   ["nf-tel","nf-dir","nf-tipo","nf-importe","nc-nombre","nc-tel","nc-dir","nc-email"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   document.getElementById("nf-cliente-sel").value = "";
@@ -6111,44 +6045,14 @@ async function guardarEditarFaena() {
     return;
   }
 
-  try {
-    const r = await fetch(`${getServerUrl()}/faenas/${id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos), signal: faenasAbortTimeout(6000)
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    if (d.ok) {
-      const clienteId = faena.cliente_id;
-      if (clienteId && !String(clienteId).startsWith("temp")) {
-        const cli = state.clientes.find(c => String(c.id) === String(clienteId));
-        await fetch(`${getServerUrl()}/clientes/${clienteId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nombre: faena.cliente_nombre || cli?.nombre || "",
-            telefono: datos.telefono,
-            direccion: datos.direccion,
-            email: cli?.email || "",
-            intermediario_id: cli?.intermediario_id || 0,
-            notas: cli?.notas || ""
-          }),
-          signal: faenasAbortTimeout(6000)
-        });
-      }
-      aplicar();
-      return;
-    }
-  } catch(e) { console.error("Error editando faena:", e); }
-
   const cola = cargarCola();
   if (!cola.faenasEditar) cola.faenasEditar = [];
   const idx = cola.faenasEditar.findIndex(x => String(x.id) === String(id));
-  const entry = { id: Number(id) || id, ...datos };
+  const prev = idx >= 0 ? cola.faenasEditar[idx] : {};
+  const entry = { ...prev, id: Number(id) || id, ...datos };
   if (idx >= 0) cola.faenasEditar[idx] = entry; else cola.faenasEditar.push(entry);
   guardarCola(cola);
   aplicar();
-  toast("⏳ Guardado offline — se aplicará al sincronizar");
 }
 
 function opcionesFaenasHtml() {
@@ -6202,18 +6106,6 @@ async function eliminarAnotacionMovil(id, faenaId) {
     _refrescarDocumentos(faenaId);
     return;
   }
-  const API = getServerUrl();
-  try {
-    const r = await fetch(`${API}/anotaciones/${id}`, { method: "DELETE", signal: faenasAbortTimeout(4000) });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.ok) {
-        const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
-        if (faena?.anotaciones) { faena.anotaciones = faena.anotaciones.filter(a => String(a.id) !== String(id)); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-        toast("✓ Anotación eliminada"); _refrescarDocumentos(faenaId); return;
-      }
-    }
-  } catch(e) { console.error("Error eliminando anotación:", e); }
   const cola = cargarCola();
   if (!cola.anotacionesEliminar.includes(Number(id))) cola.anotacionesEliminar.push(Number(id) || id);
   guardarCola(cola);
@@ -6239,7 +6131,7 @@ async function guardarAnotacion() {
       guardarCola(cola);
       const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
       if (faena?.anotaciones) { const a = faena.anotaciones.find(a => String(a.id || a._tempId) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-      toast("Anotación actualizada — se sube sola");
+      toast("Anotación guardada en el móvil");
       cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
     }
     const cola = cargarCola();
@@ -6250,7 +6142,7 @@ async function guardarAnotacion() {
     guardarCola(cola);
     const faena = state.faenas.find(f => String(f.id || f._tempId) === String(faenaId));
     if (faena?.anotaciones) { const a = faena.anotaciones.find(x => String(x.id) === String(editId)); if (a) { a.tipo = tipo; a.contenido = contenido; } localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-    toast("Anotación actualizada — se sube sola");
+    toast("Anotación guardada en el móvil");
     cerrarModal("m-anotacion"); _refrescarDocumentos(faenaId); return;
   }
 
@@ -6262,7 +6154,7 @@ async function guardarAnotacion() {
   cola.anotaciones.push(anotacion);
   guardarCola(cola);
   if (faena) { if (!faena.anotaciones) faena.anotaciones = []; faena.anotaciones.unshift({ ...anotacion, id: tempId }); localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); }
-  toast("Anotación guardada — se sube sola");
+  toast("Anotación guardada en el móvil");
   cerrarModal("m-anotacion");
   _refrescarDocumentos(faenaId);
 }
@@ -6341,22 +6233,23 @@ function renderMateriales() {
       definicion: document.getElementById("material-editar-definicion").value.trim()
     };
     if (!payload.nombre) { toast("El nombre es obligatorio", true); return; }
-    try {
-      const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
-      const d = await r.json();
-      if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo actualizar");
-      const preciosEditados = Array.from(document.querySelectorAll("#material-editar-precios tbody tr")).map((tr, i) => ({
-        proveedor: (tr.querySelector(`[data-precio-proveedor="${i}"]`)?.value || "").trim(),
-        precio_unitario: Number(tr.querySelector(`[data-precio-valor="${i}"]`)?.value || 0)
-      })).filter(p => p.proveedor && Number.isFinite(p.precio_unitario) && p.precio_unitario >= 0);
-      const rp = await fetch(`${getServerUrl()}/materiales/${id}/precios`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({precios: preciosEditados}) });
-      const dp = await rp.json();
-      if (!rp.ok || !dp.ok) throw new Error(dp.error || "No se pudieron actualizar los precios");
-      await cargarMateriales();
-      cerrarModal("m-material");
-      renderMateriales();
-      toast("✓ Material actualizado");
-    } catch (e) { toast(e.message || "Error al actualizar material", true); }
+    const preciosEditados = Array.from(document.querySelectorAll("#material-editar-precios tbody tr")).map((tr, i) => ({
+      proveedor: (tr.querySelector(`[data-precio-proveedor="${i}"]`)?.value || "").trim(),
+      precio_unitario: Number(tr.querySelector(`[data-precio-valor="${i}"]`)?.value || 0)
+    })).filter(p => p.proveedor && Number.isFinite(p.precio_unitario) && p.precio_unitario >= 0);
+    const m = state.materiales.find(x => String(x.id) === String(id));
+    if (m) {
+      Object.assign(m, payload);
+      if (preciosEditados.length) m.precios = preciosEditados;
+      localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+    }
+    const cola = cargarCola();
+    cola.definicionesPendientes = cola.definicionesPendientes || [];
+    cola.definicionesPendientes.push({ id, ...payload, precios: preciosEditados, _editar: true });
+    guardarCola(cola);
+    cerrarModal("m-material");
+    renderMateriales();
+    toast("✓ Material guardado en el móvil");
   }
 
   async function eliminarMaterialDesdeModal() {
@@ -6387,24 +6280,14 @@ async function editarMaterial(id) {
   if (categoria === null) return;
   const definicion = prompt("Definición:", m.definicion || "");
   if (definicion === null) return;
-  try {
-    const r = await fetch(`${getServerUrl()}/materiales/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({nombre, unidad, categoria, definicion}), signal: faenasAbortTimeout(10000) });
-    const d = await r.json();
-    if (!r.ok || !d.ok) throw new Error(d.error || "No se pudo actualizar");
-    Object.assign(m, { nombre, unidad, categoria, definicion });
-    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-    renderMateriales();
-    toast("✓ Material actualizado");
-  } catch (e) {
-    Object.assign(m, { nombre, unidad, categoria, definicion });
-    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-    const cola = cargarCola();
-    cola.definicionesPendientes = cola.definicionesPendientes || [];
-    cola.definicionesPendientes.push({ id, definicion, nombre, unidad, categoria, _editar: true });
-    guardarCola(cola);
-    renderMateriales();
-    toast("Material guardado (pendiente de sincronizar)");
-  }
+  Object.assign(m, { nombre, unidad, categoria, definicion });
+  localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  const cola = cargarCola();
+  cola.definicionesPendientes = cola.definicionesPendientes || [];
+  cola.definicionesPendientes.push({ id, definicion, nombre, unidad, categoria, _editar: true });
+  guardarCola(cola);
+  renderMateriales();
+  toast("Material guardado en el móvil");
 }
 
 async function eliminarMaterial(id) {
@@ -6428,18 +6311,6 @@ function editarDefinicionMaterial(id, nombre, def) {
 }
 
 async function actualizarDefinicionMaterial(id, definicion) {
-  try {
-    const r = await fetch(`${getServerUrl()}/materiales/${id}/definicion`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({definicion}) });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.ok) {
-        const m = state.materiales.find(x => x.id === id);
-        if (m) m.definicion = definicion;
-        localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
-        renderMateriales(); toast("✓ Definición actualizada"); return;
-      }
-    }
-  } catch(e) { console.error("Error definición:", e); }
   const cola = cargarCola();
   cola.definicionesPendientes.push({id, definicion});
   guardarCola(cola);
@@ -6461,13 +6332,19 @@ async function guardarPrecio() {
   const proveedor = document.getElementById("precio-prov").value.trim();
   const precio = parseFloat(document.getElementById("precio-val").value);
   if (!proveedor || !precio || isNaN(precio)) { toast("Completa proveedor y precio", true); return; }
-  try {
-    const r = await fetch(`${getServerUrl()}/materiales/${id}/precio`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({proveedor, precio_unitario: precio}) });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.ok) { toast("✓ Precio actualizado"); cerrarModal("m-precio"); await cargarMateriales(); renderMateriales(); return; }
-    }
-  } catch(e) { console.error("Error precio:", e); toast("Error al guardar precio", true); }
+  const m = state.materiales.find(x => String(x.id) === String(id));
+  if (m) {
+    m.precios = m.precios || [];
+    m.precios.push({ proveedor, precio_unitario: precio });
+    localStorage.setItem("materiales_cache", JSON.stringify(state.materiales));
+  }
+  const cola = cargarCola();
+  cola.definicionesPendientes = cola.definicionesPendientes || [];
+  cola.definicionesPendientes.push({ id, precio: { proveedor, precio_unitario: precio } });
+  guardarCola(cola);
+  toast("✓ Precio guardado en el móvil");
+  cerrarModal("m-precio");
+  renderMateriales();
 }
 
 async function cargarMateriales() {
@@ -7828,14 +7705,10 @@ async function quitarDelBook(idx, silencioso) {
   if (!silencioso && !confirm("¿Quitar esta foto del book?")) return;
   if (bookDirHandle && f.nombre) { try { await bookDirHandle.removeEntry(f.nombre); } catch(e) {} }
   if (f.id) {
-    try {
-      await fetch(`${getServerUrl()}/book/${f.id}`, { method: "DELETE", signal: faenasAbortTimeout(15000) });
-    } catch (e) {
-      const cola = cargarCola();
-      cola.bookEliminar = cola.bookEliminar || [];
-      cola.bookEliminar.push(f.id);
-      guardarCola(cola);
-    }
+    const cola = cargarCola();
+    cola.bookEliminar = cola.bookEliminar || [];
+    cola.bookEliminar.push(f.id);
+    guardarCola(cola);
   }
   bookCache.splice(idx, 1);
   localStorage.setItem("book_cache", JSON.stringify(bookCache));
@@ -7989,13 +7862,9 @@ function actualizarIndicadorSyncEstado(modo) {
   if (ban) { ban.className = banCls; ban.textContent = banTxt; }
 }
 
-function programarSyncFondo(ms) {
+function programarSyncFondo() {
   if (_syncFondoTimer) clearTimeout(_syncFondoTimer);
-  const delay = typeof ms === "number" ? ms : 1200;
-  _syncFondoTimer = setTimeout(() => {
-    _syncFondoTimer = null;
-    drenarColaEnSegundoPlano().catch(() => {});
-  }, delay);
+  _syncFondoTimer = null;
   actualizarIndicadorSyncEstado();
 }
 
@@ -8142,7 +8011,8 @@ function preguntarSalidaSiPendiente() {
 function abrirTerminarSesion(auto) {
   actualizarIndicadorSesion();
   if (!hayCambiosSesion()) {
-    if (!auto) toast("No hay cambios pendientes de subir");
+    if (auto) return;
+    sincronizar();
     return;
   }
   const modal = document.getElementById("m-salida-sync");
@@ -8231,6 +8101,7 @@ async function sincronizar(opts) {
   const cola = cargarCola();
   try {
     await enviarFaenasEliminadas();
+    cola.faenasEliminar = cargarCola().faenasEliminar || [];
     let comprobacion = await fetch(`${API}/sync/estado`, {signal: faenasAbortTimeout(fondo ? 10000 : 15000)});
     if (!comprobacion.ok) {
       throw new Error(`La API no responde (${comprobacion.status})`);
@@ -8268,7 +8139,7 @@ async function sincronizar(opts) {
         const clienteId = mapaClientes[f._clienteTempId] || f.cliente_id;
         const clienteBase = [...state.clientes, ...cola.clientes].find(x => String(x.id || x._tempId) === String(f._clienteTempId || f.cliente_id));
         const direccionFaena = f.direccion || clienteBase?.direccion || "";
-        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio}), signal:faenasAbortTimeout(8000)});
+        const r = await fetch(`${API}/faenas`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({cliente_id:clienteId, intermediario_id:f.intermediario_id||0, direccion:direccionFaena, tipo_trabajo:f.tipo_trabajo, importe:f.importe, fecha_inicio:f.fecha_inicio, fase:f.fase || "medicion"}), signal:faenasAbortTimeout(8000)});
         if (r.ok) { const d = await r.json(); if (d.ok) mapaFaenas[f._tempId] = {id:d.data.id, numero:d.data.numero}; }
       } catch(e) {}
     }
@@ -8282,14 +8153,44 @@ async function sincronizar(opts) {
           f.id = map.id;
           if (map.numero) f.numero = map.numero;
           delete f._offline;
+          delete f._tempId;
         }
       }
+      cola.faenas = (cola.faenas || []).filter(f => !mapaFaenas[f._tempId]);
+      guardarCola(cola, { silencioso: true, sinFondo: true });
       try { localStorage.setItem("faenas_cache", JSON.stringify(state.faenas)); } catch (e) {}
     }
 
     // Faenas editadas
     for (const ed of (cola.faenasEditar||[])) {
-      try { await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ed), signal:faenasAbortTimeout(6000)}); } catch(e) {}
+      try {
+        if (ed.fase) {
+          await fetch(`${API}/faenas/${ed.id}/fase`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({fase: ed.fase}), signal:faenasAbortTimeout(6000)});
+        }
+        const cuerpo = {};
+        if (ed.direccion !== undefined) cuerpo.direccion = ed.direccion;
+        if (ed.tipo_trabajo !== undefined) cuerpo.tipo_trabajo = ed.tipo_trabajo;
+        if (ed.importe !== undefined) cuerpo.importe = ed.importe;
+        if (ed.fecha_inicio !== undefined) cuerpo.fecha_inicio = ed.fecha_inicio;
+        if (Object.keys(cuerpo).length) {
+          await fetch(`${API}/faenas/${ed.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(cuerpo), signal:faenasAbortTimeout(6000)});
+        }
+        if ((ed.telefono != null || ed.direccion != null) && ed.id) {
+          const local = (state.faenas || []).find(x => String(x.id) === String(ed.id));
+          const clienteId = local && local.cliente_id;
+          if (clienteId && !esIdTemporalCliente(clienteId)) {
+            const cli = (state.clientes || []).find(c => String(c.id) === String(clienteId));
+            await fetch(`${API}/clientes/${clienteId}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+              nombre: (local && local.cliente_nombre) || (cli && cli.nombre) || "",
+              telefono: ed.telefono != null ? ed.telefono : ((cli && cli.telefono) || ""),
+              direccion: ed.direccion != null ? ed.direccion : ((cli && cli.direccion) || ""),
+              email: (cli && cli.email) || "",
+              intermediario_id: (cli && cli.intermediario_id) || 0,
+              notas: (cli && cli.notas) || ""
+            }), signal:faenasAbortTimeout(6000)});
+          }
+        }
+      } catch(e) {}
     }
 
     // Presupuestos (partidas / líneas / bloques) — lote en un solo request
@@ -8546,7 +8447,19 @@ async function sincronizar(opts) {
 
     // Definiciones de material
     for (const def of (cola.definicionesPendientes||[])) {
-      try { await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:faenasAbortTimeout(6000)}); } catch(e) {}
+      try {
+        if (def._editar || def.nombre) {
+          await fetch(`${API}/materiales/${def.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nombre:def.nombre, unidad:def.unidad, categoria:def.categoria, definicion:def.definicion}), signal:faenasAbortTimeout(6000)});
+        } else if (def.definicion != null) {
+          await fetch(`${API}/materiales/${def.id}/definicion`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({definicion:def.definicion}), signal:faenasAbortTimeout(6000)});
+        }
+        if (Array.isArray(def.precios) && def.precios.length) {
+          await fetch(`${API}/materiales/${def.id}/precios`, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({precios: def.precios}), signal:faenasAbortTimeout(6000)});
+        }
+        if (def.precio && def.precio.proveedor) {
+          await fetch(`${API}/materiales/${def.id}/precio`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(def.precio), signal:faenasAbortTimeout(6000)});
+        }
+      } catch(e) {}
     }
 
     // Book pendiente (si hay helper)
@@ -8555,15 +8468,16 @@ async function sincronizar(opts) {
     // Pull ligero solo en sync completa (Terminar / botón), no en cada drenado de fondo
     if (!fondo) {
       if (estado) estado.textContent = "✓ Descargando datos del PC...";
-      const [rFaenas, rMat, rCli] = await Promise.all([
-        fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(15000)}),
-        fetch(`${API}/materiales`, {signal:faenasAbortTimeout(10000)}),
-        fetch(`${API}/clientes`, {signal:faenasAbortTimeout(10000)})
-      ]);
-      if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
-      if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
-      if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
-      // Fotos: solo de la faena abierta (no N+1 de todas)
+      try {
+        const [rFaenas, rMat, rCli] = await Promise.all([
+          fetch(`${API}/sync/datos`, {signal:faenasAbortTimeout(25000)}),
+          fetch(`${API}/materiales`, {signal:faenasAbortTimeout(25000)}),
+          fetch(`${API}/clientes`, {signal:faenasAbortTimeout(25000)})
+        ]);
+        if (rFaenas.ok) { const d = await rFaenas.json(); if (d.ok) aplicarRespuestaFaenas(d); }
+        if (rMat.ok)   { const d = await rMat.json();   if (d.ok) { state.materiales = d.data; localStorage.setItem("materiales_cache", JSON.stringify(state.materiales)); } }
+        if (rCli.ok)   { const d = await rCli.json();   if (d.ok) { state.clientes = d.data; localStorage.setItem("clientes_cache", JSON.stringify(state.clientes)); } }
+      } catch (e) {}
       const abierta = state.faenaActualId;
       if (abierta && !esIdFaenaTemporal(abierta)) {
         try {
@@ -8605,8 +8519,6 @@ async function sincronizar(opts) {
     guardarCola(colaLimpia, { silencioso: true, sinFondo: true });
 
     if (!fondo) {
-      if (estado) estado.textContent = "✓ Actualizando datos desde la nube...";
-      await cargarDatosIniciales(true, true);
       if (presupPend.length) {
         aplicarColaPresupuestosLocal(presupPend);
         refrescarPantallaActual();
@@ -8837,13 +8749,12 @@ async function actualizarEnSegundoPlano() {
 }
 
 async function recargarDatos() {
-  await actualizarEnSegundoPlano();
-  toast("✓ Datos actualizados");
+  await sincronizar();
 }
 
 async function init() {
   // Forzar descarga de UI nueva si el SW tenía una versión vieja
-  const UI_VER = "68-jimmi-cursor";
+  const UI_VER = "70-sync-al-cerrar";
   try {
     const fuerza = /[?&](v|refresh)=/i.test(location.search || "");
     if (fuerza || localStorage.getItem("faenas_ui_ver") !== UI_VER) {
@@ -8886,7 +8797,6 @@ async function init() {
   window.addEventListener("online",  () => {
     document.getElementById("offline-ind")?.classList.remove("show");
     actualizarIndicadorSyncEstado();
-    programarSyncFondo(600);
   });
   window.addEventListener("offline", () => {
     document.getElementById("offline-ind")?.classList.add("show");
@@ -8903,7 +8813,6 @@ async function init() {
       if (localStorage.getItem("ticket_foto_temp") && !ticketFotoBase64) {
         try { restaurarTicket(); navTo(1); } catch (e) {}
       }
-      programarSyncFondo(800);
     }
     if (document.visibilityState === "hidden") {
       avisarCronoFueraApp();
@@ -8915,23 +8824,13 @@ async function init() {
     preguntarSalidaSiPendiente();
   });
   document.addEventListener("freeze", () => avisarCronoFueraApp());
-  try {
-    await cargarDatosIniciales(true, true);
-    state._cargando = false;
-    guardarSnapshotSesion();
-    incorporarFaenasPendientes();
-    refrescarPantallaActual();
-    actualizarPendientesInfo();
-    if (contarPendientesCola() > 0) state._sesionSucia = true;
-    actualizarIndicadorSesion();
-    programarSyncFondo(1500);
-  } catch (e) {
-    state._cargando = false;
-    console.warn("Carga inicial:", e);
-    guardarSnapshotSesion();
-    incorporarFaenasPendientes();
-    actualizarIndicadorSesion();
-  }
+  state._cargando = false;
+  guardarSnapshotSesion();
+  incorporarFaenasPendientes();
+  refrescarPantallaActual();
+  actualizarPendientesInfo();
+  if (contarPendientesCola() > 0) state._sesionSucia = true;
+  actualizarIndicadorSesion();
 }
 
 init();

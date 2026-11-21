@@ -2719,14 +2719,25 @@ def get_materiales():
     materiales = conn.execute(
         "SELECT * FROM materiales ORDER BY categoria, nombre"
     ).fetchall()
+    precios_filas = conn.execute(
+        "SELECT * FROM precios ORDER BY material_id, precio_unitario, id"
+    ).fetchall()
+    por_mat = {}
+    for p in precios_filas:
+        d = fila_a_dict(p)
+        try:
+            clave = int(d.get("material_id"))
+        except (TypeError, ValueError):
+            clave = d.get("material_id")
+        por_mat.setdefault(clave, []).append(d)
     resultado = []
     for m in materiales:
         mat = fila_a_dict(m)
-        precios = conn.execute(
-            "SELECT * FROM precios WHERE material_id=? ORDER BY precio_unitario",
-            (m["id"],)
-        ).fetchall()
-        mat["precios"] = filas_a_lista(precios)
+        try:
+            clave = int(mat.get("id"))
+        except (TypeError, ValueError):
+            clave = mat.get("id")
+        mat["precios"] = por_mat.get(clave, [])
         resultado.append(mat)
     conn.close()
     return jsonify({"ok": True, "data": resultado})
